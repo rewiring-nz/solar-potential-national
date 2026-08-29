@@ -1606,6 +1606,17 @@ map.on("load", async () => {
     const tally = { low: 0, mid: 0, high: 0 };
     let feats = [];
     try { feats = map.queryRenderedFeatures({ layers: ["panels-fill"] }); } catch (e) { feats = []; }
+    // Per-panel tiles only exist at close zooms (the district's ~790k panels
+    // cannot be loaded town-wide), so far out this query is EMPTY by design.
+    // Showing zeros there reads as "no economic panels anywhere", which is a
+    // lie -- say why instead. Building polygons still being on screen is the
+    // tell that it is a zoom problem, not an empty map.
+    if (feats.length === 0 && map.getZoom() < 13.5) {
+      document.getElementById("econ-bands-all").innerHTML = "";
+      document.getElementById("econ-bands-all-note").textContent =
+        "Zoom in to see individual panel economics";
+      return;
+    }
     feats.forEach(f => {
       const pr = f.properties;
       if (pr.fill_rank != null && pr.fill_rank > panelDensityPct) return;
