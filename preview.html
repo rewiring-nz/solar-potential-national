@@ -489,6 +489,30 @@
       </div>
       <div id="coverage-options" style="display:none;"></div>
       <div class="rsp-subtitle" style="margin: 8px 0 0;">For buildings in map view (<span id="inview-count">0</span>)</div>
+      <div id="layout-disclaimer" style="margin:10px 0 0;padding:8px 10px;background:rgba(255,80,80,0.10);
+           border:1px solid rgba(255,110,110,0.25);border-radius:8px;font-size:11px;line-height:1.45;
+           color:#f2c6c6;">
+        <strong style="color:#f7b3b3;">Disclaimer:</strong> This is a very rough estimate and can easily
+        have mistakes, the system does its best to place panels on rooftops and estimate generation,
+        but there are clear limitations.
+        <a href="#" id="disclaimer-more" style="color:#ff9d9d;text-decoration:underline;white-space:nowrap;">Read more</a>
+        <div id="disclaimer-detail" style="display:none;margin-top:8px;">
+          <ul style="margin:0;padding-left:16px;display:flex;flex-direction:column;gap:6px;">
+            <li>The 3D data used to map rooftops comes from a different year (sometimes many years
+                apart) from the imagery. Therefore sometimes buildings are missing, or buildings show
+                where they have since been knocked down.</li>
+            <li>The solar irradiance data is based on satellite estimates that may not be perfectly
+                accurate for an individual building&rsquo;s sunlight conditions.</li>
+            <li>The panel placement, and detection of roof obstructions, requires reconciling 3D data,
+                2D data, and building outline records, which do not always match, so there are plenty
+                of examples where panels can be placed incorrectly.</li>
+            <li>Solar economics change based on individual building consumption patterns, electricity
+                contracts and more. These are only rough estimates, with customisable assumptions to
+                show you how the estimate is made.</li>
+          </ul>
+        </div>
+      </div>
+
     </div>
   </div>
   <!-- Settings: assumptions and pricing, tabbed. Everything here is editable
@@ -3621,6 +3645,15 @@ map.on("load", async () => {
   map.on("mouseenter", "buildings-fill", () => map.getCanvas().style.cursor = "pointer");
   map.on("mouseleave", "buildings-fill", () => map.getCanvas().style.cursor = "");
 });
+</script>
+<script>
+  document.getElementById('disclaimer-more').addEventListener('click', function (e) {
+    e.preventDefault();
+    const d = document.getElementById('disclaimer-detail');
+    const open = d.style.display !== 'none';
+    d.style.display = open ? 'none' : 'block';
+    this.textContent = open ? 'Read more' : 'Show less';
+  });
 </script>
 </body>
 </html>
