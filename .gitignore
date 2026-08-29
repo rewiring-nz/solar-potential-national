@@ -1,0 +1,14 @@
+.venv
+.env
+__pycache__/
+*.pyc
+data/pointcloud/
+data/regions/*/imagery_export.zip
+data/regions/*/dsm_export.zip
+data/regions/*/imagery
+data/regions/*/dsm
+data/build_logs/
+data/regions/*/imagery_mosaic.tif
+data/regions/*/dsm_mosaic.tif
+data/regions/*/dem_mosaic.tif
+data/*.tif
