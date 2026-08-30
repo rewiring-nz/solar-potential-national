@@ -424,6 +424,26 @@
   #settings-modal .slider-row label { display:flex; justify-content:space-between; font-size:11.5px;
     color:#ccc; margin-bottom:2px; }
   #settings-modal input[type=range] { width:100%; }
+  /* Assumption sliders: heat-map gradient for the used track, dark grey for
+     the rest. --fill is kept current by JS on every input. */
+  #settings-modal input[type=range], .econ-inputs input[type=range] {
+    -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px;
+    background: linear-gradient(to right,
+      #ffd24a 0%, #ff9b3d calc(var(--fill, 50) * 1%),
+      #3a3a3a calc(var(--fill, 50) * 1%), #3a3a3a 100%);
+    outline: none;
+  }
+  #settings-modal input[type=range]::-webkit-slider-thumb,
+  .econ-inputs input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: #ffd24a; border: 2px solid #1c1c1c; cursor: pointer;
+  }
+  #settings-modal input[type=range]::-moz-range-thumb,
+  .econ-inputs input[type=range]::-moz-range-thumb {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #ffd24a; border: 2px solid #1c1c1c; cursor: pointer;
+  }
+
   .cost-tier { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
   .cost-tier span { flex:1; color:#ccc; font-size:11.5px; }
   .cost-tier input { width:82px; background:#2e3440; color:#fff; border:1px solid #555;
@@ -3728,6 +3748,27 @@ map.on("load", async () => {
   box.addEventListener("click", function (e) { if (e.target === box) close(); });
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && box.style.display !== "none") close();
+  });
+})();
+</script>
+<script>
+(function () {
+  function paint(el) {
+    var min = parseFloat(el.min) || 0, max = parseFloat(el.max) || 100;
+    var f = ((parseFloat(el.value) - min) / (max - min)) * 100;
+    el.style.setProperty("--fill", isFinite(f) ? f : 50);
+  }
+  var sliders = document.querySelectorAll(
+    "#settings-modal input[type=range], .econ-inputs input[type=range]");
+  sliders.forEach(function (el) {
+    paint(el);
+    el.addEventListener("input", function () { paint(el); });
+  });
+  // sliders whose values are set programmatically (loading saved assumptions)
+  // repaint on the settings dialog opening
+  var so = document.getElementById("open-settings");
+  if (so) so.addEventListener("click", function () {
+    setTimeout(function () { sliders.forEach(paint); }, 50);
   });
 })();
 </script>
