@@ -1710,6 +1710,18 @@ def _attach_building_geometry(facets, building_geom, pc_source=None, building_id
         facets = drop_plant_decks(facets, pc_source)
         if not constructed:
             facets = drop_roof_features(facets, pc_source)
+    # Self-consistency refit at the one choke point every strategy passes
+    # through: a facet's plane must be the best explanation of the points its
+    # own polygon contains (see _refit_planes for the 45 Camp St case).
+    if facets and pc_source is not None:
+        try:
+            minx, miny, maxx, maxy = building_geom.bounds
+            _pts = pc_source.points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1,
+                                            building_only=True)
+            from src.roof_partition import top_surface as _ts
+            facets = _refit_planes(facets, _ts(_pts))
+        except Exception as exc:
+            _note_fallback("refit_planes", building_id, exc)
     if APPLY_REALISM_MERGE and facets:
         try:
             facets = merge_uneconomic_splits(facets)
@@ -1945,6 +1957,33 @@ PARTITION_GOOD_ENOUGH = 0.85
 # may fall and still win on being constructible geometry. See _partition_facets.
 SKELETON_TIE_MARGIN = 0.05
 
+
+
+def _refit_planes(faces, pts, min_gain=0.15):
+    """Self-consistency: a facet's plane must be the best explanation of the
+    points its own polygon contains. The partition can hand back a polygon
+    paired with a plane fitted on a different stage's point subset -- measured
+    on 45 Camp St: a 62 m2 facet claiming 22 deg whose own points are FLAT,
+    own-plane fit 0.14 vs 0.89 refit. Adopt the refit only on a clear win so a
+    facet whose polygon contains obstruction clutter keeps its original read."""
+    from src.roof_partition import _points_in, _inlier_fraction, _fit_plane_robust
+    out = []
+    for f in faces:
+        sub = _points_in(f["geometry"], pts)
+        if len(sub) >= 20:
+            old_pl = (f["plane_a"], f["plane_b"], f["plane_c"])
+            old_fit = _inlier_fraction(sub, old_pl)
+            try:
+                new_pl = _fit_plane_robust(sub)
+            except Exception:
+                new_pl = None
+            if new_pl is not None and _inlier_fraction(sub, new_pl) >= old_fit + min_gain:
+                slope, aspect = slope_aspect_from_plane(new_pl[0], new_pl[1])
+                if slope <= config.MAX_ROOF_SLOPE_DEG:
+                    f = dict(f, plane_a=new_pl[0], plane_b=new_pl[1], plane_c=new_pl[2],
+                             slope_deg=slope, aspect_deg=aspect)
+        out.append(f)
+    return out
 
 
 def _arrangement_facets(pts, building_geom, building_id):
