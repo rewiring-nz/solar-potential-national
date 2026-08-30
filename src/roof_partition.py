@@ -918,7 +918,190 @@ PLANES_LARGE_ROOF_M2 = 600.0     # above this footprint, allow the higher count
 MAX_INTERSECTION_LINES = 24      # cutting by every pair explodes; keep the best
 
 
-def partition_by_planes(building_id, footprint, pts, seed=0):
+def top_surface(pts, cell_m=0.5, drop_m=0.5):
+    """Keep only the points on the TOP surface of each plan cell. Under an eave
+    of a multi-level building LiDAR records both the upper roof edge and the
+    lower roof beneath it at the same plan location; a roof model is a function
+    z(x, y), so those lower returns are unexplainable by construction and they
+    poison plane fits, region labels and any points-explained metric alike
+    (measured on #5119630: two roof levels, 29% of points on the lower one,
+    facet planes fitted through the mixture explaining 0% of their polygons).
+    The lower level's EXPOSED area keeps its points -- there it IS the top."""
+    if len(pts) == 0:
+        return pts
+    ix = np.floor(pts[:, 0] / cell_m).astype(np.int64)
+    iy = np.floor(pts[:, 1] / cell_m).astype(np.int64)
+    key = (ix - ix.min()) * (iy.max() - iy.min() + 1) + (iy - iy.min())
+    order = np.argsort(key, kind="stable")
+    ks, zs = key[order], pts[order, 2]
+    top = np.empty(len(pts))
+    start = 0
+    for end in np.append(np.where(np.diff(ks) != 0)[0] + 1, len(ks)):
+        top[start:end] = zs[start:end].max()
+        start = end
+    keep_sorted = zs > top - drop_m
+    keep = np.zeros(len(pts), dtype=bool)
+    keep[order] = keep_sorted
+    return pts[keep]
+
+
+def dedupe_planes(planes, footprint, angle_tol_deg=5.0, height_tol_m=0.35):
+    """Drop planes that are the same surface fitted twice. Two genuinely
+    separate faces sharing pitch AND aspect AND height are coplanar -- one
+    plane serves both, and the adjacency merge separates their polygons."""
+    cx, cy = footprint.centroid.x, footprint.centroid.y
+    kept = []
+    for p in planes:
+        dup = False
+        for q in kept:
+            na = np.array([-p[0], -p[1], 1.0]); na /= np.linalg.norm(na)
+            nb = np.array([-q[0], -q[1], 1.0]); nb /= np.linalg.norm(nb)
+            ang = np.degrees(np.arccos(np.clip(na @ nb, -1, 1)))
+            dz = abs((p[0] * cx + p[1] * cy + p[2]) - (q[0] * cx + q[1] * cy + q[2]))
+            if ang < angle_tol_deg and dz < height_tol_m:
+                dup = True
+                break
+        if not dup:
+            kept.append(p)
+    return kept
+
+
+def explained_fraction(faces, pts, band=INLIER_BAND_M):
+    """Share of ALL the building's points a facet set explains: a point counts
+    when it falls inside some facet whose plane passes within `band` of it.
+    One number rewarding both coverage and correctness -- a wedge spanning two
+    real faces covers its points but explains few of them, and a correct facet
+    set that abandons half the roof explains at most the half it kept."""
+    if len(pts) == 0:
+        return 0.0
+    ok = np.zeros(len(pts), dtype=bool)
+    for f in faces:
+        poly = f["geometry"] if isinstance(f, dict) else f[0]
+        a, b, c = ((f["plane_a"], f["plane_b"], f["plane_c"]) if isinstance(f, dict)
+                   else f[1])
+        m = shapely.vectorized.contains(poly, pts[:, 0], pts[:, 1])
+        if not m.any():
+            continue
+        resid = np.abs(pts[m, 2] - (a * pts[m, 0] + b * pts[m, 1] + c))
+        idx = np.where(m)[0]
+        ok[idx[resid < band]] = True
+    return float(ok.mean())
+
+
+def _reflex_corner_cuts(poly):
+    """Cut lines through each REFLEX (concave) footprint corner, along both
+    adjoining wall directions. An L- or U-shaped building's wings meet at its
+    reflex corners; the roof sections separate along lines through them. The
+    plane-intersection cuts cannot draw these boundaries when the two wings'
+    faces are near-parallel (same pitch, different wing) -- parallel planes
+    have no intersection line -- and that is exactly the geometry of every
+    multi-wing hip roof, so without these the cells straddle wings and whole
+    faces get merged across the valley (measured on #5119630: two 52 m2
+    cross-wing sheets, explained fraction 0.51)."""
+    ring = np.asarray(poly.exterior.coords[:-1])
+    if len(ring) < 4:
+        return []
+    # shoelace: positive = CCW
+    area2 = float(np.sum(ring[:, 0] * np.roll(ring[:, 1], -1)
+                         - np.roll(ring[:, 0], -1) * ring[:, 1]))
+    ccw = area2 > 0
+    c = np.array(poly.centroid.coords[0])
+    out = []
+    n_pts = len(ring)
+    for i in range(n_pts):
+        p0, p1, p2 = ring[i - 1], ring[i], ring[(i + 1) % n_pts]
+        v1, v2 = p1 - p0, p2 - p1
+        if np.hypot(*v1) < 0.5 or np.hypot(*v2) < 0.5:
+            continue        # survey jitter, not a wall corner
+        cross = v1[0] * v2[1] - v1[1] * v2[0]
+        if (cross < 0) != ccw:
+            continue        # convex corner in this orientation
+        for v in (v1, v2):
+            ang = float(np.degrees(np.arctan2(v[1], v[0])) % 180.0)
+            theta = np.radians(ang)
+            nrm = np.array([-np.sin(theta), np.cos(theta)])
+            out.append((ang, float((p1 - c) @ nrm)))
+    return out
+
+
+def partition_with_labels(building_id, footprint, pts, labels, planes):
+    """Arrangement partition where the ASSIGNMENT comes from labelled points
+    (region growing), not residual voting. Residual voting cannot tell two
+    coplanar faces on different wings apart -- same plane, same residuals --
+    and unary_union then welds them into one cross-valley sheet. Labels are
+    contiguous regions by construction, so a wing can only ever claim cells
+    its own points sit in.
+
+    labels: per-point region id, -1 for unassigned. planes: (a,b,c) per id."""
+    inside_mask_pts = pts
+    inside = _points_in(footprint, inside_mask_pts)
+    if len(inside) < MIN_POINTS:
+        return []
+    # labels must correspond to pts row-for-row; recompute the footprint mask
+    # the same way _points_in does so they stay aligned.
+    m = shapely.vectorized.contains(footprint, pts[:, 0], pts[:, 1])
+    pin, lin = pts[m], np.asarray(labels)[m]
+
+    # Cut lines: every pair of genuinely DISTINCT planes (their intersection is
+    # a ridge/hip/valley) plus the wing separations at reflex corners.
+    uniq = dedupe_planes(list(planes), footprint)
+    cuts = (_plane_intersection_cuts(uniq, footprint)[:MAX_INTERSECTION_LINES]
+            + _reflex_corner_cuts(footprint))
+    cells = [footprint]
+    for ang, off in cuts:
+        nxt = []
+        for c in cells:
+            parts = _cut(c, ang, off)
+            nxt.extend(parts if len(parts) >= 2 else [c])
+        cells = nxt
+        if len(cells) > 200:
+            break
+
+    labelled = []
+    for cell in cells:
+        if cell.area < MIN_PIECE_M2:
+            continue
+        mm = shapely.vectorized.contains(cell, pin[:, 0], pin[:, 1])
+        votes = lin[mm]
+        votes = votes[votes >= 0]
+        if len(votes) < 4:
+            labelled.append((cell, None))
+            continue
+        ids, counts = np.unique(votes, return_counts=True)
+        labelled.append((cell, int(ids[np.argmax(counts)])))
+    known = [(g, i) for g, i in labelled if i is not None]
+    if not known:
+        return []
+    for k, (g, i) in enumerate(labelled):
+        if i is None:
+            labelled[k] = (g, min(known, key=lambda t: t[0].distance(g))[1])
+
+    out = []
+    for rid in sorted({i for _, i in labelled}):
+        mine = [g for g, i in labelled if i == rid]
+        merged = unary_union(mine)
+        for poly in (merged.geoms if merged.geom_type == "MultiPolygon" else [merged]):
+            if poly.area < MIN_FACET_M2:
+                continue
+            sub = _points_in(poly, pin)
+            plane = (_fit_plane_robust(sub) if len(sub) >= MIN_POINTS
+                     else tuple(planes[rid]))
+            slope, aspect = _slope_aspect(plane)
+            if slope > config.MAX_ROOF_SLOPE_DEG:
+                continue
+            if slope >= STEEP_FACE_DEG and _inlier_fraction(sub, plane) < STEEP_FACE_MIN_FIT:
+                continue
+            out.append({
+                "building_id": building_id,
+                "geometry": Polygon(poly.exterior, [r for r in poly.interiors]),
+                "plane_a": plane[0], "plane_b": plane[1], "plane_c": plane[2],
+                "slope_deg": slope, "aspect_deg": aspect,
+                "area_m2": float(poly.area), "point_count": int(len(sub)),
+            })
+    return out
+
+
+def partition_by_planes(building_id, footprint, pts, seed=0, planes=None):
     """Big planes from the LiDAR, trimmed by each other and by the building edge.
 
     Josh's description exactly: "make big planes based on detectable roof angles
@@ -929,19 +1112,27 @@ def partition_by_planes(building_id, footprint, pts, seed=0):
     decided by where it stops being the best explanation of the points -- which
     is either where another plane takes over, along the exact line the two
     intersect, or the surveyed footprint edge. Both are straight by construction,
-    so the result cannot be fuzzy and the faces meet cleanly at real angles."""
+    so the result cannot be fuzzy and the faces meet cleanly at real angles.
+
+    `planes` lets a caller supply the plane hypotheses (region growing finds
+    much cleaner planes on complex hip roofs than the greedy detector here --
+    greedy RANSAC's compromise planes at the joins were exactly why this path
+    sat unused); None keeps the self-detecting behaviour."""
     rng = np.random.default_rng(seed)
     inside = _points_in(footprint, pts)
     if len(inside) < MIN_POINTS:
         return []
-    cap = PLANES_LARGE_MAX if footprint.area > PLANES_LARGE_ROOF_M2 else PLANES_TYPICAL_MAX
-    planes = _detect_large_planes(inside, footprint, rng, max_planes=cap)
+    if planes is None:
+        cap = PLANES_LARGE_MAX if footprint.area > PLANES_LARGE_ROOF_M2 else PLANES_TYPICAL_MAX
+        planes = _detect_large_planes(inside, footprint, rng, max_planes=cap)
+    planes = dedupe_planes(planes, footprint)
     if not planes:
         return []
 
     # Cut by where the planes meet. Ordered by how much roof each pair actually
     # separates, so if the cap bites it is the least important joins that go.
-    cuts = _plane_intersection_cuts(planes, footprint)[:MAX_INTERSECTION_LINES]
+    cuts = (_plane_intersection_cuts(planes, footprint)[:MAX_INTERSECTION_LINES]
+            + _reflex_corner_cuts(footprint))
     cells = [footprint]
     for ang, off in cuts:
         nxt = []
@@ -987,6 +1178,8 @@ def partition_by_planes(building_id, footprint, pts, seed=0):
             slope, aspect = _slope_aspect(plane)
             if slope > config.MAX_ROOF_SLOPE_DEG:
                 continue
+            if slope >= STEEP_FACE_DEG and _inlier_fraction(sub, plane) < STEEP_FACE_MIN_FIT:
+                continue        # steep AND not a plane: a wall, not a roof face
             out.append({
                 "building_id": building_id,
                 "geometry": Polygon(poly.exterior, [r for r in poly.interiors]),

@@ -1911,12 +1911,41 @@ def _reconstruct_facets(pc_source, building_geom, building_id):
 USE_PARTITION = True
 
 
+# Below this share of points explained, a partition result is treated as a
+# failed read of the roof and the plane-arrangement path gets to compete.
+# 0.85 mirrors roof_partition.ACCEPT_INLIER -- one face passes at 85%, so a
+# whole building comfortably under it means faces are spanning real folds.
+PARTITION_GOOD_ENOUGH = 0.85
+
+
+def _arrangement_facets(pts, building_geom, building_id):
+    """Plane-arrangement rebuild for complex roofs: region growing supplies the
+    plane hypotheses (it reads hip networks correctly but draws organic blob
+    boundaries), partition_by_planes rebuilds the polygons cut along the exact
+    plane-intersection lines -- which ARE the ridges, hips and valleys. Josh's
+    #5119630 report is the type case: recursive wall-angle cutting smeared 12
+    wedges across a clean multi-hip roof that region growing had already read
+    correctly, 7 planes in 4 aspect families all near 25 degrees."""
+    from src.roof_partition import partition_with_labels
+    footprint = building_geom.buffer(GLOBAL_BUILDING_MARGIN_M)
+    m = shapely.vectorized.contains(footprint, pts[:, 0], pts[:, 1])
+    pin = pts[m]
+    if len(pin) < RG_MIN_REGION_POINTS:
+        return []
+    normals, rms = _pca_normals(pin)
+    labels, planes = _grow_regions(pin, normals, rms)
+    if len(planes) == 0:
+        return []
+    return partition_with_labels(building_id, building_geom.buffer(0), pin,
+                                 labels, planes)
+
+
 def _partition_facets(pc_source, building_geom, building_id, imagery_ds=None):
     """roof_partition in the shape segment_building_best returns. [] on
     anything unexpected, so the caller falls back rather than failing a whole
     area's build for one awkward roof."""
     try:
-        from src.roof_partition import partition_roof
+        from src.roof_partition import partition_roof, explained_fraction, top_surface
         minx, miny, maxx, maxy = building_geom.bounds
         pts = pc_source.points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1,
                                        building_only=True)
@@ -1926,7 +1955,26 @@ def _partition_facets(pc_source, building_geom, building_id, imagery_ds=None):
         pts = pts[inside]
         if len(pts) < RECONSTRUCT_MIN_POINTS:
             return []
-        return partition_roof(building_id, building_geom.buffer(0), pts, imagery_ds=imagery_ds)
+        # Multi-level buildings: model only the top surface (see top_surface).
+        pts = top_surface(pts)
+        if len(pts) < RECONSTRUCT_MIN_POINTS:
+            return []
+        faces = partition_roof(building_id, building_geom.buffer(0), pts, imagery_ds=imagery_ds)
+        score = explained_fraction(faces, pts) if faces else 0.0
+        if score >= PARTITION_GOOD_ENOUGH:
+            return faces
+        # The cut partition failed to read this roof. Let the arrangement
+        # rebuild compete on the same metric; strictly better wins, so simple
+        # roofs (which pass the gate above) never pay for this and a bad
+        # arrangement can never displace a better cut result.
+        try:
+            arr = _arrangement_facets(pts, building_geom, building_id)
+        except Exception as exc:
+            _note_fallback("arrangement", building_id, exc)
+            arr = []
+        if arr and explained_fraction(arr, pts) > score:
+            return arr
+        return faces
     except Exception as exc:
         _note_fallback("partition", building_id, exc)
         return []
