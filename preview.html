@@ -2103,6 +2103,9 @@ map.on("load", async () => {
     if (window.__updateZoomHint) window.__updateZoomHint();
   }
   window.__refreshModeUI = syncModeUI;
+  // The no-heatmap fallback can flip the mode before this chrome exists;
+  // sync once now so the buttons reflect whatever mode init settled on.
+  syncModeUI();
   document.getElementById("vslider").addEventListener("input", (e) => {
     const v = parseInt(e.target.value, 10);
     document.getElementById("vslider-value").textContent = v + "%";
