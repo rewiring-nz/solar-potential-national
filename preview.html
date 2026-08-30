@@ -512,13 +512,14 @@
           </ul>
         </div>
       </div>
-      <button id="explainer-btn-dash" style="display:none;width:100%;margin-top:8px;padding:7px 10px;
-          border-radius:8px;border:1px solid rgba(255,200,80,0.35);background:rgba(255,190,60,0.12);
-          color:#ffd166;font-size:12px;font-weight:600;cursor:pointer;">
-        &#9654;&#65039; Watch Video Explainer</button>
+      
 
     </div>
   </div>
+  <button id="explainer-btn-dash" style="display:none;width:100%;margin-top:8px;padding:7px 10px;
+          border-radius:8px;border:1px solid rgba(255,200,80,0.35);background:rgba(255,190,60,0.12);
+          color:#ffd166;font-size:12px;font-weight:600;cursor:pointer;">
+        &#9654;&#65039; Watch Video Explainer</button>
   <!-- Settings: assumptions and pricing, tabbed. Everything here is editable
        and every figure on the map follows it live. Nothing in this dialog
        needs a rebuild -- the economics are derived entirely from kWp and
@@ -3692,7 +3693,7 @@ map.on("load", async () => {
      a YouTube link becomes an embed, a direct .mp4 uses the native player. -->
 <div id="explainer-lightbox" style="display:none;position:fixed;inset:0;z-index:4000;
      background:rgba(0,0,0,0.82);align-items:center;justify-content:center;">
-  <div style="position:relative;width:min(960px,92vw);aspect-ratio:16/9;background:#000;
+  <div style="position:relative;height:75vh;width:min(92vw,calc(75vh*16/9));aspect-ratio:16/9;background:#000;
        border-radius:10px;overflow:hidden;box-shadow:0 12px 48px rgba(0,0,0,0.6);">
     <button id="explainer-close" style="position:absolute;top:8px;right:8px;z-index:2;
         width:32px;height:32px;border-radius:16px;border:0;background:rgba(255,255,255,0.15);
@@ -3715,7 +3716,7 @@ map.on("load", async () => {
     var vm = EXPLAINER_VIDEO_URL.match(/vimeo\.com\/(?:video\/)?(\d+)(?:\/([\w]+))?/);
     player.innerHTML = vm
       ? '<iframe src="https://player.vimeo.com/video/' + vm[1] +
-        (vm[2] ? '?h=' + vm[2] + '&' : '?') + 'autoplay=1&dnt=1" ' +
+        (vm[2] ? '?h=' + vm[2] + '&' : '?') + 'autoplay=1&muted=0&dnt=1" ' +
         'style="width:100%;height:100%;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe>'
       : yt
       ? '<iframe src="https://www.youtube-nocookie.com/embed/' + yt[1] +
