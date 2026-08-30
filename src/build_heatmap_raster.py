@@ -72,7 +72,11 @@ ALPHA = 235  # slight base transparency; the frontend's raster-opacity does the 
 
 
 def build_lookup_array(model):
-    lookup = np.full((MAX_SLOPE_DEG // SLOPE_BIN_DEG + 1, 360 // ASPECT_BIN_DEG), np.nan)
+    # Sized from the model's own keys, not MAX_SLOPE_DEG: the model may carry
+    # bins past the render cap (Wellington's does), and the renderer clamps
+    # slope reads to MAX_SLOPE_DEG anyway.
+    max_slope_bin = max(sb for sb, _ in model.lookup)
+    lookup = np.full((max_slope_bin // SLOPE_BIN_DEG + 1, 360 // ASPECT_BIN_DEG), np.nan)
     for (slope_bin, aspect_bin), poa in model.lookup.items():
         lookup[slope_bin // SLOPE_BIN_DEG, aspect_bin // ASPECT_BIN_DEG] = poa
     return lookup
