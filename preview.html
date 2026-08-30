@@ -2661,6 +2661,12 @@ map.on("load", async () => {
       heatmapImages = [];
     }
   }
+  // No heat-map imagery at all (a region whose rasters haven't been built
+  // yet): landing in heat-map mode would show a blank map, so start in
+  // panel-layout mode instead. The Heat Map button stays clickable.
+  if (heatmapImages.length === 0 && mode === "heatmap") {
+    setMode("layout");
+  }
   // Heat rasters are attached ONLY while they intersect the viewport. A
   // MapLibre image source is not tiled: adding one uploads the entire PNG as
   // a GPU texture. With 24 regional rasters (64MB of PNG, several hundred MB
