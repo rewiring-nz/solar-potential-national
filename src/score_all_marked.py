@@ -25,8 +25,16 @@ _ctx = {}
 def ctx(area):
     if area not in _ctx:
         p = area_paths(area)
-        _ctx[area] = (gpd.read_file(p["outlines"]).set_index("building_id", drop=False),
-                      rasterio.open(p["dsm"]), rasterio.open(p["imagery"]))
+        # Imagery is fetched just-in-time and deleted again during a district
+        # rebuild (disk), so a scored roof can find its mosaic gone. Skipping
+        # the roof is right and scoring it WITHOUT imagery is not: segmentation
+        # cuts on strong image lines, so an imagery-less score measures a
+        # different pipeline and would look like a regression that is not real.
+        if not p["imagery"].exists():
+            _ctx[area] = None
+        else:
+            _ctx[area] = (gpd.read_file(p["outlines"]).set_index("building_id", drop=False),
+                          rasterio.open(p["dsm"]), rasterio.open(p["imagery"]))
     return _ctx[area]
 
 pc = PointCloudSource()
@@ -34,7 +42,11 @@ for r in TRUTH["roofs"]:
     bid = r["building_id"]
     exp = r.get("faces")
     area = AREA_OF.get(bid, "pilot")
-    gdf, dsm, img = ctx(area)
+    c = ctx(area)
+    if c is None:
+        warns.append(f"{bid} SKIPPED: {area} has no imagery mosaic on this machine")
+        continue
+    gdf, dsm, img = c
     if bid not in gdf.index:
         warns.append(f"{bid} not in {area}"); continue
     g = gdf.loc[bid].geometry
