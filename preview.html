@@ -2649,9 +2649,17 @@ map.on("load", async () => {
       coordinates: m.coordinates
     }));
   } catch (e) {
-    const heatmapMeta = await (await fetch(`data/heatmap_raster.json?v=${DATA_VERSION}`)).json();
-    heatmapImages = [{ id: "heatmap-raster", url: `data/heatmap_raster.png?v=${DATA_VERSION}`,
-                       urlLod: null, size: null, sizeLod: null, coordinates: heatmapMeta.coordinates }];
+    // Legacy single-raster fallback. A region with NO heatmap rasters at all
+    // (Island Bay's first build) 404s here, and the unhandled SyntaxError from
+    // parsing the 404 page killed the entire map init -- no panels, nothing.
+    // Heat-map imagery is optional; the map is not.
+    try {
+      const heatmapMeta = await (await fetch(`data/heatmap_raster.json?v=${DATA_VERSION}`)).json();
+      heatmapImages = [{ id: "heatmap-raster", url: `data/heatmap_raster.png?v=${DATA_VERSION}`,
+                         urlLod: null, size: null, sizeLod: null, coordinates: heatmapMeta.coordinates }];
+    } catch (e) {
+      heatmapImages = [];
+    }
   }
   // Heat rasters are attached ONLY while they intersect the viewport. A
   // MapLibre image source is not tiled: adding one uploads the entire PNG as
