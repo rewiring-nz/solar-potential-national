@@ -3689,7 +3689,12 @@ map.on("load", async () => {
   btn.style.display = "";
   function open() {
     var yt = EXPLAINER_VIDEO_URL.match(/(?:youtu\.be\/|v=|shorts\/)([\w-]{6,})/);
-    player.innerHTML = yt
+    var vm = EXPLAINER_VIDEO_URL.match(/vimeo\.com\/(?:video\/)?(\d+)(?:\/([\w]+))?/);
+    player.innerHTML = vm
+      ? '<iframe src="https://player.vimeo.com/video/' + vm[1] +
+        (vm[2] ? '?h=' + vm[2] + '&' : '?') + 'autoplay=1&dnt=1" ' +
+        'style="width:100%;height:100%;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe>'
+      : yt
       ? '<iframe src="https://www.youtube-nocookie.com/embed/' + yt[1] +
         '?autoplay=1&rel=0" style="width:100%;height:100%;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe>'
       : '<video src="' + EXPLAINER_VIDEO_URL + '" style="width:100%;height:100%" controls autoplay></video>';
