@@ -85,6 +85,68 @@ def build_lookup_array(model):
     return lookup
 
 
+SHADE_GRID_STEP_M = 1.0  # matches the DSM's own resolution -- finer invents
+# detail the 1 m surface cannot support, and costs time for nothing.
+SHADE_PAD_M = 1.0        # lattice nodes this far outside the footprint are still
+# computed, so bilinear interpolation at the roof edge has real neighbours
+
+
+def shading_grid(dsm_band, dsm_transform, dsm_nodata, geom, hourly,
+                 terrain_horizon_profile=None, step_m=SHADE_GRID_STEP_M):
+    """Per-POSITION direct-beam shading over one building, on a `step_m`
+    lattice: {fraction of the year's DNI that reaches THIS point}.
+
+    The raster used to scale a whole building by ONE factor taken at its
+    footprint centroid, so its within-roof variation came only from
+    orientation -- a roof half-buried under a neighbour's macrocarpa rendered
+    as brightly as an open one, and Josh (31 Aug) asked why the heat map does
+    not show shadows. It now varies per position, which is the whole point of
+    a per-pixel layer.
+
+    Returns (grid, xs, ys): grid[j, i] is the factor at (xs[i], ys[j]), ys
+    DESCENDING to match raster row order. Nodes with no evidence fall back to
+    the building-centroid factor rather than to 1.0, so a failure reads as
+    "as shaded as the rest of this roof", never as "fully open".
+
+    Also the exact data the manual-panel-placement idea needs baked into the
+    tiles -- keep it separable.
+    """
+    minx, miny, maxx, maxy = geom.bounds
+    xs = np.arange(minx - SHADE_PAD_M, maxx + SHADE_PAD_M + step_m, step_m)
+    ys = np.arange(maxy + SHADE_PAD_M, miny - SHADE_PAD_M - step_m, -step_m)
+    gx, gy = np.meshgrid(xs, ys)
+
+    centre = geom.centroid
+    base = building_shading_factor(dsm_band, dsm_transform, dsm_nodata,
+                                   centre.x, centre.y, hourly, own_geom=geom,
+                                   terrain_horizon_profile=terrain_horizon_profile)
+    grid = np.full(gx.shape, base, dtype=np.float32)
+
+    # Only near the roof: everything else is discarded downstream anyway, and
+    # a sprawling L-shaped footprint would otherwise pay for its whole bbox.
+    near = shapely.vectorized.contains(geom.buffer(SHADE_PAD_M), gx, gy)
+    rows, cols = np.nonzero(near)
+    for r, c in zip(rows, cols):
+        grid[r, c] = building_shading_factor(
+            dsm_band, dsm_transform, dsm_nodata, float(gx[r, c]), float(gy[r, c]),
+            hourly, own_geom=geom, terrain_horizon_profile=terrain_horizon_profile)
+    return grid, xs, ys
+
+
+def _sample_grid(grid, xs, ys, gx, gy):
+    """Bilinear sample of a shading grid at arbitrary points."""
+    if len(xs) < 2 or len(ys) < 2:
+        return np.full(gx.shape, float(grid.flat[0]), dtype=np.float32)
+    fi = np.clip((gx - xs[0]) / (xs[1] - xs[0]), 0, len(xs) - 1.001)
+    fj = np.clip((ys[0] - gy) / (ys[0] - ys[1]), 0, len(ys) - 1.001)
+    i0, j0 = fi.astype(int), fj.astype(int)
+    ti, tj = fi - i0, fj - j0
+    g00 = grid[j0, i0];       g10 = grid[j0, i0 + 1]
+    g01 = grid[j0 + 1, i0];   g11 = grid[j0 + 1, i0 + 1]
+    return ((g00 * (1 - ti) + g10 * ti) * (1 - tj)
+            + (g01 * (1 - ti) + g11 * ti) * tj).astype(np.float32)
+
+
 def render_building(points, geom, lookup, x_origin, y_origin, shading_factor):
     """Returns (poa_grid, row0, col0) for this building's bbox in the pilot-wide
     grid, or None when there's no usable point coverage. poa_grid is NaN
@@ -121,7 +183,13 @@ def render_building(points, geom, lookup, x_origin, y_origin, shading_factor):
 
     slope_idx = np.clip(np.round(slope_deg / SLOPE_BIN_DEG).astype(int), 0, MAX_SLOPE_DEG // SLOPE_BIN_DEG)
     aspect_idx = np.round(aspect_deg / ASPECT_BIN_DEG).astype(int) % (360 // ASPECT_BIN_DEG)
-    poa = lookup[slope_idx, aspect_idx] * shading_factor
+    # shading_factor is either one scalar (legacy) or (grid, xs, ys) sampled
+    # per pixel -- see shading_grid.
+    if isinstance(shading_factor, tuple):
+        shade = _sample_grid(shading_factor[0], shading_factor[1], shading_factor[2], gx, gy)
+    else:
+        shade = shading_factor
+    poa = lookup[slope_idx, aspect_idx] * shade
 
     inside = shapely.vectorized.contains(geom, gx, gy)
     poa[~inside | no_evidence] = np.nan
@@ -161,9 +229,9 @@ def main(area="pilot"):
         bminx, bminy, bmaxx, bmaxy = row.geometry.bounds
         points = pc_source.points_in_bbox(bminx - 1, bminy - 1, bmaxx + 1, bmaxy + 1, building_only=True)
         centroid = row.geometry.centroid
-        shading = building_shading_factor(dsm_band, dsm_ds.transform, dsm_ds.nodata,
-                                           centroid.x, centroid.y, model.hourly,
-                                           own_geom=row.geometry, terrain_horizon_profile=model.horizon_profile)
+        shade_grid, shade_xs, shade_ys = shading_grid(
+            dsm_band, dsm_ds.transform, dsm_ds.nodata, row.geometry, model.hourly,
+            terrain_horizon_profile=model.horizon_profile)
         # Per-building FAR terrain correction (see build_layout_geojson):
         # the lookup carries the AREA horizon; this building's own terrain may
         # differ. Scalar here (per-pixel aspects share the correction) -- the
@@ -172,8 +240,11 @@ def main(area="pilot"):
             eave = _hz_eave_height(dsm_band, dsm_ds.transform, dsm_ds.nodata, row.geometry)
             far = _hz_far_profile(dem_wide_band, dem_wide_transform, dem_wide_nodata,
                                   row.geometry, eave)
-            shading *= _hz_far_ratio(far, model.horizon_profile, model.hourly)
-        result = render_building(points, row.geometry, lookup, x_origin, y_origin, shading)
+            # Far terrain is kilometres away: one ratio per building is right
+            # for it, unlike the near field this grid now resolves.
+            shade_grid = shade_grid * _hz_far_ratio(far, model.horizon_profile, model.hourly)
+        result = render_building(points, row.geometry, lookup, x_origin, y_origin,
+                                 (shade_grid, shade_xs, shade_ys))
         if result is None:
             continue
         poa, r0, c0 = result
