@@ -1320,7 +1320,7 @@ function wireTuningControls(popupEl, buildingId) {
 // regenerated -- without this, browsers happily keep serving a cached
 // response after a reload even though the file on disk changed (bit us
 // during development: a fix looked like it hadn't taken effect at all).
-const DATA_VERSION = "28";
+const DATA_VERSION = "29";
 let coveragePct = 100;
 const COVERAGE_OPTIONS = [5, 10, 15, 25, 50, 75, 100];
 
@@ -3005,6 +3005,7 @@ map.on("load", async () => {
         <div class="curve-toggle" id="curve-toggle">
           <button class="curve-btn active" data-curve="avg">Average</button>
           <button class="curve-btn" data-curve="peak">Sunny day</button>
+          <button class="curve-btn" data-curve="horizon" id="horizon-tab-btn">Horizon</button>
         </div>
         <div id="season-curves"></div>
         <div class="panel-cols">
@@ -3434,9 +3435,111 @@ map.on("load", async () => {
     return maxSlopeBin;
   }
 
+
+  // ---- Horizon tab -------------------------------------------------------
+  // One 72-bin per-building horizon (baked by src/bake_building_horizons.py;
+  // 0 = North, 5-degree steps, uint8 = degrees x 2, base64). The SAME profile
+  // the model uses for beam masking, so this chart and the economics can
+  // never disagree about the sky. Two layers: far terrain, and the combined
+  // profile whose excess over terrain is trees/buildings, drawn darker.
+  function decodeHorizon(b64) {
+    const raw = atob(b64), out = new Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i) / 2.0;
+    return out;   // out[i] = elevation deg at azimuth i*5
+  }
+  function horizonAt(prof, az) {
+    const t = ((az % 360) + 360) % 360 / 5;
+    const i = Math.floor(t), f = t - i;
+    return prof[i % 72] * (1 - f) + prof[(i + 1) % 72] * f;
+  }
+  // Sun position for the arcs, standard declination/hour-angle formulas.
+  function sunPath(latDeg, declDeg) {
+    const lat = latDeg * Math.PI / 180, dec = declDeg * Math.PI / 180, pts = [];
+    for (let H = -180; H <= 180; H += 2) {
+      const h = H * Math.PI / 180;
+      const el = Math.asin(Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(h));
+      if (el < -0.02) continue;
+      let az = Math.atan2(Math.sin(h), Math.cos(h) * Math.sin(lat) - Math.tan(dec) * Math.cos(lat));
+      az = (az * 180 / Math.PI + 180 + 360) % 360;   // from north, clockwise
+      pts.push([az, el * 180 / Math.PI]);
+    }
+    return pts;
+  }
+  function renderHorizonChart(box) {
+    const p = selectedBuildingProps || {};
+    if (!p.horizon_b64) {
+      box.innerHTML = `<div style="font-size:10px; color:#999; text-align:center; padding:16px 0;">` +
+        `Horizon data has not been built for this area yet.</div>`;
+      return;
+    }
+    const comb = decodeHorizon(p.horizon_b64);
+    const far = p.horizon_far_b64 ? decodeHorizon(p.horizon_far_b64) : null;
+    const lat = p._sy !== undefined ? p._sy : map.getCenter().lat;
+
+    // x-axis walks the sky the southern-hemisphere sun does: East (left)
+    // through North (centre) to West (right).
+    const azOfT = t => ((90 - t) + 360) % 360;   // t in [0,180]
+    const avail = Math.max(240, (box.clientWidth || 288));
+    const W = Math.min(avail, 900), H = Math.round(Math.min(300, Math.max(170, W * 0.5)));
+    const L = 30, R = 6, T = 8, B = 16;
+    const arcs = [
+      { name: "summer", decl: -23.44 },
+      { name: "spring", decl: 0 },
+      { name: "winter", decl: +23.44 },
+    ].map(a => ({ ...a, pts: sunPath(lat, a.decl) }));
+    let maxEl = 30;
+    for (let t = 0; t <= 180; t += 2.5) maxEl = Math.max(maxEl, horizonAt(comb, azOfT(t)));
+    arcs.forEach(a => a.pts.forEach(q => { maxEl = Math.max(maxEl, q[1]); }));
+    maxEl = Math.min(90, Math.ceil(maxEl / 10) * 10 + 5);
+    const x = t => L + t / 180 * (W - L - R);
+    const y = el => T + (1 - el / maxEl) * (H - T - B);
+    const silhouette = prof => {
+      let d = `M${x(0)} ${y(0)}`;
+      for (let t = 0; t <= 180; t += 2) d += `L${x(t).toFixed(1)} ${y(horizonAt(prof, azOfT(t))).toFixed(1)}`;
+      return d + `L${x(180)} ${y(0)}Z`;
+    };
+    let svg = "";
+    // sky guide lines every 15 degrees
+    for (let el = 15; el < maxEl; el += 15) {
+      svg += `<line x1="${L}" y1="${y(el)}" x2="${W - R}" y2="${y(el)}" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>` +
+             `<text x="${L - 3}" y="${y(el) + 3}" fill="#666" font-size="8" text-anchor="end">${el}&deg;</text>`;
+    }
+    if (far) svg += `<path d="${silhouette(far)}" fill="rgba(140,150,165,0.55)"/>`;
+    svg += `<path d="${silhouette(comb)}" fill="rgba(70,78,92,0.95)"/>`;
+    // sun arcs clipped nothing -- drawn over the silhouette so the blocked
+    // stretch is visibly "behind" the ground
+    arcs.forEach(a => {
+      const col = SEASON_COLORS[a.name];
+      let d = "", pen = false;
+      a.pts.forEach(q => {
+        const t = ((90 - q[0]) % 360 + 360) % 360;
+        if (t > 180.5) { pen = false; return; }
+        d += (pen ? "L" : "M") + x(t).toFixed(1) + " " + y(Math.max(q[1], 0)).toFixed(1);
+        pen = true;
+      });
+      svg += `<path d="${d}" fill="none" stroke="${col}" stroke-width="2"/>`;
+    });
+    const az_ticks = [[0, "E"], [45, "NE"], [90, "N"], [135, "NW"], [180, "W"]].map(([t, lbl]) =>
+      `<text x="${x(t)}" y="${H - 4}" fill="#888" font-size="8" text-anchor="middle">${lbl}</text>`).join("");
+    const beam = p.horizon_beam_pct !== undefined
+      ? `<div style="font-size:10px; text-align:center; margin-bottom:2px;">This roof&rsquo;s sky keeps ` +
+        `<b style="color:var(--yellow, #ffd24a)">${p.horizon_beam_pct}%</b> of the year&rsquo;s direct sun</div>`
+      : "";
+    box.innerHTML =
+      `<div style="background:#000; border-radius:8px; padding:6px 4px 2px; margin-bottom:4px;">` +
+      `<svg width="100%" viewBox="0 0 ${W} ${H}">${svg}${az_ticks}</svg></div>` + beam +
+      `<div style="font-size:9.5px; color:#999; text-align:center; margin-bottom:8px;">` +
+      `sun tracks for <span style="color:${SEASON_COLORS.summer}; font-weight:700;">midsummer</span>, ` +
+      `<span style="color:${SEASON_COLORS.spring}; font-weight:700;">equinox</span> and ` +
+      `<span style="color:${SEASON_COLORS.winter}; font-weight:700;">midwinter</span> over the local horizon &mdash; ` +
+      `grey = terrain, dark = trees &amp; buildings</div>`;
+  }
+
   function renderSeasonCurves(buildingId) {
     const box = document.getElementById("season-curves");
-    if (!box || !seasonCurves || buildingId === undefined) return;
+    if (!box || buildingId === undefined) return;
+    if (curveMode === "horizon") { renderHorizonChart(box); return; }
+    if (!seasonCurves) return;
 
     // querySourceFeatures only sees tiles that are LOADED. Click a building
     // while its tiles are still arriving -- after a pan, a zoom, or an address
@@ -3659,6 +3762,11 @@ map.on("load", async () => {
     if (lngLat) { selectedBuildingProps._sx = lngLat.lng; selectedBuildingProps._sy = lngLat.lat; }
     updateFittedStats(p.building_id);
     renderCoverageOptions([p], "bldg-coverage-options");
+    const hzBtn = panel.querySelector("#horizon-tab-btn");
+    if (hzBtn) {
+      hzBtn.style.display = p.horizon_b64 ? "" : "none";
+      if (!p.horizon_b64 && curveMode === "horizon") curveMode = "avg";
+    }
     panel.querySelectorAll(".curve-btn").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.curve === curveMode);
       btn.addEventListener("click", () => {

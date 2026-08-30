@@ -54,7 +54,7 @@ SAMPLE_STEP_M = 100.0  # coarser than the 8m DEM grid -- horizon angle changes s
 def compute_horizon_profile_from_array(band, transform, nodata, observer_x, observer_y,
                                         azimuth_step_deg=AZIMUTH_STEP_DEG, max_distance_km=MAX_DISTANCE_KM,
                                         sample_step_m=SAMPLE_STEP_M, exclude_geom=None,
-                                        exclude_max_z=None):
+                                        exclude_max_z=None, observer_z=None):
     """Same ray-marching as compute_horizon_profile, but against an
     already-loaded (band, transform, nodata) instead of opening a file --
     the shared entry point both the wide-area terrain profile and
@@ -76,7 +76,12 @@ def compute_horizon_profile_from_array(band, transform, nodata, observer_x, obse
     row0, col0 = rasterio.transform.rowcol(transform, observer_x, observer_y)
     if not (0 <= row0 < band.shape[0] and 0 <= col0 < band.shape[1]):
         raise ValueError("Observer point falls outside the raster extent")
-    observer_z = float(band[row0, col0])
+    if observer_z is None:
+        # default: the raster's own surface at the observer -- right for the
+        # wide-area terrain profile. A BUILDING's horizon is seen from eave
+        # height, which on a bare-earth DEM the cell cannot know; callers
+        # doing per-building work pass observer_z explicitly.
+        observer_z = float(band[row0, col0])
 
     distances = np.arange(sample_step_m, max_distance_km * 1000, sample_step_m)
     azimuths = np.arange(0, 360, azimuth_step_deg)
