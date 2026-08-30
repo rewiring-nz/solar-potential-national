@@ -445,7 +445,6 @@
   <button class="corner-btn" id="toggle-panel-econ"><span class="dot"></span>Panel economics</button>
   <button class="corner-btn" id="open-settings">&#9881;&#65039; Assumptions &amp; pricing</button>
   <button class="corner-btn" id="bug-report-btn">&#128030; Report an issue</button>
-  <button class="corner-btn" id="explainer-btn" style="display:none">&#9654;&#65039; How this works</button>
 </div>
 <div class="dashboard-stack">
   <div class="dashboard dashboard-inview" id="dashboard-inview">
@@ -617,8 +616,8 @@
   </div>
 
 
-  <div class="dashboard" id="bug-report-panel" style="display:none; width:262px;">
-    <div style="font-weight:700; font-size:12px; margin-bottom:6px;">What's wrong here?</div>
+  <div class="dashboard" id="bug-report-panel" style="display:none; width:300px; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:4500; box-shadow:0 16px 48px rgba(0,0,0,0.55);">
+    <div id="bug-drag" style="font-weight:700; font-size:12px; margin-bottom:6px; cursor:move; user-select:none;">&#128030; What's wrong here? <span style="float:right;opacity:0.5;font-weight:400;">drag me</span></div>
     <textarea id="bug-note" rows="3" style="width:100%; box-sizing:border-box; background:#2e3440; color:#fff;
       border:1px solid #666; border-radius:6px; font-size:12.5px; padding:6px;"
       placeholder="e.g. panels on the shady side of this roof"></textarea>
@@ -2127,6 +2126,23 @@ map.on("load", async () => {
     document.getElementById("bug-status").textContent = "";
     if (panel.style.display === "block") document.getElementById("bug-note").focus();
   });
+  (function () {
+    const p = document.getElementById("bug-report-panel");
+    const h = document.getElementById("bug-drag");
+    let sx, sy, ox, oy, dragging = false;
+    h.addEventListener("mousedown", e => {
+      dragging = true; sx = e.clientX; sy = e.clientY;
+      const r = p.getBoundingClientRect(); ox = r.left; oy = r.top;
+      p.style.transform = "none"; p.style.left = ox + "px"; p.style.top = oy + "px";
+      e.preventDefault();
+    });
+    window.addEventListener("mousemove", e => {
+      if (!dragging) return;
+      p.style.left = (ox + e.clientX - sx) + "px";
+      p.style.top = (oy + e.clientY - sy) + "px";
+    });
+    window.addEventListener("mouseup", () => { dragging = false; });
+  })();
   document.getElementById("bug-close").addEventListener("click", () => {
     document.getElementById("bug-report-panel").style.display = "none";
   });
@@ -3691,7 +3707,7 @@ map.on("load", async () => {
   var box = document.getElementById("explainer-lightbox");
   var player = document.getElementById("explainer-player");
   if (!EXPLAINER_VIDEO_URL) return;         // button stays hidden until a video exists
-  btn.style.display = "";
+  if (btn) btn.style.display = "";
   var dash = document.getElementById("explainer-btn-dash");
   if (dash) { dash.style.display = ""; dash.addEventListener("click", open); }
   function open() {
@@ -3708,7 +3724,7 @@ map.on("load", async () => {
     box.style.display = "flex";
   }
   function close() { box.style.display = "none"; player.innerHTML = ""; }
-  btn.addEventListener("click", open);
+  if (btn) btn.addEventListener("click", open);
   document.getElementById("explainer-close").addEventListener("click", close);
   box.addEventListener("click", function (e) { if (e.target === box) close(); });
   document.addEventListener("keydown", function (e) {
