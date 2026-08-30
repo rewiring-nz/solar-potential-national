@@ -16,10 +16,10 @@
   }
   .legend-labels { display: flex; justify-content: space-between; font-size: 11px; opacity: 0.85; }
   .legend-facet {
-    position: absolute; bottom: 24px; right: 12px; background: rgba(20,20,20,0.85);
-    color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 13px; z-index: 1; max-width: 220px;
+    position: absolute; bottom: 44px; right: 12px; background: rgba(20,20,20,0.85);
+    color: #fff; padding: 6px 10px; border-radius: 8px; font-size: 11px; z-index: 1; max-width: 200px;
   }
-  .legend-facet-bar { width: 180px; height: 10px; margin: 6px 0; border-radius: 5px;
+  .legend-facet-bar { width: 150px; height: 7px; margin: 6px 0; border-radius: 5px;
     background: linear-gradient(to right, #00000a, #91009c, #e64616, #feb400, #fffff6); }
   .legend-obstruction { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 11px; opacity: 0.85; }
   .legend-swatch { width: 12px; height: 12px; border-radius: 2px; background: rgba(255,59,48,0.35); border: 1px dashed #ff3b30; flex: none; }
@@ -704,10 +704,7 @@
   </div>
 </div>
 <div class="legend-facet">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-    <span>Generation potential heat map (kWh/m²/yr)</span>
-    <button class="toggle-btn" id="toggle-heatmap-global" style="flex:none; width:auto;">On</button>
-  </div>
+  <div><span>Generation potential heat map (kWh/m²/yr)</span></div>
   <div class="legend-facet-bar"></div>
   <div class="legend-labels"><span>south / low</span><span>north / high</span></div>
   <div class="legend-obstruction"><span class="legend-swatch"></span><span>avoided obstructions (toggle on left)</span></div>
@@ -1136,6 +1133,8 @@ function syncToggleButtons() {
     globalBtn.classList.toggle("active", mode === "heatmap");
     globalBtn.textContent = mode === "heatmap" ? "On" : "Off";
   }
+  const lf = document.querySelector(".legend-facet");
+  if (lf) lf.style.display = mode === "heatmap" ? "" : "none";
   const dashHeat = document.getElementById("toggle-heatmap-dash");
   const dashLayout = document.getElementById("toggle-layout-dash");
   if (dashHeat) dashHeat.classList.toggle("active", mode === "heatmap");
@@ -1414,7 +1413,7 @@ map.on("load", async () => {
     layout: { visibility: "none" },  // off by default (Josh) -- toggle on the left dashboard
     type: "line",
     source: "buildings",
-    paint: { "line-color": "#ffffff", "line-width": 0.5, "line-opacity": 0.4 }
+    paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.15, 15, 0.35, 17, 0.6], "line-opacity": 0.4 }
   });
 
   // The spotlight sits UNDER the yellow outline so that line stays crisp, and
@@ -2847,7 +2846,7 @@ map.on("load", async () => {
     type: "line",
     source: "layout",
     filter: LAYOUT_KIND_FILTER["facets-outline"],
-    paint: { "line-color": "#ffffff", "line-width": 1.5, "line-dasharray": [2, 2] }
+    paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.3, 15, 0.8, 17, 1.5], "line-dasharray": [2, 2] }
   });
   map.addLayer({
     id: "obstructions-fill",
@@ -2865,7 +2864,7 @@ map.on("load", async () => {
     type: "line",
     source: "layout",
     filter: LAYOUT_KIND_FILTER["obstructions-fill"],
-    paint: { "line-color": "#ff3b30", "line-width": 1, "line-dasharray": [2, 2], "line-opacity": 0.9 }
+    paint: { "line-color": "#ff3b30", "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.2, 15, 0.6, 17, 1.0], "line-dasharray": [2, 2], "line-opacity": 0.9 }
   });
   map.addLayer({
     id: "panels-fill",
@@ -2887,7 +2886,7 @@ map.on("load", async () => {
     type: "line",
     source: "layout",
     filter: panelLayerFilter("panels-outline"),
-    paint: { "line-color": "#9fc8e8", "line-width": 0.6, "line-opacity": densityOpacityExpr(PANEL_LINE_OPACITY) }
+    paint: { "line-color": "#9fc8e8", "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.05, 15, 0.3, 17, 0.6], "line-opacity": densityOpacityExpr(PANEL_LINE_OPACITY) }
   });
 
   // Live-tuning preview: a separate source/layers that only ever hold the
@@ -2898,7 +2897,7 @@ map.on("load", async () => {
   map.addLayer({
     id: "live-facets-outline", type: "line", source: "live-layout",
     filter: ["==", ["get", "kind"], "facet"],
-    paint: { "line-color": "#ffffff", "line-width": 1.5, "line-dasharray": [2, 2] }
+    paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.3, 15, 0.8, 17, 1.5], "line-dasharray": [2, 2] }
   });
   map.addLayer({
     id: "live-obstructions-fill", type: "fill", source: "live-layout",
@@ -3660,7 +3659,7 @@ map.on("load", async () => {
   document.getElementById("mobile-details-tab").addEventListener("click", () => {
     document.getElementById("side-panel").classList.add("expanded");
   });
-  document.getElementById("toggle-heatmap-global").addEventListener("click", () => setMode("heatmap"));
+  /* legend On/Off removed -- the mode toggles already own this */
   document.getElementById("toggle-panel-econ").addEventListener("click", () => {
     // No longer needs a selection (Josh): the bands apply to every building on
     // screen, each against its own break-even. A selected building still gets
