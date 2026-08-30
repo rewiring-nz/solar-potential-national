@@ -262,7 +262,21 @@ def _pack_orientation(occupancy, res, w, h, offset_steps=OFFSET_STEPS):
     return best, w_cells, h_cells
 
 
-SHALLOW_SEAM_DEG = 12.0        # a fold gentler than this needs no ridge cap
+SHALLOW_SEAM_DEG = 9.0         # a fold gentler than this needs no ridge cap.
+# 12.0 was too permissive and it broke pyramid/hip roofs. The angle between two
+# plane NORMALS is small whenever both faces are shallow, however differently
+# they point: 36 Stanley St is a 8-degree pyramid whose hips measure only
+# 10.6-11.5 degrees between normals, so every hip was granted the token
+# clearance and its four arrays butted together across the ridges with a 7 cm
+# gap. Josh: "it's a pyramid shaped roof but now it has overlaps on ridges
+# which it didn't before."
+#
+# Aspect is NOT the discriminator, though it looks like one: the case this
+# relief was built for, 7 Malaghan St, has seams between faces pointing 176
+# degrees apart (shallow opposed folds) and an aspect test would delete exactly
+# the relief it needs. The two populations separate cleanly on the fold angle
+# itself -- Malaghan 5.7-7.0 degrees, Stanley 10.6-11.5 -- so the threshold sits
+# between them. Keep both buildings in mind before moving it again.
 SHALLOW_SEAM_SETBACK_M = 0.05  # token clearance so two grids do not collide
 SHALLOW_SEAM_REACH_M = 1.0     # how far in from such a seam the relief applies
 
