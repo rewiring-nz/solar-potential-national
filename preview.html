@@ -445,6 +445,7 @@
   <button class="corner-btn" id="toggle-panel-econ"><span class="dot"></span>Panel economics</button>
   <button class="corner-btn" id="open-settings">&#9881;&#65039; Assumptions &amp; pricing</button>
   <button class="corner-btn" id="bug-report-btn">&#128030; Report an issue</button>
+  <button class="corner-btn" id="explainer-btn" style="display:none">&#9654;&#65039; How this works</button>
 </div>
 <div class="dashboard-stack">
   <div class="dashboard dashboard-inview" id="dashboard-inview">
@@ -3664,6 +3665,44 @@ map.on("load", async () => {
     d.style.display = open ? 'none' : 'block';
     this.textContent = open ? 'Read more' : 'Show less';
   });
+</script>
+
+<!-- Explainer video lightbox. Set EXPLAINER_VIDEO_URL below to enable:
+     a YouTube link becomes an embed, a direct .mp4 uses the native player. -->
+<div id="explainer-lightbox" style="display:none;position:fixed;inset:0;z-index:4000;
+     background:rgba(0,0,0,0.82);align-items:center;justify-content:center;">
+  <div style="position:relative;width:min(960px,92vw);aspect-ratio:16/9;background:#000;
+       border-radius:10px;overflow:hidden;box-shadow:0 12px 48px rgba(0,0,0,0.6);">
+    <button id="explainer-close" style="position:absolute;top:8px;right:8px;z-index:2;
+        width:32px;height:32px;border-radius:16px;border:0;background:rgba(255,255,255,0.15);
+        color:#fff;font-size:16px;cursor:pointer;">&#10005;</button>
+    <div id="explainer-player" style="width:100%;height:100%;"></div>
+  </div>
+</div>
+<script>
+(function () {
+  var EXPLAINER_VIDEO_URL = "";   // <- paste the YouTube link or .mp4 URL here
+  var btn = document.getElementById("explainer-btn");
+  var box = document.getElementById("explainer-lightbox");
+  var player = document.getElementById("explainer-player");
+  if (!EXPLAINER_VIDEO_URL) return;         // button stays hidden until a video exists
+  btn.style.display = "";
+  function open() {
+    var yt = EXPLAINER_VIDEO_URL.match(/(?:youtu\.be\/|v=|shorts\/)([\w-]{6,})/);
+    player.innerHTML = yt
+      ? '<iframe src="https://www.youtube-nocookie.com/embed/' + yt[1] +
+        '?autoplay=1&rel=0" style="width:100%;height:100%;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe>'
+      : '<video src="' + EXPLAINER_VIDEO_URL + '" style="width:100%;height:100%" controls autoplay></video>';
+    box.style.display = "flex";
+  }
+  function close() { box.style.display = "none"; player.innerHTML = ""; }
+  btn.addEventListener("click", open);
+  document.getElementById("explainer-close").addEventListener("click", close);
+  box.addEventListener("click", function (e) { if (e.target === box) close(); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && box.style.display !== "none") close();
+  });
+})();
 </script>
 </body>
 </html>
