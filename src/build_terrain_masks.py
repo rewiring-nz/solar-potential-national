@@ -20,6 +20,13 @@ This bakes location-specific terrain into the buildings file:
   terrain-blocked. The frontend multiplies curve hours by max(digit/9,
   diffuse floor).
 
+ORDERING: this stage writes ONLY the MERGED data/solar_potential.geojson, and
+merge_regions REGENERATES that file from the per-region files. So it must run
+AFTER the merge, always. Run before it and the masks are silently wiped -- no
+error, just unshaded seasonal curves district-wide (cost us the Island Bay
+rebuild on 31 Aug; addresses and horizons survived only because those stages
+write the region file too). Same rule applies to bake_density_deciles.
+
 Usage: python src/build_terrain_masks.py
 """
 
