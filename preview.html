@@ -3734,7 +3734,7 @@ map.on("load", async () => {
     var vm = EXPLAINER_VIDEO_URL.match(/vimeo\.com\/(?:video\/)?(\d+)(?:\/([\w]+))?/);
     player.innerHTML = vm
       ? '<iframe src="https://player.vimeo.com/video/' + vm[1] +
-        (vm[2] ? '?h=' + vm[2] + '&' : '?') + 'autoplay=1&muted=0&dnt=1" ' +
+        (vm[2] ? '?h=' + vm[2] + '&' : '?') + 'dnt=1" ' +
         'style="width:100%;height:100%;border:0" allow="autoplay; fullscreen" allowfullscreen></iframe>'
       : yt
       ? '<iframe src="https://www.youtube-nocookie.com/embed/' + yt[1] +
