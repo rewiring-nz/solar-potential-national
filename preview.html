@@ -782,8 +782,23 @@ const map = new maplibregl.Map({
 });
 
 map.addControl(new maplibregl.NavigationControl());
+// Box zoom OWNS shift+drag in MapLibre, and it swallows the shift+click that
+// multi-select needs before any layer handler sees it (verified: the
+// buildings-fill click handler never fired while it was on). Nobody has asked
+// for drag-a-box-to-zoom; the +/- buttons, scroll and double-click all still
+// zoom. Josh asked for shift-select, so shift belongs to selection.
+map.boxZoom.disable();
 
 let selectedBuildingId = -1;
+// MULTI-SELECT (shift-click). selectedIds is the authoritative set; the
+// single-selection variables around it still carry the REPRESENTATIVE building
+// (the largest by roof area), so every existing code path -- live tuning, the
+// econ-band hook, the mobile box -- keeps working untouched. Josh asked for a
+// site-wide total: "shift-select multiple buildings ... show as one building
+// in the dashboard, results as the sum of all selected".
+let selectedIds = [];
+let selectedPropsById = {};
+let selectedGeomById = {};
 let layoutReady = false;
 // One mode, not two independent toggles -- Heat Map and Panel Layout are
 // mutually exclusive views, not layers meant to be combined. Showing both
@@ -874,6 +889,9 @@ function ringOutward(ring, metres) {
 
 function focusRings(geom) {
   if (!geom) return [];
+  // A multi-selection hands in a list: every selected building gets its own
+  // hole in the dim overlay.
+  if (Array.isArray(geom)) return geom.flatMap(g => focusRings(g));
   const polys = geom.type === "MultiPolygon" ? geom.coordinates : [geom.coordinates];
   return polys.map(poly => ringOutward(poly[0], FOCUS_GAP_M)).filter(Boolean);
 }
@@ -905,12 +923,59 @@ function setFocusMask(geom) {
 }
 
 function highlightSelectedBuilding(buildingId, geom) {
+  const ids = Array.isArray(buildingId)
+    ? buildingId.filter(v => v !== undefined && v !== null && v !== -1)
+    : (buildingId === undefined || buildingId === -1 ? [] : [buildingId]);
   ["buildings-selected-halo", "buildings-selected"].forEach(id => {
     if (!map.getLayer(id)) return;
-    map.setFilter(id, buildingId === undefined || buildingId === -1
-      ? SELECTED_NONE : ["==", ["get", "building_id"], buildingId]);
+    map.setFilter(id,
+      ids.length === 0 ? SELECTED_NONE
+      : ids.length === 1 ? ["==", ["get", "building_id"], ids[0]]
+      : ["in", ["get", "building_id"], ["literal", ids]]);
   });
-  setFocusMask(buildingId === -1 ? null : geom);
+  setFocusMask(ids.length === 0 ? null : geom);
+}
+
+// One selection, one property bag. Extensive quantities (area, panels, kWh,
+// every density decile) SUM; intensive ones (irradiance, roof confidence) are
+// area-weighted, because a 300 m2 warehouse and a 40 m2 garage must not get
+// equal votes on the average. Physical per-building facts that cannot be
+// summed -- the horizon profile, the terrain-shade mask -- come from the
+// largest building and are labelled as such in the UI.
+function mergeBuildingProps(list) {
+  if (list.length === 1) return list[0];
+  const num = (p, k) => (+p[k] || 0);
+  const sum = k => list.reduce((a, p) => a + num(p, k), 0);
+  const areaWeighted = k => {
+    let n = 0, d = 0;
+    list.forEach(p => { const a = num(p, "facet_area_m2"); n += a * num(p, k); d += a; });
+    return d ? n / d : 0;
+  };
+  const biggest = list.reduce((a, b) =>
+    num(b, "facet_area_m2") > num(a, "facet_area_m2") ? b : a);
+  const out = {
+    _multi: list.map(p => p.building_id),
+    _horizonOf: biggest.building_id,
+    building_id: biggest.building_id,
+    tshade: biggest.tshade,
+    horizon_b64: biggest.horizon_b64,
+    horizon_far_b64: biggest.horizon_far_b64,
+    horizon_beam_pct: biggest.horizon_beam_pct,
+  };
+  ["facet_count", "obstruction_count", "panel_count", "kwp",
+   "ac_kwh_day_avg", "ac_kwh_year", "facet_area_m2",
+   "fill_panels_arrays", "fill_kwh_arrays"].forEach(k => { out[k] = sum(k); });
+  for (let d = 10; d <= 100; d += 10) {
+    out["fill_panels_" + d] = sum("fill_panels_" + d);
+    out["fill_kwh_" + d] = sum("fill_kwh_" + d);
+  }
+  ["avg_poa_kwh_m2", "roof_confidence"].forEach(k => { out[k] = areaWeighted(k); });
+  [5, 10, 25, 50, 100].forEach(c => {
+    const k = "cov_poa_" + c;
+    if (list.some(p => p[k] !== undefined)) out[k] = areaWeighted(k);
+  });
+  out._label = list.length + " buildings";
+  return out;
 }
 let selectedBuildingProps = null;  // buildings-source props of the open panel (deciles included)
 
@@ -1219,6 +1284,9 @@ function clearSelection() {
     document.getElementById("m-settings").classList.remove("open");
   }
   selectedBuildingId = -1;
+  selectedIds = [];
+  selectedPropsById = {};
+  selectedGeomById = {};
   // These were never cleared, so after deselecting, anything that refreshed on
   // the "selected" building kept working on the old one.
   selectedPanelBuildingId = -1;
@@ -1622,9 +1690,10 @@ map.on("load", async () => {
       feats = map.queryRenderedFeatures({ layers: ["panels-fill"] });
     } catch (err) { return null; }
     let count = 0, kwh = 0, total = 0;
+    const wanted = selectedIds.length ? selectedIds : [buildingId];
     feats.forEach(f => {
       const pr = f.properties;
-      if (pr.building_id !== buildingId) return;
+      if (wanted.indexOf(pr.building_id) === -1) return;
       if (pr.fill_rank != null && pr.fill_rank > panelDensityPct) return;
       total++;
       if (!panelEconShow[panelBandOf(pr)]) return;
@@ -2968,10 +3037,16 @@ map.on("load", async () => {
   // a different building just replaces its content rather than spawning a
   // second overlapping popup.
   function buildingPanelHtml(p) {
-    const title = p.address || `Building #${p.building_id}`;
-    const sub = p.address
-      ? (p.address_count > 1 ? `${p.address_count} addresses · outline #${p.building_id}` : `Building outline #${p.building_id}`)
-      : "No street address on record for this outline";
+    const multi = p._multi && p._multi.length > 1;
+    const title = multi
+      ? `${p._multi.length} buildings selected`
+      : (p.address || `Building #${p.building_id}`);
+    const sub = multi
+      ? `Combined totals · shift-click to add or remove a building`
+      : ((p.address
+          ? (p.address_count > 1 ? `${p.address_count} addresses · outline #${p.building_id}` : `Building outline #${p.building_id}`)
+          : "No street address on record for this outline")
+         + ` &nbsp;·&nbsp; <span style="opacity:0.75;">shift-click to add more roofs</span>`);
     const est = buildingEstimate(p, coveragePct);
     return `
       <div class="popup">
@@ -3390,7 +3465,8 @@ map.on("load", async () => {
       const cov = buildingEstimate(props, coveragePct);
       el("m-sel-empty").style.display = "none";
       msv.style.display = "";
-      el("m-sel-addr").textContent = props.address || `Building #${buildingId}`;
+      el("m-sel-addr").textContent = props._label
+        || props.address || `Building #${buildingId}`;
       el("m-sel-power").textContent = isLayout ? fmtPower(kwp) : fmtPower(cov.kwp);
       el("m-sel-energy").textContent = isLayout ? fmtEnergy(kwhYear) : fmtEnergy(cov.kwhYear);
       const db = el("m-details-btn");
@@ -3521,9 +3597,15 @@ map.on("load", async () => {
     });
     const az_ticks = [[0, "E"], [45, "NE"], [90, "N"], [135, "NW"], [180, "W"]].map(([t, lbl]) =>
       `<text x="${x(t)}" y="${H - 4}" fill="#888" font-size="8" text-anchor="middle">${lbl}</text>`).join("");
+    // A horizon cannot be summed -- it is one roof's view of the sky. With a
+    // multi-selection the chart shows the LARGEST building's and says so,
+    // rather than quietly implying it describes all of them.
+    const multiSel = p._multi && p._multi.length > 1;
+    const whose = multiSel ? `The largest selected roof&rsquo;s` : `This roof&rsquo;s`;
     const beam = p.horizon_beam_pct !== undefined
-      ? `<div style="font-size:10px; text-align:center; margin-bottom:2px;">This roof&rsquo;s sky keeps ` +
-        `<b style="color:var(--yellow, #ffd24a)">${p.horizon_beam_pct}%</b> of the year&rsquo;s direct sun</div>`
+      ? `<div style="font-size:10px; text-align:center; margin-bottom:2px;">${whose} sky keeps ` +
+        `<b style="color:var(--yellow, #ffd24a)">${p.horizon_beam_pct}%</b> of the year&rsquo;s direct sun` +
+        (multiSel ? ` <span style="color:#999;">(#${p._horizonOf})</span>` : ``) + `</div>`
       : "";
     box.innerHTML =
       `<div style="background:#000; border-radius:8px; padding:6px 4px 2px; margin-bottom:4px;">` +
@@ -3556,10 +3638,16 @@ map.on("load", async () => {
     }
 
     // Vector tiles return one copy of a feature per tile it intersects --
-    // dedupe by rounded first-vertex position.
+    // dedupe by rounded first-vertex position. Grouped BY BUILDING: a
+    // multi-selection sums the curves, but each building's own terrain mask
+    // has to be applied to its own curve first (see the accumulation below).
+    const curveIds = selectedIds.length ? selectedIds : [buildingId];
     const raw = map.querySourceFeatures("layout", {
-      sourceLayer: "layout", filter: ["==", ["get", "building_id"], buildingId] });
-    const facets = [], panels = [], seenKeys = new Set();
+      sourceLayer: "layout",
+      filter: curveIds.length === 1
+        ? ["==", ["get", "building_id"], curveIds[0]]
+        : ["in", ["get", "building_id"], ["literal", curveIds]] });
+    const byBuilding = new Map(), seenKeys = new Set();
     raw.forEach(f => {
       const geom = f.geometry;  // MapGeoJSONFeature exposes GeoJSON geometry directly
       if (!geom || geom.type !== "Polygon") return;
@@ -3569,11 +3657,16 @@ map.on("load", async () => {
       seenKeys.add(key);
       const q = f.properties;
       const gj = { geometry: geom, properties: q };
-      if (q.kind === "facet") facets.push(gj);
-      else if (q.kind === "panel" && panelVisible(q)) panels.push(gj);
+      let entry = byBuilding.get(q.building_id);
+      if (!entry) { entry = { facets: [], panels: [] }; byBuilding.set(q.building_id, entry); }
+      if (q.kind === "facet") entry.facets.push(gj);
+      else if (q.kind === "panel" && panelVisible(q)) entry.panels.push(gj);
     });
     const isLayout = mode === "layout";
-    if (!facets.length || (isLayout && !panels.length)) { box.innerHTML = ""; return; }
+    const entries = [...byBuilding.entries()];
+    const anyFacets = entries.some(([, e]) => e.facets.length);
+    const anyPanels = entries.some(([, e]) => e.panels.length);
+    if (!anyFacets || (isLayout && !anyPanels)) { box.innerHTML = ""; return; }
 
     // Clamp to the steepest bin that ACTUALLY EXISTS, not to max_slope.
     // max_slope is 45 while the bins are 0/10/20/30/40/50, so every facet at
@@ -3588,6 +3681,7 @@ map.on("load", async () => {
       const ab = ((Math.round(fx.properties.aspect_deg / as) * as) % 360 + 360) % 360;
       return sb + "_" + ab;
     };
+    const binKwpFor = (facets, panels) => {
     const binKwp = {};
     if (isLayout) {
       const kwpEach = assumptions.panel_rated_power_w / 1000;
@@ -3613,30 +3707,18 @@ map.on("load", async () => {
         binKwp[binOf(fx)] = (binKwp[binOf(fx)] || 0) + kwp;
       });
     }
+    return binKwp;
+    };
 
     const S = seasonCurves.seasons.length;
-    const avg = Array.from({ length: S }, () => new Array(24).fill(0));
-    const peak = Array.from({ length: S }, () => new Array(24).fill(0));
-    // Diffuse-only twin of the clear-day curve: what these roof faces still
-    // receive when terrain blocks the direct beam on a sunny day. Summed in
-    // parallel so the mask below can use real numbers instead of a multiplier.
-    const peakDif = Array.from({ length: S }, () => new Array(24).fill(0));
-    let haveDif = true;
+    const mkGrid = () => Array.from({ length: S }, () => new Array(24).fill(0));
+    const avg = mkGrid(), peak = mkGrid();
     // seasonCurves values are kW per kWp with the DEFAULT inverter efficiency
     // and system losses already folded in; kwp above is live. Rescale by the
     // derate ratio so the curves move with the assumptions editor too --
     // without this the chart stayed put while the numbers above it changed.
     const derateScale = bakedDerateScale();
-    for (const [key, kwp] of Object.entries(binKwp)) {
-      const cur = seasonCurves.curves[key];
-      if (!cur) continue;
-      if (!cur.peak_dif) haveDif = false;
-      for (let s = 0; s < S; s++) for (let h = 0; h < 24; h++) {
-        avg[s][h] += cur.avg[s][h] * kwp * derateScale;
-        peak[s][h] += cur.peak[s][h] * kwp * derateScale;
-        if (cur.peak_dif) peakDif[s][h] += cur.peak_dif[s][h] * kwp * derateScale;
-      }
-    }
+    const DIFFUSE_FLOOR = 0.18;
 
     // Terrain sun-visibility mask (per building, baked from the DEM):
     // "tshade" = 4 seasons x 24 hourly digits, 9 = sun always clears the
@@ -3665,17 +3747,38 @@ map.on("load", async () => {
     // src/solar_model.py), so a flat floor stays the honest approximation
     // until it can. 0.18 is between the clear-sky fraction and the ~1.0 of a
     // fully overcast hour.
-    const DIFFUSE_FLOOR = 0.18;
-    const tshade = selectedBuildingProps && selectedBuildingProps.tshade;
-    if (tshade && tshade.length === S * 24) {
-      for (let s2 = 0; s2 < S; s2++) for (let h = 0; h < 24; h++) {
-        const frac = (+tshade[s2 * 24 + h]) / 9;
-        avg[s2][h] *= Math.max(frac, DIFFUSE_FLOOR);
-        // one real day: terrain either blocks that hour or it doesn't
-        peak[s2][h] = frac >= 0.5 ? peak[s2][h]
-                    : (haveDif ? peakDif[s2][h] : peak[s2][h] * DIFFUSE_FLOOR);
+    // Applied PER BUILDING, before the sum: the mask belongs to the roof it
+    // was baked for. Applying one building's mask to a whole selection would
+    // smear a shaded valley roof's early winter cut-off onto its neighbours.
+    entries.forEach(([bid, entry]) => {
+      const binKwp = binKwpFor(entry.facets, entry.panels);
+      const a = mkGrid(), p = mkGrid(), pd = mkGrid();
+      let haveDif = true;
+      for (const [key, kwp] of Object.entries(binKwp)) {
+        const cur = seasonCurves.curves[key];
+        if (!cur) continue;
+        if (!cur.peak_dif) haveDif = false;
+        for (let s2 = 0; s2 < S; s2++) for (let h = 0; h < 24; h++) {
+          a[s2][h] += cur.avg[s2][h] * kwp * derateScale;
+          p[s2][h] += cur.peak[s2][h] * kwp * derateScale;
+          if (cur.peak_dif) pd[s2][h] += cur.peak_dif[s2][h] * kwp * derateScale;
+        }
       }
-    }
+      const src = selectedPropsById[bid] || selectedBuildingProps;
+      const tshade = src && src.tshade;
+      const masked = tshade && tshade.length === S * 24;
+      for (let s2 = 0; s2 < S; s2++) for (let h = 0; h < 24; h++) {
+        let av = a[s2][h], pk = p[s2][h];
+        if (masked) {
+          const frac = (+tshade[s2 * 24 + h]) / 9;
+          av *= Math.max(frac, DIFFUSE_FLOOR);
+          // one real day: terrain either blocks that hour or it doesn't
+          pk = frac >= 0.5 ? pk : (haveDif ? pd[s2][h] : pk * DIFFUSE_FLOOR);
+        }
+        avg[s2][h] += av;
+        peak[s2][h] += pk;
+      }
+    });
 
     // Width follows the panel, so expanding it actually makes the chart bigger
     // rather than leaving a 288px graphic marooned in a wide column.
@@ -3753,11 +3856,21 @@ map.on("load", async () => {
 
   function showBuildingPanel(p, lngLat, geom) {
     const panel = document.getElementById("side-panel");
+    // Anything that opens a panel with a plain single building (the address
+    // search, a deep link) replaces the selection rather than joining it --
+    // otherwise a search would silently add to a set the user forgot about.
+    if (!p._multi) {
+      selectedIds = [p.building_id];
+      selectedPropsById = { [p.building_id]: p };
+      // openSelection passes a LIST of geometries even for one building;
+      // store the bare geometry so the map never nests arrays.
+      selectedGeomById = { [p.building_id]: Array.isArray(geom) ? geom[0] : geom };
+    }
     document.getElementById("side-panel-content").innerHTML = buildingPanelHtml(p);
     panel.classList.add("visible");
     wireCoverageSelect(panel.querySelector("#coverage-select-bldg"));
     selectedPanelBuildingId = p.building_id;
-    highlightSelectedBuilding(p.building_id, geom);
+    highlightSelectedBuilding(selectedIds.length ? selectedIds : p.building_id, geom);
     selectedBuildingProps = p;
     if (lngLat) { selectedBuildingProps._sx = lngLat.lng; selectedBuildingProps._sy = lngLat.lat; }
     updateFittedStats(p.building_id);
@@ -3780,15 +3893,46 @@ map.on("load", async () => {
     // hide it entirely on the static deployed site rather than showing
     // sliders that silently do nothing.
     const tuning = panel.querySelector("#tuning-reset");
-    if (tuning && !refitAvailable) tuning.closest("details").style.display = "none";
-    wireTuningControls(panel, p.building_id);
+    const multiSel = !!(p._multi && p._multi.length > 1);
+    // Live re-fitting works on ONE roof's geometry; there is no meaningful
+    // "refit these six buildings with a different setback" call behind it.
+    if (tuning && (!refitAvailable || multiSel)) tuning.closest("details").style.display = "none";
+    if (!multiSel) wireTuningControls(panel, p.building_id);
     if (window.__refreshModeUI) window.__refreshModeUI();
+  }
+
+  // Shift (or Cmd/Ctrl) click builds a multi-building selection whose totals
+  // the dashboard sums. A plain click always starts a fresh single selection.
+  function openSelection(lngLat) {
+    const list = selectedIds.map(i => selectedPropsById[i]).filter(Boolean);
+    if (!list.length) { clearSelection(); return; }
+    const merged = mergeBuildingProps(list);
+    selectBuilding(merged.building_id);
+    showBuildingPanel(merged, lngLat, selectedIds.map(i => selectedGeomById[i]).filter(Boolean));
   }
 
   map.on("click", "buildings-fill", (e) => {
     const p = e.features[0].properties;
-    selectBuilding(p.building_id);
-    showBuildingPanel(p, e.lngLat, e.features[0].geometry);
+    const geom = e.features[0].geometry;
+    const ev = e.originalEvent || {};
+    const additive = !!(ev.shiftKey || ev.metaKey || ev.ctrlKey);
+    if (!additive) {
+      selectedIds = [];
+      selectedPropsById = {};
+      selectedGeomById = {};
+    }
+    const at = selectedIds.indexOf(p.building_id);
+    if (at !== -1) {
+      // shift-clicking a selected building removes it again
+      selectedIds.splice(at, 1);
+      delete selectedPropsById[p.building_id];
+      delete selectedGeomById[p.building_id];
+    } else {
+      selectedIds.push(p.building_id);
+      selectedPropsById[p.building_id] = p;
+      selectedGeomById[p.building_id] = geom;
+    }
+    openSelection(e.lngLat);
   });
 
   document.getElementById("side-panel-expand").addEventListener("click", () => {
@@ -3833,7 +3977,11 @@ map.on("load", async () => {
 
   map.on("click", (e) => {
     const hits = map.queryRenderedFeatures(e.point, { layers: ["buildings-fill"] });
-    if (hits.length === 0) clearSelection();
+    // A shift-click that misses a building is a near-miss while building a
+    // multi-selection, not "clear everything" -- losing the set to a stray
+    // pixel would be infuriating.
+    const ev = e.originalEvent || {};
+    if (hits.length === 0 && !(ev.shiftKey || ev.metaKey || ev.ctrlKey)) clearSelection();
   });
 
   map.on("mouseenter", "buildings-fill", () => map.getCanvas().style.cursor = "pointer");
