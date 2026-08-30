@@ -40,6 +40,9 @@ from src.panel_fitting import fit_panels_on_facet, drop_minor_arrays, assign_fil
 from src.obstruction_detection import detect_obstructions_combined
 from src.solar_model import SolarModel
 from src.building_shading import building_shading_factor
+from src.building_horizon import (far_profile as _hz_far_profile,
+                                  facet_horizon_factor as _hz_facet_factor,
+                                  eave_height as _hz_eave_height)
 from src.region_build import area_paths, area_centroid_wgs84, areas_from_argv
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -124,6 +127,16 @@ def _init_worker(area, model):
     NASA POWER request per process."""
     paths = area_paths(area)
     dsm_ds = rasterio.open(paths["dsm"])
+    dem_wide_path = DATA_DIR / "dem_wide_mosaic.tif"
+    if dem_wide_path.exists():
+        _dw = rasterio.open(dem_wide_path)
+        _CTX.update({"dem_wide_band": _dw.read(1), "dem_wide_transform": _dw.transform,
+                     "dem_wide_nodata": _dw.nodata})
+    else:
+        # no wide DEM shipped for this deployment -- per-building far-horizon
+        # correction degrades to a no-op rather than failing the build
+        _CTX.update({"dem_wide_band": None, "dem_wide_transform": None,
+                     "dem_wide_nodata": None})
     _CTX.update({
         "gdf": gpd.read_file(paths["outlines"]).set_index("building_id", drop=False),
         "dsm_ds": dsm_ds,
@@ -181,6 +194,19 @@ def _build_one_inner(building_id):
     # and it has to take at least 8 panels.
     big_roof = row_geom.area >= BIG_ROOF_M2
 
+    # Per-building FAR terrain horizon (Josh, 30 Aug: every number must take
+    # the building's own horizon into account). The POA lookup carries the
+    # AREA's shared profile; _hz_facet_factor converts each facet to this
+    # building's own terrain, aspect-aware, so a valley-floor roof loses its
+    # east sun where a hilltop roof three streets over does not. Near-field
+    # neighbours/trees stay with building_shading_factor below -- the far/near
+    # split is what stops the same blocker being counted twice.
+    _bld_far = None
+    if _CTX.get("dem_wide_band") is not None:
+        _eave = _hz_eave_height(dsm_band, dsm_ds.transform, dsm_ds.nodata, row_geom)
+        _bld_far = _hz_far_profile(_CTX["dem_wide_band"], _CTX["dem_wide_transform"],
+                                   _CTX["dem_wide_nodata"], row_geom, _eave)
+
     per_facet = []
     for f in facets:
         facet_centroid = f["geometry"].centroid
@@ -188,6 +214,9 @@ def _build_one_inner(building_id):
             dsm_band, dsm_ds.transform, dsm_ds.nodata,
             facet_centroid.x, facet_centroid.y, model.hourly,
             own_geom=f["geometry"], terrain_horizon_profile=model.horizon_profile)
+        if _bld_far is not None:
+            shading_factor *= _hz_facet_factor(_bld_far, model.horizon_profile,
+                                               f["slope_deg"], f["aspect_deg"], model.hourly)
         facet_poa = model.annual_poa_kwh_per_m2(f["slope_deg"], f["aspect_deg"])
         if not modelled:
             per_facet.append({"facet": f, "panels": [], "obstructions": [],
@@ -212,8 +241,14 @@ def _build_one_inner(building_id):
             psf = building_shading_factor(dsm_band, dsm_ds.transform, dsm_ds.nodata,
                                           cpt.x, cpt.y, model.hourly, own_geom=f["geometry"],
                                           terrain_horizon_profile=model.horizon_profile)
+            # deep-shade veto stays a NEAR-FIELD test on purpose: the far
+            # terrain correction lowers yield but must not delete panels a
+            # valley still deserves
             if psf < DEEP_SHADE_FACTOR:
                 continue
+            if _bld_far is not None:
+                psf *= _hz_facet_factor(_bld_far, model.horizon_profile,
+                                        f["slope_deg"], f["aspect_deg"], model.hourly)
             pnl["poa_kwh_m2_yr"] = facet_poa * psf
             pnl["shading_factor"] = psf
             kept_panels.append(pnl)

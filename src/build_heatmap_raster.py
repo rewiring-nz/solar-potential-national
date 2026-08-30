@@ -46,6 +46,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.pointcloud_source import PointCloudSource
 from src.solar_model import SolarModel
 from src.building_shading import building_shading_factor
+from src.building_horizon import (far_profile as _hz_far_profile,
+                                  far_beam_ratio as _hz_far_ratio,
+                                  eave_height as _hz_eave_height)
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 VMIN, VMAX = 700, 1650  # kWh/m2/yr -- same fixed scale as preview.html's legend and demo_figure.py
@@ -147,6 +150,13 @@ def main(area="pilot"):
 
     t0 = time.time()
     rendered = 0
+    dem_wide_path = DATA_DIR / "dem_wide_mosaic.tif"
+    if dem_wide_path.exists():
+        _dw = rasterio.open(dem_wide_path)
+        dem_wide_band, dem_wide_transform, dem_wide_nodata = _dw.read(1), _dw.transform, _dw.nodata
+    else:
+        dem_wide_band = dem_wide_transform = dem_wide_nodata = None
+
     for i, row in enumerate(gdf.itertuples()):
         bminx, bminy, bmaxx, bmaxy = row.geometry.bounds
         points = pc_source.points_in_bbox(bminx - 1, bminy - 1, bmaxx + 1, bmaxy + 1, building_only=True)
@@ -154,6 +164,15 @@ def main(area="pilot"):
         shading = building_shading_factor(dsm_band, dsm_ds.transform, dsm_ds.nodata,
                                            centroid.x, centroid.y, model.hourly,
                                            own_geom=row.geometry, terrain_horizon_profile=model.horizon_profile)
+        # Per-building FAR terrain correction (see build_layout_geojson):
+        # the lookup carries the AREA horizon; this building's own terrain may
+        # differ. Scalar here (per-pixel aspects share the correction) -- the
+        # panel/economics path gets the aspect-aware version.
+        if dem_wide_band is not None:
+            eave = _hz_eave_height(dsm_band, dsm_ds.transform, dsm_ds.nodata, row.geometry)
+            far = _hz_far_profile(dem_wide_band, dem_wide_transform, dem_wide_nodata,
+                                  row.geometry, eave)
+            shading *= _hz_far_ratio(far, model.horizon_profile, model.hourly)
         result = render_building(points, row.geometry, lookup, x_origin, y_origin, shading)
         if result is None:
             continue

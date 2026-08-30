@@ -175,3 +175,37 @@ def facet_horizon_factor(profile, baseline_profile, slope_deg, aspect_deg, hourl
     own_h = horizon_angle_at(profile, az_deg)
     num = beam[base_vis & (el_deg > own_h)].sum()
     return float(min(num / denom, 1.0))
+
+
+def far_profile(dem_band, dem_transform, dem_nodata, geom, eave_z):
+    """FAR terrain profile only, for the model-side per-building correction.
+    (The near layer must not enter the yield math here: the per-facet
+    building_shading_factor already scans the same neighbours/trees, and
+    counting them twice double-discounts. The tab still shows the combined
+    profile -- display truth vs calculation partitioning.)"""
+    c = geom.centroid
+    try:
+        return compute_horizon_profile_from_array(
+            dem_band, dem_transform, dem_nodata, c.x, c.y,
+            azimuth_step_deg=AZ_STEP, max_distance_km=FAR_MAX_KM,
+            sample_step_m=FAR_STEP_M, observer_z=eave_z)
+    except ValueError:
+        return None
+
+
+def far_beam_ratio(far, baseline, hourly):
+    """DNI-weighted scalar: beam surviving the building's far horizon vs the
+    area baseline the POA lookup was built with. Capped at 1.0 (a hilltop
+    building never claims more than the area-calibrated table)."""
+    if far is None:
+        return 1.0
+    el = hourly["solar_elevation"].to_numpy()
+    az = hourly["solar_azimuth"].to_numpy()
+    dni = hourly["dni"].to_numpy()
+    base_h = horizon_angle_at(baseline, az) if baseline is not None else 0.0
+    base_vis = el > np.maximum(base_h, 0.0)
+    denom = dni[base_vis].sum()
+    if denom <= 0:
+        return 1.0
+    num = dni[base_vis & (el > horizon_angle_at(far, az))].sum()
+    return float(min(num / denom, 1.0))
