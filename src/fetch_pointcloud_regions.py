@@ -31,15 +31,13 @@ import config
 from src.fetch_data import fetch_building_outlines
 
 POINTCLOUD_DIR = Path(__file__).resolve().parent.parent / "data" / "pointcloud"
-BULK_URL = getattr(config, "POINTCLOUD_BULK_URL",
-                   "https://opentopography.s3.sdsc.edu/pc-bulk/NZ21_Otago")
+BULK_URL = "https://opentopography.s3.sdsc.edu/pc-bulk/NZ21_Otago"
 TO_NZTM = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2193", always_xy=True)
 
 
 def tilename_to_filename(tilename):
     sheet, tile = tilename.split("_", 1)  # "CC11_1000_0712" -> ("CC11", "1000_0712")
-    year = getattr(config, "POINTCLOUD_TILE_YEAR", "2021")
-    return f"CL2_{sheet}_{year}_{tile}.laz"
+    return f"CL2_{sheet}_2021_{tile}.laz"
 
 
 def area_bbox_wgs84(name):

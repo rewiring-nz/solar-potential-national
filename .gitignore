@@ -2,22 +2,18 @@
 .env
 __pycache__/
 *.pyc
-data/pointcloud/
-data/regions/*/imagery_export.zip
-data/regions/*/dsm_export.zip
-data/regions/*/imagery
-data/regions/*/dsm
-data/build_logs/
-data/regions/*/imagery_mosaic.tif
-data/regions/*/dsm_mosaic.tif
-data/regions/*/dem_mosaic.tif
-data/*.tif
 
-# Pipeline intermediates -- NEVER commit. The merged/region panel_layouts are
-# 80MB+, exceed GitHub's limits, and the browser never fetches them: the site
-# serves data/panel_layouts.pmtiles (tiled) and data/solar_potential.geojson.
-# Committed by accident on 31 Aug via `git add -A data`; add data files by
 # name, never with -A.
-data/panel_layouts.geojson
-data/regions/*/panel_layouts.geojson
-data/regions/*/heatmap_raster.png
+
+# WHITELIST, not a blacklist. Everything under data/ is pipeline input or
+# intermediate (LiDAR, imagery mosaics, 80MB+ panel_layouts.geojson) EXCEPT the
+# handful of small outputs the static site actually fetches. A blacklist let
+# `git add -A data` commit two 86MB intermediates on 31 Aug; a whitelist cannot.
+data/*
+!data/solar_potential.geojson
+!data/panel_layouts.pmtiles
+!data/seasonal_curves.json
+!data/heatmaps/
+!data/heatmaps/*
+!data/heatmaps/lod/
+!data/heatmaps/lod/*

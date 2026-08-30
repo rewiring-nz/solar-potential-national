@@ -34,6 +34,11 @@ MIN_BUILDING_POINTS = 10  # below this, the classification filter isn't trustwor
 
 
 MAX_CACHED_TILES = 8  # decoded LiDAR tiles held per process. See __init__.
+# Callers that FAN OUT must pass something smaller: 8 workers x 8 cached tiles
+# was survivable on Queenstown's ~2026 survey but Wellington's 2019 tiles
+# decode several times larger, and the parallel panel gate reached >50 GB and
+# took Josh's machine down with it. Total memory is workers x tiles x decoded
+# size -- budget it explicitly wherever both multipliers are in play.
 
 
 class PointCloudSource:
@@ -41,16 +46,30 @@ class PointCloudSource:
     a tile's actual points are decoded from disk on first use and cached
     in memory after that."""
 
-    def __init__(self, directory=POINTCLOUD_DIR):
+    def __init__(self, directory=POINTCLOUD_DIR, max_cached_tiles=None):
         # *.laz matches both the pilot's original *.copc.laz tiles and the
         # plain .laz tiles fetch_pointcloud_regions.py pulls from
         # OpenTopography's bulk store -- laspy reads either identically.
-        self.tile_paths = sorted(Path(directory).glob("*.laz"))
+        self.tile_paths = sorted(
+            q for q in Path(directory).glob("*.laz")
+            # macOS tarballs ship AppleDouble "._foo.laz" metadata siblings;
+            # laspy reads one and dies with 'Invalid file signature' -- inside
+            # a pool initialiser that surfaces only as BrokenProcessPool, which
+            # cost an hour of debugging on the VM. Nothing hidden is a tile.
+            if not q.name.startswith("._") and not q.name.startswith("."))
         if not self.tile_paths:
             raise FileNotFoundError(f"No .laz tiles found in {directory}")
         self._bounds = {}
         for path in self.tile_paths:
-            with laspy.open(path) as f:
+            # Single-threaded decompression when fanned out. The default lazrs
+            # backend spawns its own thread pool per read; 12 gate workers each
+            # doing that put load average 141 on a 16-core VM and turned a
+            # ~30-CPU-minute job into 21 CPU-hours of context switching. One
+            # decode thread per worker process is the efficient shape.
+            import os as _os
+            _backend = ([laspy.LazBackend.Lazrs]
+                        if _os.environ.get("SOLAR_LAZ_SINGLE") else None)
+            with laspy.open(path, laz_backend=_backend) as f:
                 h = f.header
                 self._bounds[path] = (h.mins[0], h.mins[1], h.maxs[0], h.maxs[1])
         # Bounded, and it has to be. The cache was unbounded, which is fine for
@@ -63,6 +82,7 @@ class PointCloudSource:
         # while still holding whatever a run of nearby buildings needs, because
         # buildings are processed in roughly spatial order.
         self._cache = OrderedDict()
+        self._max_cached = max_cached_tiles or MAX_CACHED_TILES
 
     def _tiles_overlapping(self, minx, miny, maxx, maxy):
         return [
@@ -81,7 +101,12 @@ class PointCloudSource:
             np.asarray(las.z, dtype=np.float64), np.asarray(las.classification),
         )
         self._cache[path] = decoded
-        while len(self._cache) > MAX_CACHED_TILES:
+        # STRICTLY greater: '>=' made a capacity-2 cache hold ONE tile, so a
+        # building straddling a tile border re-decoded a 7.3M-point tile for
+        # EVERY panel -- >13 s each on the VM, an entire gate run spent
+        # decompressing. Off-by-ones in eviction are invisible until capacity
+        # is small and the data is dense, which is exactly when they ruin you.
+        while len(self._cache) > self._max_cached:
             self._cache.popitem(last=False)
         return decoded
 

@@ -59,7 +59,7 @@ from scipy import ndimage
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components as sparse_connected_components
 from scipy.spatial import cKDTree
-from shapely.geometry import MultiPoint, Point, shape
+from shapely.geometry import box as shapely_box, MultiPoint, Point, shape
 from shapely.ops import unary_union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -235,6 +235,10 @@ BRIGHT_MIN_AREA_M2 = 0.5
 BRIGHT_MAX_AREA_M2 = 4.0        # a skylight or vent; larger bright regions are roof
 BRIGHT_MAX_ELONGATION = 4.0
 BRIGHT_MAX_TOTAL_SHARE = 0.15   # if this much of a facet is "bright" it is the roof
+
+
+BRIGHT_MAX_COUNT_PER_FACET = 6   # more 'skylights' than this on one facet is roofing
+BRIGHT_MAX_SHARE = 0.06          # ...as is more than 6% of the facet reading 'bright'
 
 
 def detect_bright_objects(imagery_ds, facet_geom, roof_geom=None):
@@ -773,6 +777,70 @@ def _lidar_signature(blob, pc_source, plane):
     return off >= 6 or off / len(bp) >= 0.25
 
 
+
+# --- Sunken regions: the deck the height path cannot see ---------------------
+# detect_obstructions_from_height finds points ABOVE the plane -- equipment
+# protrudes. 26 Panorama Terrace is the inverse: a structure Josh marked sits
+# about 2 m BELOW the facet that spans it, the colour path proposes nothing
+# there (similar tone to the roof), and 23.4 m2 of panels went onto it. A
+# region of returns well below its own facet's plane is not roof that facet can
+# rack panels over, whatever it is down there.
+#
+# Facets that MODEL a recessed section (7 Anderson: the recess got its own two
+# faces) are untouched by construction: their points fit their OWN plane, so
+# the residuals here are near zero. Only roof spanned by a plane it does not
+# lie on gets carved.
+SUNKEN_MIN_DEPTH_M = 0.6
+SUNKEN_CELL_M = 0.75
+SUNKEN_MIN_AREA_M2 = 1.5
+SUNKEN_MAX_SHARE = 0.40      # more than this sunken = the facet itself is wrong;
+                             # leave it to the confidence gate, not the carver
+
+
+def _sunken_regions(pc_source, facet_geom, plane):
+    if pc_source is None or facet_geom.is_empty:
+        return []
+    minx, miny, maxx, maxy = facet_geom.bounds
+    pts = pc_source.points_in_bbox(minx, miny, maxx, maxy, building_only=True)
+    if len(pts) < 12:
+        return []
+    import shapely.vectorized as _sv
+    inside = _sv.contains(facet_geom, pts[:, 0], pts[:, 1])
+    bp = pts[inside]
+    if len(bp) < 12:
+        return []
+    a, b, c = plane
+    res = bp[:, 2] - (a * bp[:, 0] + b * bp[:, 1] + c)
+    low = bp[res < -SUNKEN_MIN_DEPTH_M]
+    if len(low) < 6:
+        return []
+    nx = max(2, int(np.ceil((maxx - minx) / SUNKEN_CELL_M)))
+    ny = max(2, int(np.ceil((maxy - miny) / SUNKEN_CELL_M)))
+    if nx * ny > 200000:
+        return []
+    grid = np.zeros((ny, nx), dtype=bool)
+    ix = np.clip(((low[:, 0] - minx) / SUNKEN_CELL_M).astype(int), 0, nx - 1)
+    iy = np.clip(((low[:, 1] - miny) / SUNKEN_CELL_M).astype(int), 0, ny - 1)
+    grid[iy, ix] = True
+    grid = ndimage.binary_closing(grid, structure=np.ones((3, 3), dtype=bool))
+    labeled, n = ndimage.label(grid, structure=np.ones((3, 3), dtype=int))
+    out = []
+    for lab in range(1, n + 1):
+        ys, xs = np.nonzero(labeled == lab)
+        if len(xs) * SUNKEN_CELL_M ** 2 < SUNKEN_MIN_AREA_M2:
+            continue
+        cells = [shapely_box(minx + x * SUNKEN_CELL_M, miny + y * SUNKEN_CELL_M,
+                             minx + (x + 1) * SUNKEN_CELL_M, miny + (y + 1) * SUNKEN_CELL_M)
+                 for y, x in zip(ys, xs)]
+        reg = unary_union(cells).intersection(facet_geom)
+        if not reg.is_empty:
+            out.append(reg)
+    total = sum(r.area for r in out)
+    if total > SUNKEN_MAX_SHARE * facet_geom.area:
+        return []
+    return out
+
+
 def detect_obstructions_combined(imagery_ds, pc_source, facet_geom, plane,
                                   z_threshold=None, boundary_erode_m=None,
                                   residual_threshold_m=None, roof_geom=None):
@@ -817,6 +885,7 @@ def detect_obstructions_combined(imagery_ds, pc_source, facet_geom, plane,
     # the worst over-carve is 55%.
     # The cap applies ONLY to blobs with no height corroboration: real
     # equipment that also shows up in the photo still bypasses it entirely.
+    VALLEY_VETO_MAX_DEPTH_M = 1.0
     COLOUR_ONLY_MAX_AREA_M2 = 15.0
     COLOUR_CORROBORATION_MIN_AREA_M2 = 1.0
     COLOUR_CORROBORATION_MIN_FRACTION = 0.15
@@ -848,7 +917,14 @@ def detect_obstructions_combined(imagery_ds, pc_source, facet_geom, plane,
                 bp = bpts[inside]
                 if len(bp) >= 5:
                     res = bp[:, 2] - (va * bp[:, 0] + vb * bp[:, 1] + vc)
-                    if np.median(res) < -HEIGHT_STRONG_ABOVE_MARGIN_M:
+                    med = np.median(res)
+                    # Only a SHALLOW dip is a vault/sawtooth valley photographing
+                    # dark. 26 Panorama's marked structure sits ~2 m below the
+                    # facet plane and this veto was throwing its colour blob
+                    # away, so 23.4 m2 of panels went onto a recessed deck. A
+                    # metre or more below the plane is a level change, and a
+                    # level change under a facet is exactly what must carve.
+                    if -VALLEY_VETO_MAX_DEPTH_M < med < -HEIGHT_STRONG_ABOVE_MARGIN_M:
                         continue  # below-plane valley shadow, not an object
             kept_color.append(blob)
         color_obs = kept_color
@@ -962,10 +1038,20 @@ def detect_obstructions_combined(imagery_ds, pc_source, facet_geom, plane,
     # the brightness tail finds nine.
     try:
         bright = detect_bright_objects(imagery_ds, facet_geom, roof_geom)
+        # Skylights are FEW and SMALL. 101/8 Duke St, a light membrane roof,
+        # got 33 'skylights' covering 99 m2 from the brightness percentile --
+        # a percentile always finds something, and on a bright roof what it
+        # finds is the roofing. If the path floods, it is reading material:
+        # drop everything it returned for this facet.
+        if len(bright) > BRIGHT_MAX_COUNT_PER_FACET or                 sum(b.area for b in bright) > BRIGHT_MAX_SHARE * facet_geom.area:
+            bright = []
     except Exception:
         bright = []
 
-    all_obs = color_obs + compact + confirmed_elongated + bright
+    # Sunken regions join unconditionally: they come from LiDAR alone, so a
+    # rural facet with no imagery still gets its recessed deck carved.
+    sunken = _sunken_regions(pc_source, facet_geom, plane)
+    all_obs = color_obs + compact + confirmed_elongated + bright + sunken
     if not all_obs:
         return []
     merged = unary_union(all_obs)

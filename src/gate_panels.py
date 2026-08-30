@@ -177,13 +177,119 @@ def gate_area(name, pc, dem, dem_inv, only_ids=None):
     print(msg)
 
 
-def main():
-    pc = PointCloudSource()
+_W = {}
+
+
+def _init_gate_worker():
+    import os
+    os.environ["SOLAR_LAZ_SINGLE"] = "1"   # see pointcloud_source: one decode thread each
+    """Per-process context: the point-cloud reader and the wide DEM. Loaded once
+    per worker, not per panel."""
+    # Workers x cached tiles x decoded-tile size is the real memory bill. Eight
+    # workers each caching eight tiles crashed a 64 GB machine on Wellington's
+    # dense survey; two tiles per worker is plenty here because a panel query
+    # touches exactly the tile(s) under one building.
+    _W["pc"] = PointCloudSource(max_cached_tiles=3)
     with rasterio.open(DATA_DIR / "dem_wide_mosaic.tif") as ds:
-        dem = ds.read(1)
-        dem_inv = ~ds.transform
+        _W["dem"] = ds.read(1)
+        _W["dem_inv"] = ~ds.transform
+
+
+def _gate_one(feature_json):
+    f = json.loads(feature_json)
+    try:
+        poly = shp_transform(TO_NZTM, shape(f["geometry"]))
+        minx, miny, maxx, maxy = poly.bounds
+        if (maxx - minx) > 50 or (maxy - miny) > 50:
+            # A panel is ~2 m. A bounds span past 50 m is corrupt geometry, and
+            # its bbox query scans every tile -- one such panel wedged the
+            # island_bay gate at 5,000/121,273 with ordered reporting hiding
+            # everything queued behind it. Corrupt input never earns a panel.
+            return feature_json, False, "corrupt-geometry"
+        ok, why = panel_ok(poly, _W["pc"], _W["dem"], _W["dem_inv"])
+    except Exception:
+        return feature_json, True, "error-kept"
+    return feature_json, ok, why
+
+
+
+def _gate_batch(feature_jsons):
+    return [_gate_one(fj) for fj in feature_jsons]
+
+
+def gate_area_parallel(name, jobs=None):
+    """gate_area, fanned across processes. This stage was the wall-clock floor
+    of every build: single-threaded at 9-11 minutes per area while everything
+    around it scaled with cores. Panels are independent, so it fans trivially;
+    measured behaviour is identical because panel_ok is pure per panel."""
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+    import config
+    non_roof = getattr(config, "NON_ROOF_BUILDING_IDS", set())
+    path = area_paths(name)["panel_layouts"]
+    if not path.exists():
+        print(f"{name}: no layouts, skipping")
+        return
+    d = json.loads(path.read_text())
+    kept, dropped, errors = [], Counter(), 0
+    todo = []
+    for f in d["features"]:
+        if f["properties"].get("kind") != "panel" or f["geometry"]["type"] != "Polygon":
+            kept.append(f)
+        elif f["properties"].get("building_id") in non_roof:
+            dropped["sparse"] += 1
+        else:
+            todo.append(json.dumps(f))
+    jobs = jobs or max(1, min(4, (os.cpu_count() or 2) - 1))
+    # Spawn, never fork. On Linux the default is fork, and forked children
+    # inherit the parent's initialised GDAL/rasterio state -- workers segfault
+    # and the pool dies with BrokenProcessPool (seen on the VM's first run).
+    # macOS spawns by default, which is why local testing never showed it.
+    import multiprocessing
+    ctx = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=jobs, initializer=_init_gate_worker,
+                             mp_context=ctx) as ex:
+        # Explicit futures, completion order, hard timeout. ex.map wedged
+        # deterministically on island_bay at result 5,000 with every worker
+        # asleep and the data proven clean single-process -- whatever the
+        # stdlib queue pathology was, ordered iteration hid all progress
+        # behind it. as_completed reports truth in real time, and a future
+        # that never finishes gets NAMED and counted, never waited on forever.
+        from concurrent.futures import as_completed
+        BATCH = 64
+        done_n = 0
+        batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
+        futs = {ex.submit(_gate_batch, b): i for i, b in enumerate(batches)}
+        for fut in as_completed(futs, timeout=None):
+            try:
+                results = fut.result(timeout=600)
+            except Exception as exc:
+                print(f"  {name}: batch {futs[fut]} failed ({exc!r}); "
+                      f"{BATCH} panels kept ungated", flush=True)
+                results = [(fj, True, "error-kept") for fj in batches[futs[fut]]]
+            for fj, ok, why in results:
+                done_n += 1
+                if done_n % 5000 == 0:
+                    print(f"  {name}: {done_n}/{len(todo)} panels gated", flush=True)
+                if why == "error-kept":
+                    errors += 1
+                if ok:
+                    kept.append(json.loads(fj))
+                else:
+                    dropped[why] += 1
+    n_dropped = sum(dropped.values())
+    d["features"] = kept
+    write_json_atomic(path, d)
+    reasons = ", ".join(f"{k} {v}" for k, v in sorted(dropped.items())) or "none"
+    msg = f"{name}: dropped {n_dropped} panels ({reasons}) [{jobs} workers]"
+    if errors:
+        msg += f"  [WARNING: {errors} panels kept because the gate errored]"
+    print(msg, flush=True)
+
+
+def main():
     for name in (sys.argv[1:] or all_areas()):
-        gate_area(name, pc, dem, dem_inv)
+        gate_area_parallel(name)
 
 
 if __name__ == "__main__":
