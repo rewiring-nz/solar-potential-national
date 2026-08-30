@@ -41,6 +41,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
 
 RASTER_RESOLUTION_M = 0.1  # occupancy grid cell size in surface space; 10 cells/m
+TWIN_ASPECT_TOL_DEG = 25.0   # opposed within this = the other side of the same ridge
+TWIN_SLOPE_TOL_DEG = 6.0
+TWIN_AREA_RATIO = 0.55       # generous on purpose: 1 Gorge Rd's symmetric gable
+# partitions 66 vs 39 m2 because the outline is rotated against the roof, and a
+# tight ratio let exactly the roofs that need this rule escape it. Opposed
+# aspect plus matching slope already identifies "two sides of one ridge".
 LANDSCAPE_WIN_MARGIN = 0.10  # landscape must fit >10% more panels than portrait to be
 # chosen. Below that the tidier, conventional orientation is worth more than the extra panel,
 # and -- more importantly -- two near-identical halves of one roof then agree with each other.
@@ -289,6 +295,42 @@ def _shallow_seams(facet, sibling_facets):
     return None if region.is_empty else region
 
 
+
+def _has_twin(facet, sibling_facets):
+    """Is this face one half of a symmetric pair -- the other side of a ridge?
+
+    Josh, 1 Gorge Rd: "make roofs with the same plane dimension on each side
+    have a mirrored install layout or close to it, doesn't make sense to have
+    mostly vertical portrait panel array on one side, then a horizontal
+    landscape array on the other... Both sides are the same plane just the
+    other side of the roof." The per-facet orientation contest cannot deliver
+    that: an obstruction or setback nick on ONE side changes that side's
+    winner. So a face with a twin does not get a contest at all -- both halves
+    take portrait (his stated norm), landscape only if portrait fits nothing.
+    Deterministic and symmetric by construction: both halves evaluate the same
+    predicate about each other."""
+    if not sibling_facets:
+        return False
+    a = facet.get("aspect_deg")
+    sl = facet.get("slope_deg")
+    ar = facet["geometry"].area
+    if a is None or sl is None:
+        return False
+    for o in sibling_facets:
+        oa, osl = o.get("aspect_deg"), o.get("slope_deg")
+        if oa is None or osl is None:
+            continue
+        d = abs((a - oa + 180.0) % 360.0 - 180.0)     # angular distance
+        if abs(d - 180.0) > TWIN_ASPECT_TOL_DEG:
+            continue
+        if abs(sl - osl) > TWIN_SLOPE_TOL_DEG:
+            continue
+        r = min(ar, o["geometry"].area) / max(ar, o["geometry"].area, 1e-9)
+        if r >= TWIN_AREA_RATIO:
+            return True
+    return False
+
+
 def fit_panels_on_facet(facet, panel_width=config.PANEL_WIDTH_M, panel_height=config.PANEL_HEIGHT_M,
                          setback=config.PANEL_EDGE_SETBACK_M, resolution=RASTER_RESOLUTION_M,
                          obstructions=None, sibling_facets=None, ridge_setback=config.RIDGE_SETBACK_M,
@@ -381,7 +423,7 @@ def fit_panels_on_facet(facet, panel_width=config.PANEL_WIDTH_M, panel_height=co
             usable = surface_ridge.intersection(surface_building.buffer(-sb))
         else:
             usable = surface_poly.buffer(-sb)   # no outline: fall back to the old behaviour
-        candidate = _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet)
+        candidate = _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet, sibling_facets)
         # The generous setback is tried first and kept unless a tighter one is a
         # REAL gain -- a whole extra row, not one squeezed panel. Josh: "it's
         # less about maximising every inch of roof space, and more about
@@ -392,7 +434,7 @@ def fit_panels_on_facet(facet, panel_width=config.PANEL_WIDTH_M, panel_height=co
     return best
 
 
-def _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet):
+def _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet, sibling_facets=None):
     """`usable` is already fully eroded -- edge clearance from the building's
     outer edge, ridge clearance from the facet's own boundary, obstructions
     removed. This just lays the lattice on it."""
@@ -453,7 +495,13 @@ def _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet)
     if candidates:
         by_orient = {c[0]: c for c in candidates}
         port, land = by_orient.get(True), by_orient.get(False)
-        if port and land:
+        if _has_twin(facet, sibling_facets):
+            # Symmetric pair: no contest. Portrait on both sides, exactly as an
+            # installer would rack a gable, unless portrait fits nothing here.
+            # (land can be None too -- portrait-present-but-empty with no
+            # landscape candidate crashed the whole building's build.)
+            chosen = port if (port and port[1]) else (land or port)
+        elif port and land:
             chosen = land if len(land[1]) > len(port[1]) * (1.0 + LANDSCAPE_WIN_MARGIN) else port
         else:
             chosen = port or land
