@@ -1346,6 +1346,25 @@ map.on("load", async () => {
   // immediately -- its layers are still added further down, in the right
   // stacking order, by which point the tiles are already in flight.
   map.addSource("layout", { type: "vector", url: `pmtiles://data/panel_layouts.pmtiles?v=${DATA_VERSION}` });
+  // GitHub Pages' CDN sometimes answers a cold-cache Range request with a
+  // plain 200 and no content-length; the pmtiles library errors out and the
+  // source stays permanently empty -- a blank map until a manual reload.
+  // Retry with a fresh URL: it gives pmtiles a clean instance (it caches the
+  // failed header read per-URL) and by then the CDN edge is warm.
+  let layoutRetries = 0;
+  map.on("error", (e) => {
+    const msg = String((e && e.error && e.error.message) || "");
+    const fromLayout = e && e.sourceId === "layout";
+    const byteServing = /Byte Serving|content-length/i.test(msg);
+    if (!(fromLayout || byteServing) || layoutRetries >= 5) return;
+    layoutRetries += 1;
+    setTimeout(() => {
+      const src = map.getSource("layout");
+      if (src && src.setUrl) {
+        src.setUrl(`pmtiles://data/panel_layouts.pmtiles?v=${DATA_VERSION}&retry=${layoutRetries}`);
+      }
+    }, 1000 * layoutRetries);
+  });
   // Adding the SOURCE alone downloads nothing -- MapLibre only requests tiles
   // for a source some layer actually uses (verified in the network waterfall:
   // with just the source, the PMTiles range requests still waited for the
