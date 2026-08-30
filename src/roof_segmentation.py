@@ -312,6 +312,7 @@ MERGE_SLOPE_DIFF_DEG = 5.0
 MERGE_ASPECT_DIFF_DEG = 20.0
 MERGE_LOW_SLOPE_DEG = 7.0  # below this, aspect is noise (near-flat roof) -- ignore it for merging
 MERGE_BUFFER_M = 0.5  # facets within this gap still count as "adjacent" (grid/RANSAC edge noise)
+MERGE_MAX_HEIGHT_STEP_M = 0.5    # planes farther apart than this at their midpoint are different surfaces
 
 
 def _circular_diff(a, b):
@@ -348,6 +349,19 @@ def merge_similar_facets(facets):
             both_flat = fi["slope_deg"] < MERGE_LOW_SLOPE_DEG and fj["slope_deg"] < MERGE_LOW_SLOPE_DEG
             aspect_close = both_flat or _circular_diff(fi["aspect_deg"], fj["aspect_deg"]) <= MERGE_ASPECT_DIFF_DEG
             if not (slope_close and aspect_close):
+                continue
+            # Same orientation is not same SURFACE: two parallel faces across
+            # a valley (or on different storeys) match on slope and aspect but
+            # sit at different heights, and gluing them buries the valley
+            # inside one facet (#5119630: two courtyard faces welded with the
+            # gap between them carved back out as a 10 m2 "obstruction").
+            # Evaluate both planes at the midpoint between the two facets --
+            # the same physical plane agrees there; a stepped pair does not.
+            ci, cj = fi["geometry"].centroid, fj["geometry"].centroid
+            mx, my = (ci.x + cj.x) / 2, (ci.y + cj.y) / 2
+            zi = fi["plane_a"] * mx + fi["plane_b"] * my + fi["plane_c"]
+            zj = fj["plane_a"] * mx + fj["plane_b"] * my + fj["plane_c"]
+            if abs(zi - zj) > MERGE_MAX_HEIGHT_STEP_M:
                 continue
             if fi["geometry"].buffer(MERGE_BUFFER_M).intersects(fj["geometry"].buffer(MERGE_BUFFER_M)):
                 union(i, j)
@@ -1679,13 +1693,23 @@ def _attach_building_geometry(facets, building_geom, pc_source=None, building_id
     Also the single choke point every segment_building_best return passes
     through, which is where the realism merge belongs -- one place rather than
     five, so no strategy can quietly skip it."""
-    if facets and pc_source is not None and building_id is not None:
+    # CONSTRUCTED facets (skeleton reconstruction) skip the repair stages:
+    # those exist to fix point-TRACED boundaries, and re-tracing a constructed
+    # hip network turns its straight construction lines back into the organic
+    # blobs the construction exists to avoid (watched happen on #5119630: a
+    # clean 9-facet skeleton came out the far end as point-hull mush). The
+    # whole-facet DROP tests still apply -- a constructed face can still be a
+    # deck or a balcony.
+    constructed = bool(facets) and all(f.get("constructed") for f in facets)
+    if facets and pc_source is not None and building_id is not None and not constructed:
         facets = _maybe_reconstruct(facets, pc_source, building_geom, building_id)
     if facets and pc_source is not None:
-        facets = repair_nonplanar_facets(facets, pc_source)
+        if not constructed:
+            facets = repair_nonplanar_facets(facets, pc_source)
         facets = drop_balcony_levels(facets, pc_source)
         facets = drop_plant_decks(facets, pc_source)
-        facets = drop_roof_features(facets, pc_source)
+        if not constructed:
+            facets = drop_roof_features(facets, pc_source)
     if APPLY_REALISM_MERGE and facets:
         try:
             facets = merge_uneconomic_splits(facets)
@@ -1917,6 +1941,11 @@ USE_PARTITION = True
 # whole building comfortably under it means faces are spanning real folds.
 PARTITION_GOOD_ENOUGH = 0.85
 
+# How far behind the partition (points-explained) the skeleton reconstruction
+# may fall and still win on being constructible geometry. See _partition_facets.
+SKELETON_TIE_MARGIN = 0.05
+
+
 
 def _arrangement_facets(pts, building_geom, building_id):
     """Plane-arrangement rebuild for complex roofs: region growing supplies the
@@ -1963,10 +1992,33 @@ def _partition_facets(pc_source, building_geom, building_id, imagery_ds=None):
         score = explained_fraction(faces, pts) if faces else 0.0
         if score >= PARTITION_GOOD_ENOUGH:
             return faces
-        # The cut partition failed to read this roof. Let the arrangement
-        # rebuild compete on the same metric; strictly better wins, so simple
-        # roofs (which pass the gate above) never pay for this and a bad
-        # arrangement can never displace a better cut result.
+        # The cut partition failed to read this roof. Two competitors get a
+        # shot, judged on the same points-explained metric.
+        #
+        # 1. The skeleton reconstruction (roof_skeleton): builds the roof UP
+        #    from the footprint at a fitted common pitch, handling multi-level
+        #    buildings as nested skeletons. Its boundaries are construction
+        #    lines -- actual hips/ridges/valleys -- so it wins TIES: a wedge
+        #    partition can hug the points of a hip network it has misread
+        #    (planes averaged across shallow hips stay inside the band), so
+        #    when the skeleton explains the roof within SKELETON_TIE_MARGIN of
+        #    the partition, the constructible geometry is the better read.
+        #    Josh, on exactly this failure: "the ridges on it are quite clear
+        #    in imagery, yet the outlines are way off... should be modellable
+        #    into a clean 3D geometry" (#5119630).
+        # 2. The label-based plane arrangement, strictly-better only.
+        try:
+            from src.roof_skeleton import skeleton_roof
+            skel = skeleton_roof(building_id, building_geom.buffer(0), pts)
+        except Exception as exc:
+            _note_fallback("skeleton", building_id, exc)
+            skel = []
+        if skel:
+            s_score = explained_fraction(skel, pts)
+            if s_score >= score - SKELETON_TIE_MARGIN:
+                for f in skel:
+                    f["constructed"] = True
+                return skel
         try:
             arr = _arrangement_facets(pts, building_geom, building_id)
         except Exception as exc:

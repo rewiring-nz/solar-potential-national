@@ -33,6 +33,16 @@ from src.roof_segmentation import (
 from src.obstruction_detection import detect_obstructions_combined
 from src.panel_fitting import fit_panels_on_facet
 
+def _skeleton(ctx, geom, bid):
+    import shapely.vectorized
+    from src.roof_partition import top_surface
+    from src.roof_skeleton import skeleton_roof
+    minx, miny, maxx, maxy = geom.bounds
+    pts = ctx["pc"].points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1, building_only=True)
+    pts = pts[shapely.vectorized.contains(geom, pts[:, 0], pts[:, 1])]
+    return skeleton_roof(bid, geom.buffer(0), top_surface(pts))
+
+
 def _arrangement(ctx, geom, bid):
     import shapely.vectorized
     from src.roof_segmentation import _arrangement_facets
@@ -52,6 +62,7 @@ def _byplanes(ctx, geom, bid):
 
 
 STRATEGIES = {
+    "skeleton": _skeleton,
     "arrangement": _arrangement,
     "byplanes": _byplanes,
     "best": lambda ctx, geom, bid: segment_building_best(
