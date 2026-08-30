@@ -3728,7 +3728,15 @@ map.on("load", async () => {
   if (!EXPLAINER_VIDEO_URL) return;         // button stays hidden until a video exists
   if (btn) btn.style.display = "";
   var dash = document.getElementById("explainer-btn-dash");
-  if (dash) { dash.style.display = ""; dash.addEventListener("click", open); }
+  if (dash) {
+    // Wherever the markup left it, park it as the SIBLING right after the
+    // in-view dashboard: below the panel, not inside it.
+    var inview = document.getElementById("dashboard-inview");
+    if (inview && dash.previousElementSibling !== inview) {
+      inview.insertAdjacentElement("afterend", dash);
+    }
+    dash.style.display = ""; dash.addEventListener("click", open);
+  }
   function open() {
     var yt = EXPLAINER_VIDEO_URL.match(/(?:youtu\.be\/|v=|shorts\/)([\w-]{6,})/);
     var vm = EXPLAINER_VIDEO_URL.match(/vimeo\.com\/(?:video\/)?(\d+)(?:\/([\w]+))?/);
