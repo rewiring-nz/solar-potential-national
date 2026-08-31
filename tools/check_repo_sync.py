@@ -42,6 +42,12 @@ ALLOWED = {
     "src/patch_buildings.py":
         "Wellington is a single-region deploy -- the region IS the district, so "
         "it rebuilds the merged file instead of patching a standing one",
+    "site-config.js":
+        "per-deployment FRONTEND settings: which town the map opens on, and the "
+        "areas in the search box. Added 1 Sep because preview.html is shared "
+        "byte-for-byte between the two deploys, so anything site-specific "
+        "hardcoded in it is wrong for one of them -- which is exactly what "
+        "happened: the Queenstown site opened on Island Bay for a day",
 }
 
 
@@ -56,7 +62,7 @@ def shared_files(root):
         out += [p.relative_to(root).as_posix()
                 for p in sorted((root / sub).glob("*.py"))]
     for extra in ("preview.html", "config.py", "requirements.txt",
-                  "requirements.lock.txt"):
+                  "requirements.lock.txt", "site-config.js"):
         if (root / extra).exists():
             out.append(extra)
     return out
