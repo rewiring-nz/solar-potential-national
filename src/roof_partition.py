@@ -51,6 +51,11 @@ from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import split as shapely_split, snap, unary_union
 
 warnings.filterwarnings("ignore")
+# ...but never deprecations. A blanket ignore is exactly how 68 calls to
+# shapely.vectorized -- an API documented for REMOVAL, under an unpinned
+# shapely>=2.0 -- stayed invisible until 31 Aug. Third-party noise stays
+# suppressed; a countdown to the pipeline breaking does not.
+warnings.filterwarnings("default", category=DeprecationWarning)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
 

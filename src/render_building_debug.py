@@ -22,6 +22,11 @@ from rasterio.windows import from_bounds
 from shapely.geometry import Polygon, MultiPolygon
 
 warnings.filterwarnings("ignore")
+# ...but never deprecations. A blanket ignore is exactly how 68 calls to
+# shapely.vectorized -- an API documented for REMOVAL, under an unpinned
+# shapely>=2.0 -- stayed invisible until 31 Aug. Third-party noise stays
+# suppressed; a countdown to the pipeline breaking does not.
+warnings.filterwarnings("default", category=DeprecationWarning)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import shapely
 from src.refit_one import _area_of, _load
