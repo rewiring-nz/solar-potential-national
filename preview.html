@@ -171,6 +171,26 @@
   .popup td { padding: 2px 8px 2px 0; }
   .popup td.val { font-weight: 600; text-align: right; padding-right: 0; }
   .popup .assumptions { font-size: 11px; color: #555; border-top: 1px solid #ddd; padding-top: 6px; max-width: 260px; }
+  /* Standing disclaimer (Josh): red pill at the top of the map, dismissible.
+     Above every other overlay on purpose -- it is the one thing a first-time
+     visitor should read before believing a number. */
+  .ai-banner {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 8; display: flex; align-items: center; gap: 10px;
+    background: #c62828; color: #fff;
+    border: 1px solid rgba(255,255,255,0.35); border-radius: 999px;
+    padding: 7px 8px 7px 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    font-size: 12px; font-weight: 650; line-height: 1.25;
+    max-width: min(92vw, 560px);
+  }
+  .ai-banner-close {
+    flex: none; width: 20px; height: 20px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.18); color: #fff; cursor: pointer;
+    font-size: 14px; line-height: 1; padding: 0;
+  }
+  .ai-banner-close:hover { background: rgba(255,255,255,0.34); }
+  .ai-banner-close:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
   .loading {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
     background: rgba(20,20,20,0.85); color: #fff; padding: 6px 14px; border-radius: 6px;
@@ -364,6 +384,10 @@
       display: flex; flex-direction: column; gap: 6px;
       position: absolute; top: 8px; left: 8px; right: 8px; z-index: 6;
     }
+    /* Full width on a phone, and the stat boxes step down to make room rather
+       than sitting underneath it. */
+    .ai-banner { top: 8px; left: 8px; right: 8px; transform: none; max-width: none; }
+    body.has-ai-banner #m-top { top: 56px; }
     .m-box {
       background: rgba(0,0,0,0.62); border: 2px solid #ffe600; border-radius: 10px;
       padding: 6px 10px; text-align: center; color: #ffe600;
@@ -452,6 +476,34 @@
 </head>
 <body>
 <div id="map"></div>
+<div class="ai-banner" id="ai-banner" role="status">
+  <span>This tool was built with AI and is still being tested &ndash; expect mistakes.</span>
+  <button class="ai-banner-close" id="ai-banner-close" aria-label="Dismiss this notice"
+          title="Dismiss (Esc)">&times;</button>
+</div>
+<script>
+  // Dismissal is remembered per browser, so it informs once instead of nagging.
+  // Wrapped because storage throws outright in some contexts (private windows,
+  // thumbnail capture) and a disclaimer must never be what breaks the page.
+  (function () {
+    var b = document.getElementById("ai-banner");
+    var x = document.getElementById("ai-banner-close");
+    if (!b || !x) return;
+    var hidden = false;
+    try { hidden = localStorage.getItem("aiBannerDismissed") === "1"; } catch (e) {}
+    if (hidden) { b.style.display = "none"; }
+    else { document.body.classList.add("has-ai-banner"); }
+    function dismiss() {
+      b.style.display = "none";
+      document.body.classList.remove("has-ai-banner");
+      try { localStorage.setItem("aiBannerDismissed", "1"); } catch (e) {}
+    }
+    x.addEventListener("click", dismiss);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && b.style.display !== "none") dismiss();
+    });
+  })();
+</script>
 <!-- Search sits beside the dashboard rather than above it, so the dashboard
      can start at the top of the page. Collapsed to an icon until used. -->
 <div class="addr-search" id="addr-search">
@@ -3121,7 +3173,8 @@ map.on("load", async () => {
             <strong>Assumptions:</strong> ${assumptions.panel_rated_power_w}W panels
             (${assumptions.panel_efficiency_pct}% efficient, ${assumptions.panel_area_m2}m² each),
             ${assumptions.inverter_efficiency_pct}% inverter efficiency,
-            ${assumptions.system_derate_pct}% combined system losses (soiling/wiring/temperature/mismatch).
+            ${assumptions.system_derate_pct}% system losses (cell temperature, soiling, wiring,
+            mismatch, downtime &mdash; shading is not in this number, it is modelled per panel).
             ${assumptions.notes}
           </div>
         </details>

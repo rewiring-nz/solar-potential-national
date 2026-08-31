@@ -100,7 +100,26 @@ PV_ASSUMPTIONS = {
     "panel_area_m2": PANEL_WIDTH_M * PANEL_HEIGHT_M,
     "panel_efficiency_pct": 22.0,  # STC efficiency implied by 440W / 2m2 / 1000W/m2
     "inverter_efficiency_pct": 97.0,  # typical string/micro-inverter conversion efficiency
-    "system_derate_pct": 14.0,  # soiling, wiring loss, temperature derate, mismatch -- combined
+    # 19%, following the PVWatts convention with two deliberate departures.
+    # PVWatts' 14% default EXCLUDES cell temperature (it models that from
+    # weather) and EXCLUDES the inverter (a separate parameter, as here). We
+    # cannot model cell temperature -- it needs hourly ambient temperature and
+    # wind we do not fetch -- so it is folded in; and we drop PVWatts' 3%
+    # shading allowance because shading is modelled explicitly, per panel, from
+    # the LiDAR surface.
+    #   cell temperature ~8   (temperate NZ; PVGIS implies 9.6% incl. spectral
+    #                          and reflection losses)
+    #   soiling           2
+    #   mismatch          2
+    #   wiring/connections 2.5
+    #   light-induced degradation 1.5
+    #   nameplate tolerance 1
+    #   availability      2
+    #   shading           0   -- modelled per panel instead
+    # 14% was the old value and omitted temperature entirely, which the PVGIS
+    # cross-check measured as ~5% optimistic on AC yield. 0.97 x 0.81 = 0.786
+    # against PVGIS's effective 0.791.
+    "system_derate_pct": 19.0,
     "notes": (
         "kWp = panel count x rated power at Standard Test Conditions "
         "(1000 W/m2, 25C cell temp) -- a nameplate figure, not a real-world "
@@ -110,7 +129,11 @@ PV_ASSUMPTIONS = {
         "face's own slope and aspect using an anisotropic sky model. Each "
         "face and panel is then reduced for the terrain, trees and "
         "neighbouring buildings that actually shade it, before the inverter "
-        "and system losses above. Real output still varies with weather, "
+        "and system losses above -- 19% covering cell temperature, soiling, "
+        "wiring, mismatch and downtime, which follows the industry "
+        "(PVWatts) convention except that shading is not in that number: "
+        "we model it per panel from the laser scan instead. Real output "
+        "still varies with weather, "
         "panel brand and age, and anything that has changed since the LiDAR "
         "survey was flown -- tree growth in particular."
     ),
