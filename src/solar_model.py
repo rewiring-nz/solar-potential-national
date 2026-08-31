@@ -274,6 +274,87 @@ def solarview_calibrated_monthly_factors(lat, lon, clearsky_daily_mean_horizon_a
     }
 
 
+# --- NIWA measured station normals (national calibration) --------------------
+# Mean daily global horizontal radiation, 1991-2020 normals, from NIWA's
+# published "Mean daily global radiation (MJ/sq m)" dataset, converted to
+# kWh/m2/day. 28 stations covering New Zealand end to end.
+#
+# This exists because the sunshine-hours inference below is MEASURABLY wrong --
+# this file already recorded it running ~14% low at Queenstown, and the PVGIS
+# cross-check found the same signature wherever it was in use. Sunshine hours
+# are a proxy; these are radiation actually measured with a pyranometer.
+#
+# It also makes the national rollout honest by default: any future region gets
+# calibrated against the nearest measured station instead of an inference known
+# to be low.
+#
+# Attribution: derived from NIWA (Earth Sciences New Zealand) published climate
+# normals, https://niwa.co.nz/climate-and-weather/mean-daily-global-radiation-mjsq-m
+# Only these 12-value monthly aggregates are kept; the source workbook is not
+# committed.
+#
+# Queenstown keeps its SolarView calibration in preference to the Queenstown
+# Aero station row here, and the two are consistent once you account for what
+# each describes: SolarView was exported AT the pilot centre and carries NIWA's
+# terrain horizon for that point (1365 kWh/m2/yr), while the station normal is
+# measured at the airport on open ground 357 m up (1466). The valley floor
+# getting ~7% less than the airport is the mountains, not a disagreement.
+NIWA_STATION_MAX_DIST_DEG = 1.5   # ~150 km; NZ stations are sparse and cloud
+# climate travels further than terrain does. Beyond this, fall through.
+
+NIWA_MEASURED_GHI_STATIONS = [
+    ("Kaitaia", -35.1335, 173.2629, [6.504, 5.653, 4.61, 3.324, 2.447, 2.039, 2.206, 2.995, 3.989, 5.122, 5.858, 6.188]),
+    ("Whangarei", -35.7706, 174.3629, [6.033, 5.149, 4.257, 3.104, 2.299, 1.913, 2.066, 2.774, 3.756, 4.752, 5.548, 5.775]),
+    ("Auckland", -37.0081, 174.7887, [6.289, 5.488, 4.453, 3.224, 2.25, 1.827, 2.006, 2.761, 3.784, 4.872, 5.823, 6.164]),
+    ("Tauranga", -37.6750, 176.1920, [6.637, 5.687, 4.676, 3.32, 2.378, 1.888, 2.018, 2.788, 3.805, 4.992, 6.025, 6.348]),
+    ("Hamilton", -37.7739, 175.3052, [6.415, 5.498, 4.402, 3.206, 2.252, 1.813, 1.974, 2.656, 3.644, 4.728, 5.765, 5.917]),
+    ("Rotorua", -38.1059, 176.3148, [6.395, 5.477, 4.51, 3.182, 2.233, 1.761, 1.931, 2.647, 3.602, 4.716, 5.759, 6.052]),
+    ("Gisborne", -38.6275, 177.9218, [6.556, 5.532, 4.294, 2.972, 2.437, 1.877, 2.135, 2.767, 3.698, 5.122, 5.847, 6.321]),
+    ("New Plymouth", -39.0079, 174.1838, [6.679, 5.907, 4.683, 3.228, 2.177, 1.713, 1.946, 2.741, 3.754, 4.901, 6.115, 6.344]),
+    ("Napier", -39.4703, 176.8646, [6.576, 5.562, 4.444, 3.132, 2.261, 1.788, 1.94, 2.775, 3.921, 5.208, 6.136, 6.458]),
+    ("Whanganui", -39.9370, 175.0451, [6.663, 5.715, 4.471, 3.043, 2.03, 1.594, 1.81, 2.547, 3.61, 4.742, 5.97, 6.404]),
+    ("Palmerston North", -40.3820, 175.6091, [6.125, 5.573, 4.304, 2.986, 1.966, 1.501, 1.75, 2.453, 3.411, 4.322, 5.511, 5.889]),
+    ("Masterton", -40.9570, 175.7070, [5.144, 4.508, 3.391, 2.217, 1.597, 1.167, 1.392, 1.947, 2.922, 4.088, 4.944, 4.987]),
+    ("Wellington", -41.2844, 174.7679, [6.191, 5.656, 4.161, 2.799, 1.825, 1.322, 1.592, 2.394, 3.458, 4.646, 5.531, 6.044]),
+    ("Nelson", -41.2990, 173.2260, [6.246, 5.742, 4.591, 3.181, 2.171, 1.603, 1.764, 2.455, 3.599, 4.671, 5.94, 6.21]),
+    ("Blenheim", -41.4989, 173.9629, [6.681, 5.898, 4.664, 3.149, 2.145, 1.63, 1.843, 2.686, 3.884, 5.203, 6.294, 6.71]),
+    ("Westport", -41.7407, 171.5798, [6.092, 5.422, 4.177, 2.746, 1.783, 1.36, 1.609, 2.33, 3.308, 4.36, 5.598, 5.848]),
+    ("Kaikoura", -42.4204, 173.6963, [5.954, 5.082, 4.126, 2.815, 1.895, 1.472, 1.663, 2.476, 3.571, 4.81, 5.963, 6.101]),
+    ("Hokitika", -42.7120, 170.9840, [5.936, 5.138, 4.057, 2.676, 1.736, 1.349, 1.607, 2.249, 3.196, 4.339, 5.442, 5.747]),
+    ("Christchurch", -43.4930, 172.5370, [6.001, 5.187, 3.977, 2.659, 1.751, 1.32, 1.537, 2.283, 3.434, 4.755, 5.911, 6.079]),
+    ("Mt Cook", -43.7363, 170.0977, [6.157, 5.554, 4.129, 2.798, 1.583, 1.242, 1.46, 2.288, 3.285, 4.612, 5.833, 6.089]),
+    ("Lake Tekapo", -44.0017, 170.4432, [6.806, 6.039, 4.534, 3.072, 1.899, 1.544, 1.722, 2.592, 3.898, 5.204, 6.546, 6.833]),
+    ("Timaru", -44.4088, 171.2543, [5.616, 4.798, 3.653, 2.389, 1.451, 1.049, 1.308, 2.03, 3.357, 4.588, 5.549, 5.791]),
+    ("Queenstown", -45.0176, 168.7402, [6.562, 5.781, 4.33, 2.841, 1.691, 1.346, 1.574, 2.401, 3.648, 5.076, 6.189, 6.766]),
+    ("Clyde", -45.2034, 169.3182, [6.315, 5.522, 4.012, 2.645, 1.559, 1.142, 1.386, 2.309, 3.619, 4.814, 5.91, 6.5]),
+    ("Manapouri", -45.5329, 167.6416, [6.128, 5.329, 3.901, 2.539, 1.445, 1.091, 1.246, 2.081, 3.268, 4.619, 5.824, 6.352]),
+    ("Dunedin", -45.9013, 170.5147, [5.37, 4.748, 3.521, 2.239, 1.365, 1.021, 1.221, 1.872, 3.024, 4.226, 5.122, 5.571]),
+    ("Invercargill", -46.4110, 168.3178, [5.66, 4.832, 3.478, 2.249, 1.324, 1.015, 1.222, 1.936, 3.051, 4.316, 5.376, 5.926]),
+    ("Chatham Islands", -43.8168, -176.4750, [6.071, 5.008, 3.753, 2.448, 1.568, 1.241, 1.472, 2.096, 3.21, 4.5, 5.753, 5.927]),
+]
+
+
+def niwa_station_measured_monthly_factors(lat, lon, clearsky_daily_mean):
+    """Factors from the NEAREST measured-radiation station, or None if none is
+    within NIWA_STATION_MAX_DIST_DEG.
+
+    clearsky_daily_mean is the OPEN (not horizon-adjusted) clear-sky series, to
+    match the sunshine-hours path: a station normal is measured on open ground,
+    so the ratio it defines is cloud climate alone. The target site's own
+    terrain is applied separately, per building, by the horizon scan -- which
+    is why the adjusted series would double-count it here."""
+    best, best_d = None, None
+    for name, slat, slon, monthly in NIWA_MEASURED_GHI_STATIONS:
+        d = np.hypot(lat - slat, lon - slon)
+        if best_d is None or d < best_d:
+            best, best_d = (name, monthly), d
+    if best is None or best_d > NIWA_STATION_MAX_DIST_DEG:
+        return None
+    name, monthly = best
+    return {MONTH_NAMES[i]: monthly[i] * 1000.0 / clearsky_daily_mean[MONTH_NAMES[i]]
+            for i in range(12)}
+
+
 def build_poa_lookup_table(lat, lon, tz="Pacific/Auckland", year=2023, horizon_profile=None):
     """Returns dict {(slope_bin_deg, aspect_bin_deg): annual_poa_kwh_per_m2}.
     horizon_profile: optional dict from terrain_horizon.compute_horizon_profile
@@ -312,6 +393,11 @@ def build_poa_lookup_table(lat, lon, tz="Pacific/Auckland", year=2023, horizon_p
     # sunshine-hours inference (any NZ location near a NIWA station) >
     # NASA POWER (portable global fallback).
     monthly_factor = solarview_calibrated_monthly_factors(lat, lon, clearsky_daily_mean_adj)
+    if monthly_factor is None:
+        # Measured station radiation before inferred-from-sunshine-hours: the
+        # inference is documented above as ~14% low and the PVGIS check found
+        # that signature everywhere it was used.
+        monthly_factor = niwa_station_measured_monthly_factors(lat, lon, clearsky_daily_mean)
     if monthly_factor is None:
         monthly_factor = fetch_niwa_derived_monthly_factors(lat, lon, clearsky_daily_mean)
     if monthly_factor is None:  # no NIWA station close enough to trust -- portable fallback
