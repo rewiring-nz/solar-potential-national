@@ -108,6 +108,50 @@ This will be the FIRST Island Bay build carrying the gap-fill pass and the
 straggler yield fix, so expect more panels at 100% and a different removal
 order as the density slider comes down. That is the fix, not a regression.
 
+## QUEENSTOWN REBUILD FINISHED — DO NOT PUSH YET (31 Aug 14:56)
+
+All 25 regions built. Report at ~/diff_report4.txt (also pulled to the
+scratchpad). VM STOPPED. Three reasons to hold the push:
+
+1. **FOUR REGIONS BUILT WITHOUT IMAGERY** — frankton_arm_lake, town_south_lake,
+   frankton_east_lake, kelvin_south. Disk fell below the script's 20 GB imagery
+   threshold. They have degraded obstruction detection and roof partitioning.
+   Rebuild them before shipping.
+
+2. **The headline number moved +8.3% on FLAT panel count.**
+       buildings     15,138 -> 15,138
+       placed panels 750,672 -> 749,367  (-1,305, -0.2%)
+       annual output 301.9  -> 327.0 GWh/yr  (+25.1)
+   Panels essentially unchanged, so this is entirely a MODEL change: per-panel
+   yield rose ~8.3%. And it rose DESPITE the derate going 14% -> 19%, which
+   alone cuts ~5.8% — so POA must have risen ~15%. That is consistent with
+   moving isotropic -> Perez sky (Perez raises tilted-plane diffuse), but a 15%
+   move in the number the public reads should be explained deliberately, not
+   noticed in a diff.
+
+3. **PVGIS says we are +4.7% high at the pilot, same sign at every angle**
+   (+4.3, +4.3, +4.3, +4.2, +5.2, +5.8, +3.5, +4.2, +6.6; worst +6.6%). By
+   validate_against_pvgis's own heuristic, one consistent sign across angles is
+   a MODEL BIAS, not geometry or terrain. CAVEAT, and it is a real one: PVGIS
+   uses ERA5, a ~30 km reanalysis, which describes an alpine valley floor
+   poorly. Queenstown is exactly where ERA5 should be least trusted. Wellington
+   measured well against NIWA station normals (1384 vs 1387), so this may be
+   ERA5 rather than us — but it wants checking before the number ships.
+
+GOOD NEWS in the same report: the truth scorecard has 26 marked roofs scored
+and only 2 outside +/-2 of Josh's face count (5373363 at 14/11 and 4735623 at
+11/7, both over-segmented). The watchlist buildings are all stable.
+
+Also: 36 Stanley St went 217 -> 193 panels (-24), which is the shallow-seam hip
+fix landing as intended (measured 216 -> 190 during development).
+
+ORDER TO FINISH THIS:
+  1. Start the VM.
+  2. bash ~/reclaim_space.sh --yes           # frees 27.8 GB, restores imagery
+  3. ./tools/sync_vm.sh                      # VM is still on pre-review code
+  4. Rebuild the four regions WITH imagery, then merge + tile.
+  5. Re-read the diff, decide on the +8.3%, then push.
+
 ## 24 BEACH ST DIAGNOSED — 31 Aug (Josh's open question, now answered)
 
 Josh, 30 Aug live test: "Why do only some of the ridges on this roof get
