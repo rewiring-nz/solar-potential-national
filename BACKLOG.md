@@ -63,8 +63,19 @@ TWO THINGS THIS REVIEW GOT WRONG, both corrected in code:
    `merge_regions` silently wiped the masks; JIT imagery cleanup broke the
    scorecard. Assert inputs exist before any stage runs; record in a manifest
    which inputs produced each output.
-3. **Zero tests** (17,923 LOC, 68 modules, 0 test files).
-   HALF DONE 31 Aug: `tests/test_pure.py` — 15 tests over the pure
+3. **Zero tests** (17,923 LOC, 68 modules, 0 test files). DONE 31 Aug.
+   `./tests/run_all.sh` runs everything (`--fast` skips the slow golden pass).
+   Three suites, all mutation-checked rather than merely green:
+     * `tests/test_pure.py` — 15 tests on the arithmetic you cannot see.
+     * `tests/test_golden.py` — all 28 roof_truth buildings, pinning facet
+       count/areas/slopes. Verified deterministic (two full runs, 28/28
+       identical) and sensitive (3% area or 2 deg slope fails). Re-record
+       deliberately with `--record` and explain the move in the commit.
+     * `tests/test_no_deprecations.py` — see item 8.
+   NOTE: a code mutation (MIN_FACET_AREA_M2 3 -> 12) did NOT fail the golden
+   tests, because it is a real no-op on those roofs. Sensitivity evidence is
+   the value perturbation, not a code mutation. Worth knowing.
+   Was, half done: `tests/test_pure.py` — 15 tests over the pure
    functions, mutation-checked (a flipped aspect sign, a factor-of-two in the
    horizon quantiser and an absurd derate each fail it). Run with
    `.venv/bin/python tests/test_pure.py`; no pytest in the venv.
