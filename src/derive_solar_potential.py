@@ -13,6 +13,7 @@ import json, sys
 from collections import defaultdict
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 import geopandas as gpd
 import pyproj
 from shapely.geometry import shape
@@ -92,4 +93,5 @@ def derive(region):
 
 if __name__ == "__main__":
     for r in sys.argv[1:]:
+        preflight("derive_solar_potential", r)
         derive(r)

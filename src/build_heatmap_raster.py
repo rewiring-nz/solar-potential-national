@@ -43,6 +43,7 @@ from scipy.spatial import cKDTree
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 from src.pointcloud_source import PointCloudSource
 from src.solar_model import SolarModel
 from src.building_shading import building_shading_factor
@@ -197,6 +198,7 @@ def render_building(points, geom, lookup, x_origin, y_origin, shading_factor):
 
 
 def main(area="pilot"):
+    preflight("build_heatmap_raster", area)
     from src.region_build import area_paths, area_bbox_nztm, area_centroid_wgs84
     paths = area_paths(area)
     gdf = gpd.read_file(paths["outlines"])

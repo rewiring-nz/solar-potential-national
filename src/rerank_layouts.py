@@ -29,6 +29,7 @@ from shapely.ops import transform as shapely_transform
 from shapely.strtree import STRtree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 from src.panel_fitting import (MAIN_ARRAY_MIN_PANELS, MINOR_ARRAY_MIN_FRACTION,
                                MINOR_ARRAY_MIN_PANELS, MINOR_ARRAY_ALWAYS_KEEP_PANELS,
                                STRAGGLER_RANK_FLOOR)
@@ -145,6 +146,7 @@ def _assign_arrays(panel_features):
 
 def main():
     for name in (sys.argv[1:] or all_areas()):
+        preflight("rerank_layouts", name)
         rerank_area(name)
 
 

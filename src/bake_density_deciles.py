@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 from src.region_build import write_json_atomic
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -83,6 +84,7 @@ def _coverage_poa(facets, pct):
 
 
 def main():
+    preflight("bake_density_deciles")
     layouts = json.loads((DATA_DIR / "panel_layouts.geojson").read_text())
     per_building = {}
     # Facet (area, POA) pairs per building, for the coverage curve below.

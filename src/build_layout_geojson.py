@@ -32,6 +32,7 @@ import rasterio
 from shapely.ops import transform as shapely_transform
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 import geopandas as gpd
 
 from src.roof_segmentation import segment_building_best, _area_weighted_inlier
@@ -300,6 +301,7 @@ def _build_one_inner(building_id):
 
 
 def main(area="pilot", jobs=None, limit=0, dry_run=False):
+    preflight("build_layout_geojson", area)
     paths = area_paths(area)
     gdf = gpd.read_file(paths["outlines"])
     ids = [int(b) for b in gdf["building_id"].tolist()]

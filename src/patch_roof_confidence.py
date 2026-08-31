@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 from src.region_build import all_areas, area_paths, areas_from_argv, write_json_atomic
 
 
@@ -102,6 +103,7 @@ def main():
     argv = [a for a in sys.argv if a != "--merged-only"]
     if "--merged-only" not in sys.argv:
         for area in areas_from_argv(argv):
+            preflight("patch_roof_confidence", area)
             patch_area(area)
     patch_merged()
 

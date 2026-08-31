@@ -19,6 +19,7 @@ import geopandas as gpd
 import rasterio
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 from src.building_horizon import (compute_building_horizon, encode_horizon,
                                   beam_visible_fraction)
 from src.region_build import area_paths, area_centroid_wgs84, write_json_atomic
@@ -93,4 +94,5 @@ def bake(region):
 
 if __name__ == "__main__":
     for r in sys.argv[1:]:
+        preflight("bake_building_horizons", r)
         bake(r)

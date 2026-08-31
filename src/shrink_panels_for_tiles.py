@@ -6,6 +6,7 @@ import json, sys, math
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 from src.region_build import write_json_atomic
 GAP_M = 0.04  # was 0.07 -- Josh: gaps a touch smaller
 # The buffer is applied in DEGREES using the longitude scale at the panel's
@@ -14,6 +15,7 @@ GAP_M = 0.04  # was 0.07 -- Josh: gaps a touch smaller
 # look that was signed off; noted so it isn't rediscovered as a mystery.
 DATA = Path(__file__).resolve().parent.parent / "data"
 def main():
+    preflight("shrink_panels_for_tiles")
     path = DATA / "panel_layouts.geojson"
     d = json.loads(path.read_text())
     # NOT idempotent: a second pass shrinks the already-shrunk polygons again

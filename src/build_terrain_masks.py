@@ -41,6 +41,7 @@ import pyproj
 import rasterio
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 from src.region_build import write_json_atomic
 from src.terrain_horizon import compute_horizon_profile_from_array, horizon_angle_at
 
@@ -52,6 +53,7 @@ TO_NZTM = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2193", always_xy=True)
 
 
 def main():
+    preflight("build_terrain_masks")
     sp_path = DATA_DIR / "solar_potential.geojson"
     sp = json.loads(sp_path.read_text())
 

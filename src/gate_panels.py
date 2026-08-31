@@ -32,6 +32,7 @@ from shapely.geometry import shape
 from shapely.ops import transform as shp_transform
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 from src.pointcloud_source import PointCloudSource
 from src.region_build import all_areas, area_paths, write_json_atomic
 
@@ -289,6 +290,7 @@ def gate_area_parallel(name, jobs=None):
 
 def main():
     for name in (sys.argv[1:] or all_areas()):
+        preflight("gate_panels", name)
         gate_area_parallel(name)
 
 

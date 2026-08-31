@@ -29,6 +29,7 @@ from shapely.geometry import shape
 import shapely.vectorized
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 import config
 from src.fetch_data import fetch_building_outlines
 
@@ -43,6 +44,7 @@ def fetch_addresses(bbox_nztm, api_key):
 
 
 def main(area="pilot"):
+    preflight("add_addresses", area)
     from src.region_build import area_paths, write_json_atomic
     load_dotenv()
     api_key = os.environ["LINZ_API_KEY"]

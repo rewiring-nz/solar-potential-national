@@ -46,6 +46,7 @@ import pandas as pd
 import pvlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.preflight import preflight
 import config
 from src.solar_model import SolarModel, MONTH_NAMES
 
@@ -56,6 +57,7 @@ SEASONS = {"summer": (12, 1, 2), "autumn": (3, 4, 5), "winter": (6, 7, 8), "spri
 
 
 def main():
+    preflight("build_seasonal_curves")
     model = SolarModel()  # pilot location; calibrated factors + terrain horizon come along
     location = pvlib.location.Location(model.lat, model.lon, tz="Pacific/Auckland", altitude=310)
     times = pd.date_range("2023-01-01", "2023-12-31 23:00", freq="1h", tz="Pacific/Auckland")
