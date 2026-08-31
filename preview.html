@@ -1188,7 +1188,12 @@ function panelLayerFilter(id, excludeBuildingId) {
 // buttons visibly go unlit in that state, on desktop and mobile, so "nothing
 // is selected" reads as a state rather than a failure.
 function setMode(newMode) {
-  mode = (mode === newMode) ? "none" : newMode;
+  // SELECT, not toggle. Clicking the button for the mode you are ALREADY in
+  // used to fall through to "none", which hides both overlays: a blank map,
+  // with the building panel still captioned "at the current panel density"
+  // over a coverage estimate. Josh had the mobile buttons changed to
+  // select-not-toggle for exactly this reason; the dashboard pair was missed.
+  mode = newMode;
   applyToggles();
 }
 
@@ -2161,6 +2166,15 @@ map.on("load", async () => {
     if (eh) eh.style.display = isLayout ? "none" : "";
     if (ep) ep.style.display = isLayout ? "" : "none";
     if (ld) ld.style.display = isLayout ? "" : "none";
+    // The open building panel swaps SECTIONS by mode, and the one being
+    // revealed still held numbers written by the other mode's branch of
+    // updateFittedStats: switching Heat Map -> Panel Layout showed the
+    // coverage estimate (204 kW on #3371776) under the panel-density caption,
+    // with a dash where the panel count belongs, until the building was
+    // clicked again. The economics block rode along with it, which is why cost
+    // and payback looked frozen across a mode change. Recompute here, where
+    // the sections are swapped, so what is shown always matches the mode.
+    if (selectedPanelBuildingId !== -1) updateFittedStats(selectedPanelBuildingId);
     if (selectedPanelBuildingId !== -1) renderSeasonCurves(selectedPanelBuildingId);
     recomputeInViewSummary();
     const mh = document.getElementById("m-heatmap-btn");
