@@ -76,6 +76,44 @@ This will be the FIRST Island Bay build carrying the gap-fill pass and the
 straggler yield fix, so expect more panels at 100% and a different removal
 order as the density slider comes down. That is the fix, not a regression.
 
+## 24 BEACH ST DIAGNOSED — 31 Aug (Josh's open question, now answered)
+
+Josh, 30 Aug live test: "Why do only some of the ridges on this roof get
+panels, when they are very similar size." Sawtooth commercial roof, #4735237.
+
+MEASURED. The roof segments into 25 facets totalling 1,054 m2, so the BIG_ROOF
+rules apply (BIG_ROOF_M2 = 1000) and every facet must fit its own points at
+>= BIG_ROOF_FACET_MIN_FIT (0.60). Per-facet fits:
+
+  223.8 m2  24.8 deg  aspect 315.5  fit 0.54  DROPPED  <-- the biggest facet
+  125.2 m2  25.9 deg  aspect 315.7  fit 0.89  keep, 35 panels
+   36.4 m2  25.8 deg  aspect 315.6  fit 1.00  keep, 13 panels
+   17.9 m2  25.7 deg  aspect 316.5  fit 1.00  keep
+
+The empty ridge is the LARGEST facet on the roof and carries the HIGHEST
+irradiance on the building (POA 1464). Panel fitting is not the problem: run
+directly on that facet it places 79 panels. It ships zero because the big-roof
+fit gate drops the whole facet at 0.54 against a 0.60 threshold.
+
+SO THE GATE IS WORKING AND THE BUG IS UPSTREAM. A fit of 0.54 over 223 m2 means
+only half its LiDAR points lie within 15 cm of the fitted plane — that facet is
+not one plane, it is several sawtooth ridges SMEARED into one. The gate is
+refusing to put 79 panels on a surface we have not understood, which is exactly
+Josh's own rule ("showing a confident-looking layout on a roof we have not
+understood is worse than showing nothing").
+
+DO NOT fix this by lowering the gate. That ships 79 panels onto a plane that
+does not exist. The real fix is segmentation: a sawtooth is a PERIODIC
+structure — repeated parallel ridges at one pitch and spacing — and nothing in
+the segmenter looks for periodicity, so it merges alternating faces whenever the
+plane fit is loose enough to tolerate it. Same shape as the 32 Frankton Road
+finding in roof_truth (4,032 m2 covered by two near-flat sheets fitting at 15%).
+
+Note also: 19 of 25 facets ship zero panels but only 6 are dropped by the gate.
+The other 13 are empty for other reasons (size after setback, obstructions,
+deep shade) and have NOT been diagnosed — worth a look if Josh cares about the
+rest of the roof, not just the big ridge.
+
 ## CODE REVIEW — 31 Aug (Josh asked for one; findings ranked)
 
 Full write-up published as an artifact. The measured findings, in the order
