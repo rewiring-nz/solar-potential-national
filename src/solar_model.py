@@ -225,7 +225,27 @@ def fetch_niwa_derived_monthly_factors(lat, lon, pvlib_clearsky_daily_mean):
 # export files are deliberately NOT committed to this repository -- NIWA's
 # terms cover use of the tool's output, not republication of it.
 SOLARVIEW_CAL_LOCATION = (-45.03, 168.66)
-SOLARVIEW_CAL_MAX_DIST_DEG = 0.05  # ~5km -- this calibration is pilot-local by construction
+# ~30 km. Widened from 0.05 (5 km) on 31 Aug after the PVGIS cross-check showed
+# what the 5 km gate was costing: it left 23 of 24 Queenstown regions on the
+# sunshine-hours fallback that THIS FILE already documents as running ~14% low,
+# and the external check measured the result at 10-19% low on north-facing
+# roofs -- the roofs that matter.
+#
+# The measured mean monthly factor at the pilot is 0.729; the fallback gives
+# 0.612 at Arrowtown, 20 km away in the same basin. A 16% difference in cloud
+# climate over 20 km is not credible, and PVGIS puts Arrowtown slightly SUNNIER
+# than the CBD, not darker.
+#
+# What travels is the FACTOR -- the ratio of real to clear-sky irradiance, i.e.
+# how cloudy the place is. That is a basin-scale climate property. Everything
+# genuinely local (latitude, elevation, air mass, and each building's own
+# terrain horizon) is already handled by the clear-sky model and the horizon
+# scan, so widening the gate does not smear site-specific geometry around.
+#
+# 0.30 covers the whole Queenstown district (furthest region 0.222 deg) with
+# margin, and comes nowhere near Wellington at 7.1 deg -- that repo shares this
+# file and must keep falling through to its own calibration.
+SOLARVIEW_CAL_MAX_DIST_DEG = 0.30
 SOLARVIEW_MEASURED_GHI_KWH_M2_DAY = {
     "JAN": 6.29, "FEB": 5.22, "MAR": 3.78, "APR": 2.31, "MAY": 1.38, "JUN": 1.09,
     "JUL": 1.41, "AUG": 2.26, "SEP": 3.56, "OCT": 4.98, "NOV": 6.11, "DEC": 6.49,
