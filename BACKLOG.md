@@ -67,14 +67,16 @@ TWO THINGS THIS REVIEW GOT WRONG, both corrected in code:
    `./tests/run_all.sh` runs everything (`--fast` skips the slow golden pass).
    Three suites, all mutation-checked rather than merely green:
      * `tests/test_pure.py` — 15 tests on the arithmetic you cannot see.
-     * `tests/test_golden.py` — all 28 roof_truth buildings, pinning facet
-       count/areas/slopes. Verified deterministic (two full runs, 28/28
-       identical) and sensitive (3% area or 2 deg slope fails). Re-record
-       deliberately with `--record` and explain the move in the commit.
+     * `tests/test_golden.py` — all 28 roof_truth buildings measured through
+       `build_layout_geojson._build_one`, the REAL per-building pipeline path.
+       Pins facet/obstruction/PANEL counts and ANNUAL kWh, plus per-facet
+       slope, aspect, irradiance and panel count. Deterministic (two full runs,
+       28/28) and proven sensitive by a real code mutation: derate 19.0 -> 20.0
+       fails with "annual yield 13327.0 -> 13163.0 kWh". Re-record deliberately
+       with `--record` and explain the move in the commit.
+       NOTE: areas are deliberately NOT pinned — _build_one emits WGS84, where
+       .area is degrees squared.
      * `tests/test_no_deprecations.py` — see item 8.
-   NOTE: a code mutation (MIN_FACET_AREA_M2 3 -> 12) did NOT fail the golden
-   tests, because it is a real no-op on those roofs. Sensitivity evidence is
-   the value perturbation, not a code mutation. Worth knowing.
    Was, half done: `tests/test_pure.py` — 15 tests over the pure
    functions, mutation-checked (a flipped aspect sign, a factor-of-two in the
    horizon quantiser and an absurd derate each fail it). Run with
@@ -85,6 +87,9 @@ TWO THINGS THIS REVIEW GOT WRONG, both corrected in code:
    classification, derate arithmetic — then golden tests over the
    `roof_truth.json` buildings so a refactor that moves 15% fails loudly.
 4. **Pin dependencies and containerise.**
+   CONTAINER BLOCKED: no docker/podman/colima on the Mac, and installing it on
+   the VM mid-build would be reckless. Deliberately NOT writing an unverified
+   Dockerfile. Do it once the rebuild finishes, and verify it builds.
    PINNING DONE 31 Aug: `requirements.lock.txt` frozen from the VM venv that
    builds the published maps. Found real drift doing it — Mac scipy 1.18.0 vs
    VM 1.18.1; lockfile records the VM as truth, Josh's venv left alone.
