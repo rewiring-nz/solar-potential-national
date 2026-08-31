@@ -326,6 +326,19 @@ def main(area="pilot", jobs=None, limit=0, dry_run=False):
         print(f"[{area}] WARNING: no data/dem_wide_mosaic.tif -- per-building "
               f"horizons are OFF and yields fall back to the area terrain "
               f"profile.", flush=True)
+    # And the point cloud, which is the PRIMARY input: without tiles over this
+    # region every building silently drops to the 1 m DSM, which is roughly a
+    # sixteenth of the Wellington survey's sampling and cannot resolve a hip.
+    try:
+        _probe = PointCloudSource()
+        _b = gdf.total_bounds
+        if len(_probe.points_in_bbox(_b[0], _b[1], _b[2], _b[3], building_only=True)) == 0:
+            print(f"[{area}] WARNING: NO LiDAR point-cloud tiles cover this "
+                  f"region -- every building falls back to the 1 m DSM. "
+                  f"Fetch with: python src/fetch_pointcloud_regions.py {area}",
+                  flush=True)
+    except Exception as _exc:
+        print(f"[{area}] WARNING: could not probe the point cloud ({_exc!r})", flush=True)
 
     print(f"[{area}] Building solar yield lookup table (pvlib + NASA POWER)...")
     centroid = area_centroid_wgs84(area)

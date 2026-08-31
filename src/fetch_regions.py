@@ -145,6 +145,25 @@ def main():
             # actually requires, and builds degrade gracefully without imagery.
             print(f"  WARNING: imagery unavailable for {name} ({type(e).__name__}) -- LiDAR-only build")
 
+    # Pass 3: the raw LiDAR point cloud. This is the pipeline's PRIMARY input --
+    # segmentation, obstruction height evidence, panel gating and shading all
+    # read it, and the Wellington survey carries 16 pts/m2 against the 1 m DSM's
+    # single sample. Without it every building falls back to the DSM SILENTLY.
+    # It used to be a second script you had to remember to run. Josh, 31 Aug:
+    # "that should be part of the automatic process for all future regions."
+    print(f"\n[point cloud] fetching LiDAR tiles for {len(wanted)} region(s)...")
+    try:
+        from src.fetch_pointcloud_regions import main as fetch_pointcloud
+        missing = fetch_pointcloud(wanted)
+        if missing:
+            print(f"  WARNING: {len(missing)} tiles missing from the bulk store -- "
+                  f"those parts of the region will build from the 1 m DSM only.")
+    except Exception as e:
+        print(f"  WARNING: point-cloud fetch FAILED ({type(e).__name__}: {e}).\n"
+              f"  These regions would build from the 1 m DSM only, which is far "
+              f"coarser. Re-run: python src/fetch_pointcloud_regions.py "
+              + " ".join(wanted))
+
     print("\nAll requested regions fetched.")
 
 

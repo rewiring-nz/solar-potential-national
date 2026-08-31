@@ -31,13 +31,17 @@ import config
 from src.fetch_data import fetch_building_outlines
 
 POINTCLOUD_DIR = Path(__file__).resolve().parent.parent / "data" / "pointcloud"
-BULK_URL = "https://opentopography.s3.sdsc.edu/pc-bulk/NZ21_Otago"
+# Survey-specific values live in config, never here: hard-coding them meant the
+# Wellington repo asked the OTAGO bulk store for 2021-named tiles and every
+# download 404'd, leaving regions to fall back silently to the 1 m DSM.
+BULK_URL = config.POINTCLOUD_BULK_URL
+TILE_YEAR = config.POINTCLOUD_TILE_YEAR
 TO_NZTM = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2193", always_xy=True)
 
 
 def tilename_to_filename(tilename):
     sheet, tile = tilename.split("_", 1)  # "CC11_1000_0712" -> ("CC11", "1000_0712")
-    return f"CL2_{sheet}_2021_{tile}.laz"
+    return f"CL2_{sheet}_{TILE_YEAR}_{tile}.laz"
 
 
 def area_bbox_wgs84(name):
@@ -81,14 +85,17 @@ def download_tile(filename, retries=4):
             time.sleep(10 * (attempt + 1))
 
 
-def main():
+def main(region_names=None):
+    """region_names lets fetch_regions call this directly, so setting up a new
+    region pulls its point cloud automatically instead of relying on someone
+    remembering a second script (Josh, 31 Aug)."""
     load_dotenv()
     api_key = os.environ["LINZ_API_KEY"]
     POINTCLOUD_DIR.mkdir(parents=True, exist_ok=True)
     # "pilot" is a first-class area with its own bbox -- its exclusive CBD
     # tiles were silently never fetched by the regions-only default, which
     # left holes over the town centre (Turner St, 23 Aug).
-    region_names = sys.argv[1:] or (["pilot"] + list(config.REGIONS))
+    region_names = region_names or sys.argv[1:] or (["pilot"] + list(config.REGIONS))
 
     all_tiles = {}  # filename -> first region needing it (tiles can span regions)
     for name in region_names:
@@ -108,6 +115,7 @@ def main():
     if missing_upstream:
         print(f"\nWARNING: {len(missing_upstream)} tiles not in the bulk store "
               f"(coverage gap to investigate): {missing_upstream[:10]}")
+    return missing_upstream
 
 
 if __name__ == "__main__":
