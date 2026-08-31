@@ -111,61 +111,61 @@ order as the density slider comes down. That is the fix, not a regression.
 ## QUEENSTOWN REBUILD FINISHED — DO NOT PUSH YET (31 Aug 14:56)
 
 All 25 regions built. Report at ~/diff_report4.txt (also pulled to the
-scratchpad). VM STOPPED. Three reasons to hold the push:
+scratchpad). VM STOPPED.
+
+VERDICT UPDATED 1 Sep: reasons 2 and 3 below are RESOLVED and are not blockers.
+ONE blocker remains -- the four LiDAR-only regions. Rebuild those, re-merge,
+and this build is good to push.
 
 1. **FOUR REGIONS BUILT WITHOUT IMAGERY** — frankton_arm_lake, town_south_lake,
    frankton_east_lake, kelvin_south. Disk fell below the script's 20 GB imagery
    threshold. They have degraded obstruction detection and roof partitioning.
    Rebuild them before shipping.
 
-2. **The headline number moved +8.3% on FLAT panel count, and MOST OF IT IS
-   UNEXPLAINED.**
+2. **The headline number moved +8.3% — RESOLVED 1 Sep, it is the intended fix.**
        buildings     15,138 -> 15,138
        placed panels 750,672 -> 749,367  (-1,305, -0.2%)
        annual output 301.9  -> 327.0 GWh/yr  (+25.1)
-   Panels are flat, so this is entirely per-panel yield.
 
-   I first assumed the Perez sky change explained it. MEASURED, it does not.
-   Running the pre-fix solar_model (4c7e4b3~1) against the current one on the
-   same nine angles:
+   Chased down properly, after two wrong guesses of mine:
 
-       tilt  aspect     OLD     NEW    change
-          0       0    1363    1388     +1.9%
-         10       0    1515    1490     -1.7%
-         20       0    1630    1559     -4.4%
-         30       0    1704    1595     -6.4%
-         20      90    1319    1350     +2.3%
-         20     180     972    1126    +15.9%
-         20     270    1318    1342     +1.9%
-         35       0    1726    1600     -7.3%
-         35     180     704     917    +30.2%
-       mean POA change: +1.0%   (big REDISTRIBUTION: north-facing down 4-7%,
-       south-facing up 16-30%, which is the anisotropic sky correcting diffuse
-       on badly-oriented roofs — a real improvement, and nearly net-neutral)
+   WRONG GUESS 1: "it's the Perez sky model". Measured on nine angles, the whole
+   old->new irradiance change is only +1.0% mean -- a large REDISTRIBUTION
+   (north-facing -4 to -7%, south-facing +16 to +30%) that nearly cancels.
+   WRONG GUESS 2: "it's the per-building horizon program". Measured by disabling
+   the horizon wiring over 40 buildings: -0.1%, panel counts identical.
 
-   Isolating the sky model alone gives +1.3%. The derate 14% -> 19% gives -5.8%.
-   So irradiance + derate together predict **-4.9%**, against an observed
-   **+8.3%**. THERE IS A ~13-POINT GAP THAT NEITHER CHANGE ACCOUNTS FOR.
+   The nine-angle average was the wrong instrument -- it weights all angles
+   equally instead of weighting by where panels actually sit. Measured at
+   BUILDING level, same geometry code, only the model swapped:
+       pilot                 +11.1% output   (region was ALREADY calibrated)
+       arrowtown_millbrook   +26.6% output   (was on the fallback)
+       shotover_lakehayes    +23.1% output   (was on the fallback)
 
-   The gap must come from the other things in this build: the segmentation work
-   (skeleton reconstruction, top-surface filter, plane refit — all of which move
-   facet slopes and aspects) and/or the per-building horizon program, which
-   replaced ONE area-wide terrain profile with a per-building one. That second
-   one is the strongest suspect: a single area profile over-shades hilltop
-   buildings, and removing that pessimism district-wide would raise output
-   exactly like this. If so it is an improvement — but it is a ~13% improvement
-   to a public kWh figure that nobody has deliberately signed off.
+   THE CAUSE: widening SOLARVIEW_CAL_MAX_DIST_DEG 0.05 -> 0.30 (5 km -> 30 km)
+   on 31 Aug moved 23 of 24 regions off the sunshine-hours fallback -- the one
+   solar_model.py itself documents as running ~14% low, and which the PVGIS
+   check measured at 10-19% low on north-facing roofs. The district is 1
+   already-calibrated region plus 23 that gained 20-27%, so ~+8% district-wide
+   after the derate's -5.8% is exactly right.
 
-   DO NOT PUSH until this is attributed. It is 25 GWh/yr of claimed generation.
+   So the number rose because a KNOWN UNDER-ESTIMATE was corrected. That is the
+   change working as designed, not unexplained inflation. NOT a reason to hold.
 
-3. **PVGIS says we are +4.7% high at the pilot, same sign at every angle**
-   (+4.3, +4.3, +4.3, +4.2, +5.2, +5.8, +3.5, +4.2, +6.6; worst +6.6%). By
-   validate_against_pvgis's own heuristic, one consistent sign across angles is
-   a MODEL BIAS, not geometry or terrain. CAVEAT, and it is a real one: PVGIS
-   uses ERA5, a ~30 km reanalysis, which describes an alpine valley floor
-   poorly. Queenstown is exactly where ERA5 should be least trusted. Wellington
-   measured well against NIWA station normals (1384 vs 1387), so this may be
-   ERA5 rather than us — but it wants checking before the number ships.
+3. **PVGIS +4.7% at the pilot — NOT a blocker, and the check cannot settle it.**
+   Josh's point, and he is right: these deltas are inside the granularity of
+   what is being compared. Three sources for the same place:
+       NIWA Queenstown station (measured, 9 km away)   1466 kWh/m2/yr
+       ours                                            1388  (-5.3% vs measured)
+       PVGIS ERA5                                      1332  (-9.1% vs measured)
+   A 10% spread between references is WIDER than the ~5% question being asked,
+   so the PVGIS comparison cannot adjudicate it at this site: a 30 km reanalysis
+   cell averaging mountains with valley floor, a point pyranometer with its own
+   siting and horizon, and our centroid are not measuring the same thing.
+   The check remains valuable for what it is good at -- it caught the -19%
+   error, which is far outside this noise. Treat +/-5% here as no signal.
+   And note it is EXPECTED to read slightly high now: finding 2 above corrected
+   23 regions that were 10-19% LOW.
 
 GOOD NEWS in the same report: the truth scorecard has 26 marked roofs scored
 and only 2 outside +/-2 of Josh's face count (5373363 at 14/11 and 4735623 at
