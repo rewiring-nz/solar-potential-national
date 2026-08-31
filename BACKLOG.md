@@ -28,12 +28,27 @@ and roof_partition loses its image lines. It is the exact degradation the
 Island Bay guard exists to prevent, and here it is happening by design in a
 different script.
 
-ACTION, worth doing NOW rather than later — it changes the output:
-    bash ~/reclaim_space.sh --yes     # frees 27.8 GB, restores free to ~46 GB
-Only ~2 regions remain after town_south_lake, so the window is small. Regions
-already built LiDAR-only can be rebuilt individually afterwards (run_stage makes
-that cheap) — check the status file for every "LiDAR only" warning and redo
-those regions.
+EXACT SCOPE, measured at 14:50 (22 of 25 regions done):
+  Built LiDAR-only, NEED REBUILDING:
+      frankton_arm_lake
+      town_south_lake
+      frankton_east_lake
+  Not yet started, still savable:
+      kelvin_south   <-- the ONLY region a reclaim right now would help
+
+So the immediate window is one region, not a crisis. Running
+`bash ~/reclaim_space.sh --yes` (frees 27.8 GB, restores ~46 GB free) before
+kelvin_south starts saves that one. Do it if convenient; the build is fine
+either way.
+
+THE REAL REMEDY is after the rebuild finishes, and it matters more:
+  1. bash ~/reclaim_space.sh --yes
+  2. Re-run the three (or four) LiDAR-only regions WITH imagery. Confirm the
+     list from the status file rather than trusting this note:
+       grep "LiDAR only" ~/solar-map/data/build_logs/full2_status.txt
+  3. Re-merge and re-tile, then compare before pushing.
+Per-region rebuilds are cheap now that run_stage exists — but note the VM is
+still on pre-review code, so sync it first (tools/sync_vm.sh).
 
 LESSON: two readings minutes apart is not a trend, and I raised the first alarm
 off one. But I then over-corrected to "no action needed" without checking what
