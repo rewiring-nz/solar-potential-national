@@ -7,6 +7,29 @@ compacted, which is why Josh kept having to re-state the list.
 
 Ordered by evidence, not by appeal. Every item names what it is based on.
 
+## VM DISK WILL FILL BEFORE THE REBUILD FINISHES — 31 Aug, ACTION NEEDED
+
+The Queenstown rebuild had 20 GB free with 11 of 25 regions still to write, and
+free space was dropping ~2 GB per few minutes. It will run out and die hours in.
+
+CAUSE: nothing deletes the Earth Engine `*_export.zip` downloads once they are
+unpacked into `*_mosaic.tif`. 45.5 GB of them had accumulated across 62 files.
+They are pure intermediates and are re-fetchable.
+
+FIX (one command, needs Josh — I do not delete files):
+    bash ~/reclaim_space.sh          # dry run, lists what it would remove
+    bash ~/reclaim_space.sh --yes    # frees 27.8 GB across 40 files
+
+The script is in the repo as `tools/reclaim_space.sh` and staged on the VM. It
+only removes a zip when BOTH its region already has a build log AND the derived
+mosaic exists, so nothing in flight is touched. Mosaics are NEVER deleted — the
+truth scorecard reads imagery, and deleting it under a later stage has broken a
+run before.
+
+REAL FIX, still open: the pipeline should delete each export archive as soon as
+it has been mosaicked. It is the same silent-accumulation shape as the other
+build-hygiene bugs — nothing is wrong until a long run dies at 90% disk.
+
 ## ISLAND BAY REBUILD IS BLOCKED ON IMAGERY — found 31 Aug
 
 **Do not run the Island Bay rebuild on the VM until the imagery is shipped
