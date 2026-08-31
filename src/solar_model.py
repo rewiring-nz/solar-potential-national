@@ -299,9 +299,30 @@ def build_poa_lookup_table(lat, lon, tz="Pacific/Auckland", year=2023, horizon_p
     factor_series = times.month.map(lambda m: monthly_factor[month_abbr_by_num[m]])
     factor_series = pd.Series(factor_series, index=times)
 
+    # Scale the GHI -- the quantity the monthly factors actually calibrate --
+    # and then DECOMPOSE it into beam and diffuse, instead of scaling all three
+    # clear-sky components by the same number.
+    #
+    # Scaling all three preserves the CLEAR-SKY beam:diffuse ratio at every
+    # hour, which is wrong for a cloudy climate: real cloud converts beam into
+    # diffuse rather than removing both in proportion. The consequence is
+    # directional and was invisible to every internal check, because internal
+    # numbers all derive from this same table. Measured against PVGIS
+    # (src/validate_against_pvgis.py) at 35 degrees tilt:
+    #     Queenstown   north +11.1%   south -18.3%
+    #     Island Bay    north -4.8%   south -16.6%
+    # Sun-facing pitched roofs overstated, surfaces living on diffuse light
+    # (south-facing, shaded, winter) badly understated, flat roofs about right
+    # because they see the total either way.
+    #
+    # Erbs is the standard empirical decomposition from the clearness index and
+    # needs nothing we do not already have. DIRINT is more accurate hour by hour
+    # but wants pressure and dew point; our series is a monthly-mean-scaled
+    # clear-sky day, so the extra fidelity would be spurious.
     ghi = clearsky["ghi"] * factor_series
-    dni = clearsky["dni"] * factor_series
-    dhi = clearsky["dhi"] * factor_series
+    _split = pvlib.irradiance.erbs(ghi, solpos["apparent_zenith"], times)
+    dni = _split["dni"].fillna(0.0)
+    dhi = _split["dhi"].fillna(0.0)
 
     if horizon_profile is not None:
         horizon_at_sun_az = horizon_angle_at(horizon_profile, solpos["azimuth"].to_numpy())
@@ -312,6 +333,17 @@ def build_poa_lookup_table(lat, lon, tz="Pacific/Auckland", year=2023, horizon_p
         dni = dni.where(~blocked, 0.0)
         ghi = ghi.where(~blocked, dhi)
 
+    # Perez, not the default isotropic sky. An isotropic dome spreads diffuse
+    # light evenly, which over-feeds any surface pointed AWAY from the sun --
+    # real diffuse is strongly anisotropic, concentrated near the sun
+    # (circumsolar) and near the horizon. With the beam:diffuse split fixed but
+    # the sky still isotropic, PVGIS put us +12% on a 20 degree south face and
+    # +20% at 35 degrees while north faces were already within a couple of
+    # percent: the classic signature. Perez is the standard anisotropic model
+    # and is the family PVGIS itself uses.
+    dni_extra = pvlib.irradiance.get_extra_radiation(times)
+    airmass = location.get_airmass(times, solar_position=solpos)["airmass_relative"]
+
     lookup = {}
     for slope_bin in range(0, config.MAX_ROOF_SLOPE_DEG + SLOPE_BIN_DEG, SLOPE_BIN_DEG):
         for aspect_bin in range(0, 360, ASPECT_BIN_DEG):
@@ -321,6 +353,7 @@ def build_poa_lookup_table(lat, lon, tz="Pacific/Auckland", year=2023, horizon_p
                 dni=dni, ghi=ghi, dhi=dhi,
                 solar_zenith=solpos["apparent_zenith"],
                 solar_azimuth=solpos["azimuth"],
+                dni_extra=dni_extra, airmass=airmass, model="perez",
             )
             annual_kwh_per_m2 = poa["poa_global"].sum() / 1000  # Wh -> kWh (hourly W values summed = Wh)
             lookup[(slope_bin, aspect_bin)] = annual_kwh_per_m2
