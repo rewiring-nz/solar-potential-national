@@ -7,10 +7,21 @@ compacted, which is why Josh kept having to re-state the list.
 
 Ordered by evidence, not by appeal. Every item names what it is based on.
 
-## VM DISK WILL FILL BEFORE THE REBUILD FINISHES — 31 Aug, ACTION NEEDED
+## VM DISK IS TIGHT BUT STABLE — 31 Aug (my earlier ALARM WAS WRONG)
 
-The Queenstown rebuild had 20 GB free with 11 of 25 regions still to write, and
-free space was dropping ~2 GB per few minutes. It will run out and die hours in.
+CORRECTION. I first called this imminent: 20 GB free, 11 regions to go, and a
+2 GB drop over a few minutes. That extrapolation was wrong. `qtn_full2.sh` line
+44 already deletes each region's imagery mosaic and raster_chunks when it
+fetched them, so consumption is self-limiting. Measured across ~2 hours and 4
+regions, free space went 22 -> 20 -> 23 GB: FLUCTUATING, not trending to zero.
+The build is not on course to die, and no emergency action is needed.
+
+What remains TRUE and still worth doing: 45.5 GB of `*_export.zip` is genuinely
+redundant, and ~10% free on the build disk is thinner headroom than a 12-hour
+job deserves. Reclaiming is a good idea, not a rescue.
+
+LESSON: two readings minutes apart is not a trend. I raised an alarm and sent a
+notification off it before checking whether anything already cleaned up.
 
 CAUSE: nothing deletes the Earth Engine `*_export.zip` downloads once they are
 unpacked into `*_mosaic.tif`. 45.5 GB of them had accumulated across 62 files.
