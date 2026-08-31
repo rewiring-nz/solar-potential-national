@@ -1450,7 +1450,14 @@ let coveragePct = 100;
 const COVERAGE_OPTIONS = [5, 10, 15, 25, 50, 75, 100];
 
 function fmtPower(kwp) {
-  return kwp >= 1000 ? (kwp / 1000).toFixed(1) + " MW" : Math.round(kwp).toLocaleString() + " kW";
+  // Precision follows magnitude. A house is the case where the decimal earns
+  // its place -- 9 kW vs 9.4 kW is a real difference in system size to someone
+  // pricing one (Josh). Past ~100 kW the decimal is false precision against a
+  // model carrying several percent of uncertainty, and on a district total it
+  // is just noise.
+  if (kwp >= 1000) return (kwp / 1000).toFixed(1) + " MW";
+  if (kwp < 100) return kwp.toFixed(1) + " kW";
+  return Math.round(kwp).toLocaleString() + " kW";
 }
 function fmtEnergy(kwhYear) {
   if (kwhYear >= 1e6) return (kwhYear / 1e6).toFixed(1) + " GWh/yr";
