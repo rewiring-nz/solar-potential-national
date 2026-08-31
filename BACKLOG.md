@@ -12,6 +12,10 @@ Ordered by evidence, not by appeal. Every item names what it is based on.
 Full write-up published as an artifact. The measured findings, in the order
 they should be worked:
 
+STATUS 31 Aug: items 1 and 4 DONE, item 3 half done, plus a SECOND divergence
+bug found and fixed (see 1b). Items 2, 5, 6, 7 open — item 2 is the next one
+to do.
+
 1. **The two repos are a hand-maintained fork, and had already diverged.**
    66 of 68 source files were byte-identical; `panel_fitting.py` differed by
    70 lines, ALL of them Queenstown-only. Wellington was missing the gap-fill
@@ -19,19 +23,42 @@ they should be worked:
    live in Queenstown for days. Island Bay was placing fewer panels at 100%
    and stripping good panels first. Synced + pushed + shipped to VM 31 Aug,
    but nothing prevents the next divergence. Wellington should be a CONFIG of
-   one codebase, not a copy of it. Interim: a CI check that fails on any
-   shared-file diff.
+   one codebase, not a copy of it.
+   DONE 31 Aug: synced + pushed, AND `tools/check_repo_sync.py` added to both
+   repos — byte-compares the 72 shared files, fails on anything not in an
+   explicit ALLOWED list (currently `config.py` and Wellington's single-region
+   `patch_buildings.py`, each with its reason). Verified against an injected
+   drift. **Run it before any push that touches shared code.** The real fix
+   (one codebase, two configs) is still open.
+
+1b. **SECOND divergence, opposite direction — solar-map's `patch_buildings.py`
+   never updated solar_potential**, though its docstring always claimed it
+   patched "the region file, the merged district file and solar_potential".
+   The only occurrence of solar_potential in the file was that sentence. So
+   patching a Queenstown building gave it new panels on the map while the
+   dashboard kept quoting the old panel count, kW, generation and savings.
+   Wellington had the implementation all along. Ported + pushed 31 Aug.
 2. **Preflight assertions on stage inputs.** Three incidents this month share
    one shape — missing input, no error, plausible-but-wrong output: the absent
    `dem_wide_mosaic.tif` shipped UNGATED panels; `build_terrain_masks` before
    `merge_regions` silently wiped the masks; JIT imagery cleanup broke the
    scorecard. Assert inputs exist before any stage runs; record in a manifest
    which inputs produced each output.
-3. **Zero tests** (17,923 LOC, 68 modules, 0 test files). Start with pure
+3. **Zero tests** (17,923 LOC, 68 modules, 0 test files).
+   HALF DONE 31 Aug: `tests/test_pure.py` — 15 tests over the pure
+   functions, mutation-checked (a flipped aspect sign, a factor-of-two in the
+   horizon quantiser and an absurd derate each fail it). Run with
+   `.venv/bin/python tests/test_pure.py`; no pytest in the venv.
+   STILL OPEN: golden tests over the roof_truth buildings, which are the half
+   that makes big refactors safe. Was: start with pure
    functions — `our_aspect_to_pvgis`, horizon encode/decode round-trip, seam
    classification, derate arithmetic — then golden tests over the
    `roof_truth.json` buildings so a refactor that moves 15% fails loudly.
-4. **Pin dependencies and containerise.** `requirements.txt` has 12 deps and
+4. **Pin dependencies and containerise.**
+   PINNING DONE 31 Aug: `requirements.lock.txt` frozen from the VM venv that
+   builds the published maps. Found real drift doing it — Mac scipy 1.18.0 vs
+   VM 1.18.1; lockfile records the VM as truth, Josh's venv left alone.
+   CONTAINER still open. Was: `requirements.txt` has 12 deps and
    ZERO pinned versions. An unpinned pvlib/shapely minor bump can move
    published kWh figures with no commit to explain it.
 5. **Per-region resume markers.** No build script skips completed work; the
