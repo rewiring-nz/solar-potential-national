@@ -506,6 +506,7 @@ def _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet,
             candidates.append((is_portrait, placed_o, wc, hc))
 
     panels = []
+    extra_placed, gap_set = [], set()
     if candidates:
         by_orient = {c[0]: c for c in candidates}
         port, land = by_orient.get(True), by_orient.get(False)
@@ -521,6 +522,23 @@ def _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet,
             chosen = port or land
         _, placed, w_cells, h_cells = chosen
 
+        # Gap-fill pass (Josh: "100% should place every possible panel... you
+        # are placing a few extras at 100% but not all the extras that could
+        # possibly fit"). One grid in one orientation leaves usable pockets --
+        # odd corners, strips beside obstructions -- that the other orientation
+        # or a shifted origin would take. Mask out what was placed and pack the
+        # residue with BOTH orientations, keeping the better; the extras are
+        # tagged gap_fill and surface only at 100% density.
+        occ2 = occupancy.copy()
+        for r0, c0, r1, c1 in list(placed) + list(extra_placed):
+            occ2[max(0, r0 - 1):r1 + 1, max(0, c0 - 1):c1 + 1] = False
+        extra_placed = []
+        for w2, h2 in ((panel_width, panel_height), (panel_height, panel_width)):
+            got = _pack_orientation(occ2, resolution, w2, h2)
+            if got and len(got[0]) > len(extra_placed):
+                extra_placed = got[0]
+        gap_set = set(map(tuple, extra_placed))
+
         for r0, c0, r1, c1 in placed:
             u0, v0 = u_min + c0 * resolution, v_min + r0 * resolution
             u1, v1 = u_min + c1 * resolution, v_min + r1 * resolution
@@ -529,6 +547,7 @@ def _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet,
             wx, wy = to_world(corners_u, corners_v)
             panel_poly = Polygon(zip(wx, wy))
             panels.append({
+                "gap_fill": (r0, c0, r1, c1) in gap_set,
                 "building_id": facet["building_id"],
                 "facet_aspect_deg": facet["aspect_deg"],
                 "facet_slope_deg": facet["slope_deg"],
@@ -677,6 +696,25 @@ def _tag_fragment_arrays(panels):
                  max(MINOR_ARRAY_MIN_PANELS, MINOR_ARRAY_MIN_FRACTION * largest))
     for p in panels:
         p["straggler"] = p.get("array_size", 1) < cutoff
+    # A small array is only a straggler if it is also NOT the sunny one. The
+    # unconditional demotion sent small sunny arrays to the remove-first band,
+    # so lowering density stripped good panels while a big shaded array
+    # survived -- Josh, twice: remove the shadiest, lowest-producing first.
+    # A fragment whose mean yield beats the main arrays' mean stays ranked on
+    # yield like everything else; scrappiness only tie-breaks among equals.
+    poa = "poa_kwh_m2_yr"
+    mains = [q[poa] for q in panels if not q.get("straggler") and q.get(poa)]
+    if mains:
+        main_mean = sum(mains) / len(mains)
+        by_arr = {}
+        for q in panels:
+            if q.get("straggler"):
+                by_arr.setdefault(q.get("array_id", 0), []).append(q)
+        for arr in by_arr.values():
+            vals = [q[poa] for q in arr if q.get(poa)]
+            if vals and sum(vals) / len(vals) >= main_mean:
+                for q in arr:
+                    q["straggler"] = False
     return panels
 
 
@@ -732,6 +770,22 @@ def assign_fill_ranks(panels, poa_key="poa_kwh_m2_yr"):
     # meant the pipeline had a correct notion of "one contiguous array" and
     # then ranked panels without using it.
     _assign_array_membership(panels)
+    # Cluster-level cleanliness (see MIN_CLUSTER_PANELS): contiguous groups
+    # under four panels are visual confetti unless they are all the roof has.
+    # This runs on TRUE touching-cluster ids, which is what drop_minor_arrays
+    # (per-facet groups) cannot see -- a facet whose five panels are split 3+2
+    # by an obstruction passed that filter and still looked random on the map.
+    sizes = {}
+    for q in panels:
+        sizes[q.get("array_id", 0)] = sizes.get(q.get("array_id", 0), 0) + 1
+    if sizes and max(sizes.values()) >= MIN_CLUSTER_PANELS:
+        # Josh's refinement: "100% panel density should place every possible
+        # panel." So confetti is not deleted -- it is DEMOTED to the very top
+        # of the slider. Below 100% the map shows clean arrays; at 100% every
+        # panel that physically fits appears.
+        for q in panels:
+            if sizes[q.get("array_id", 0)] < MIN_CLUSTER_PANELS:
+                q["confetti"] = True
     _tag_fragment_arrays(panels)
     main = _order_by_array(([p for p in panels if not p.get("straggler")]), poa_key)
     extras = sorted((p for p in panels if p.get("straggler")),
@@ -754,11 +808,26 @@ def assign_fill_ranks(panels, poa_key="poa_kwh_m2_yr"):
     # such an installer would pick. So a target system size becomes
     # "fill_order <= ceil(target_kW / panel_kW)", client-side, with no rebuild
     # needed to change the targets.
-    for i, p in enumerate(main + extras):
+    ordered = main + extras
+    # The 100%-only band: confetti clusters and gap-fill singles appear when
+    # the slider says "everything", and only then.
+    tail = [p for p in ordered if p.get("confetti") or p.get("gap_fill")]
+    for p in tail:
+        p["fill_rank"] = 100
+    ordered = [p for p in ordered if p not in tail] + tail
+    for i, p in enumerate(ordered):
         p["fill_order"] = i + 1
     return panels
 
 
+MIN_CLUSTER_PANELS = 4       # Josh, on 100% density looking "randomly placed":
+# "it doesn't maximise placement of panels, but also doesn't only do clean big
+# arrays, it's some weird thing in between... that function needs to be
+# refined." So 100% now MEANS "every clean array": contiguous clusters under
+# four panels are dropped at fit time on every roof -- the residential analogue
+# of his 8-panel commercial rule -- unless they are the only panels the roof
+# has, because some small roofs genuinely only fit a scrap and that scrap is
+# still worth showing.
 ARRAY_TOUCH_TOL_M = 0.35   # panels this close are the same physical array (tile gaps are 4cm)
 
 
