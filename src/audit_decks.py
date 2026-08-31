@@ -65,7 +65,7 @@ from pathlib import Path
 
 import numpy as np
 import pyproj
-import shapely.vectorized
+import shapely
 from scipy.spatial import cKDTree
 from shapely.geometry import shape
 from shapely.ops import transform as shp_transform
@@ -115,7 +115,7 @@ def main():
         o = outl[bid]
         minx, miny, maxx, maxy = o.bounds
         pts = pc.points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1, building_only=True)
-        pts = pts[shapely.vectorized.contains(o, pts[:, 0], pts[:, 1])]
+        pts = pts[shapely.contains_xy(o, pts[:, 0], pts[:, 1])]
         if len(pts) < 60:
             continue
         # Ground from LiDAR ground-class returns in a ring around the

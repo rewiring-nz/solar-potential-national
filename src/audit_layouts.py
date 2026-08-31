@@ -28,7 +28,7 @@ from pathlib import Path
 
 import numpy as np
 import pyproj
-import shapely.vectorized
+import shapely
 from shapely.geometry import shape
 from shapely.ops import transform as shp_transform
 from shapely.strtree import STRtree
@@ -82,7 +82,7 @@ def _audit_building(bid, b, outline_by_id, pc):
         minx, miny, maxx, maxy = g.bounds
         pts = pc.points_in_bbox(minx, miny, maxx, maxy, building_only=True)
         if len(pts) >= 12:
-            inside = shapely.vectorized.contains(g, pts[:, 0], pts[:, 1])
+            inside = shapely.contains_xy(g, pts[:, 0], pts[:, 1])
             fp = pts[inside]
             facet_planes.append(plane_from_facet_points(fp) if len(fp) >= 12 else None)
         else:
@@ -112,7 +112,7 @@ def _audit_building(bid, b, outline_by_id, pc):
         minx, miny, maxx, maxy = panel.bounds
         pts = pc.points_in_bbox(minx, miny, maxx, maxy, building_only=True)
         if len(pts) >= LUMPY_MIN_PTS:
-            inside = shapely.vectorized.contains(panel, pts[:, 0], pts[:, 1])
+            inside = shapely.contains_xy(panel, pts[:, 0], pts[:, 1])
             pp = pts[inside]
             if len(pp) >= LUMPY_MIN_PTS:
                 if fi >= 0 and facet_planes[fi] is not None and facet_planes[fi][2] is not None:

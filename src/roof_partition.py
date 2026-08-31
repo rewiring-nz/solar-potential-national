@@ -46,7 +46,7 @@ from pathlib import Path
 import time
 
 import numpy as np
-import shapely.vectorized
+import shapely
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import split as shapely_split, snap, unary_union
 
@@ -243,7 +243,7 @@ def _usable(poly, setback=None):
 def _points_in(poly, pts):
     if len(pts) == 0:
         return pts
-    return pts[shapely.vectorized.contains(poly, pts[:, 0], pts[:, 1])]
+    return pts[shapely.contains_xy(poly, pts[:, 0], pts[:, 1])]
 
 
 def _edge_directions(poly):
@@ -979,7 +979,7 @@ def explained_fraction(faces, pts, band=INLIER_BAND_M):
         poly = f["geometry"] if isinstance(f, dict) else f[0]
         a, b, c = ((f["plane_a"], f["plane_b"], f["plane_c"]) if isinstance(f, dict)
                    else f[1])
-        m = shapely.vectorized.contains(poly, pts[:, 0], pts[:, 1])
+        m = shapely.contains_xy(poly, pts[:, 0], pts[:, 1])
         if not m.any():
             continue
         resid = np.abs(pts[m, 2] - (a * pts[m, 0] + b * pts[m, 1] + c))
@@ -1039,7 +1039,7 @@ def partition_with_labels(building_id, footprint, pts, labels, planes):
         return []
     # labels must correspond to pts row-for-row; recompute the footprint mask
     # the same way _points_in does so they stay aligned.
-    m = shapely.vectorized.contains(footprint, pts[:, 0], pts[:, 1])
+    m = shapely.contains_xy(footprint, pts[:, 0], pts[:, 1])
     pin, lin = pts[m], np.asarray(labels)[m]
 
     # Cut lines: every pair of genuinely DISTINCT planes (their intersection is
@@ -1061,7 +1061,7 @@ def partition_with_labels(building_id, footprint, pts, labels, planes):
     for cell in cells:
         if cell.area < MIN_PIECE_M2:
             continue
-        mm = shapely.vectorized.contains(cell, pin[:, 0], pin[:, 1])
+        mm = shapely.contains_xy(cell, pin[:, 0], pin[:, 1])
         votes = lin[mm]
         votes = votes[votes >= 0]
         if len(votes) < 4:
@@ -1280,7 +1280,7 @@ def roof_outline(footprint, pts):
                             b + n * step, a + n * step])
             if band.is_empty or not band.is_valid:
                 break
-            m = at_roof & shapely.vectorized.contains(band, pts[:, 0], pts[:, 1])
+            m = at_roof & shapely.contains_xy(band, pts[:, 0], pts[:, 1])
             if int(m.sum()) < EAVE_MIN_BAND_POINTS:
                 break
             reach = float(step)
@@ -1384,7 +1384,7 @@ def trim_to_roof(footprint, pts):
                             b - n * (step + TRIM_STEP_M), a - n * (step + TRIM_STEP_M)])
             if band.is_empty or not band.is_valid:
                 break
-            m = at_roof & shapely.vectorized.contains(band, pts[:, 0], pts[:, 1])
+            m = at_roof & shapely.contains_xy(band, pts[:, 0], pts[:, 1])
             if int(m.sum()) >= TRIM_MIN_BAND_POINTS:
                 break                    # roof starts here
             gap = float(step + TRIM_STEP_M)

@@ -34,8 +34,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
-import shapely.vectorized
-
+import shapely
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.terrain_horizon import compute_horizon_profile_from_array, horizon_angle_at
 
@@ -63,7 +62,7 @@ def eave_height(dsm_band, dsm_transform, dsm_nodata, geom):
     xs = np.arange(c0, c1) * dsm_transform.a + dsm_transform.c + dsm_transform.a / 2
     ys = np.arange(r0, r1) * dsm_transform.e + dsm_transform.f + dsm_transform.e / 2
     gx, gy = np.meshgrid(xs, ys)
-    inside = shapely.vectorized.contains(geom, gx, gy)
+    inside = shapely.contains_xy(geom, gx, gy)
     vals = window[inside]
     if dsm_nodata is not None:
         vals = vals[vals != dsm_nodata]

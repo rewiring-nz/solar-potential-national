@@ -35,6 +35,7 @@ from shapely.ops import transform as shp_transform, unary_union
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import shapely
 from src.pointcloud_source import PointCloudSource
 from src.region_build import area_paths
 from src.roof_reconstruct import reconstruct
@@ -131,8 +132,7 @@ def main():
             continue
         minx, miny, maxx, maxy = outline.bounds
         pts = pc.points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1, building_only=True)
-        import shapely.vectorized
-        pts = pts[shapely.vectorized.contains(outline.buffer(0.3), pts[:, 0], pts[:, 1])]
+        pts = pts[shapely.contains_xy(outline.buffer(0.3), pts[:, 0], pts[:, 1])]
         new, new_obs = reconstruct(bid, outline, pts)
 
         def offplane(facets):
@@ -143,7 +143,7 @@ def main():
             worst = []
             for f in facets:
                 g = f["geometry"] if isinstance(f, dict) else f
-                inside = shapely.vectorized.contains(g, pts[:, 0], pts[:, 1])
+                inside = shapely.contains_xy(g, pts[:, 0], pts[:, 1])
                 pp = pts[inside]
                 if len(pp) < 8:
                     continue
@@ -153,7 +153,7 @@ def main():
                     from src.roof_reconstruct import fit_plane, residuals
                     r = residuals(fit_plane(pp), pp)
                 worst.append((np.abs(r) > 0.35).sum() / len(pp) * len(pp))
-            tot = sum(shapely.vectorized.contains(
+            tot = sum(shapely.contains_xy(
                 f["geometry"] if isinstance(f, dict) else f, pts[:, 0], pts[:, 1]).sum()
                 for f in facets)
             return (sum(worst) / tot) if tot else None

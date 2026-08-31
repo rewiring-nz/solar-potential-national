@@ -37,7 +37,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
-import shapely.vectorized
+import shapely
 from scipy import ndimage
 from shapely.geometry import LineString, Polygon
 
@@ -62,7 +62,7 @@ def _read_roof(imagery, outline, pad_m=1.0):
     rows, cols = np.mgrid[0:grey.shape[0], 0:grey.shape[1]]
     xs = wt.c + (cols + 0.5) * wt.a
     ys = wt.f + (rows + 0.5) * wt.e
-    inside = shapely.vectorized.contains(outline, xs, ys)
+    inside = shapely.contains_xy(outline, xs, ys)
     return grey, inside, xs, ys, abs(wt.a)
 
 

@@ -75,7 +75,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import shapely.vectorized
+import shapely
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
@@ -252,7 +252,7 @@ def label_raster(outline, pts, owner, planes):
     xs = np.arange(minx, maxx + GRID_M, GRID_M)
     ys = np.arange(miny, maxy + GRID_M, GRID_M)
     gx, gy = np.meshgrid(xs, ys)
-    inside = shapely.vectorized.contains(outline, gx, gy)
+    inside = shapely.contains_xy(outline, gx, gy)
     claimed = owner >= 0
     if claimed.sum() == 0:
         return None, None, None
@@ -381,7 +381,7 @@ def merge_coplanar(facets, pts):
                 geom = unary_union([f["geometry"], g["geometry"]]).buffer(0.02).buffer(-0.02)
                 if geom.geom_type != "Polygon":
                     continue
-                inside = pts[shapely.vectorized.contains(geom, pts[:, 0], pts[:, 1])]
+                inside = pts[shapely.contains_xy(geom, pts[:, 0], pts[:, 1])]
                 if len(inside) < 8:
                     continue
                 plane = fit_plane(inside)
@@ -419,7 +419,7 @@ def genuinely_different(p1, p2, where):
 
 
 def _cell_votes(cell, planes, pts):
-    inside = pts[shapely.vectorized.contains(cell, pts[:, 0], pts[:, 1])]
+    inside = pts[shapely.contains_xy(cell, pts[:, 0], pts[:, 1])]
     if len(inside) < MIN_CELL_PTS:
         return inside, []
     return inside, [int((np.abs(residuals(p, inside)) < RANSAC_TOL_M).sum()) for p in planes]
@@ -591,7 +591,7 @@ def extract_obstructions(facets, pts):
             keep.append(f)      # comparable size: two faces, not a face and a box
             continue
         pplane = np.array([parent["plane_a"], parent["plane_b"], parent["plane_c"]])
-        pp = pts[shapely.vectorized.contains(f["geometry"], pts[:, 0], pts[:, 1])]
+        pp = pts[shapely.contains_xy(f["geometry"], pts[:, 0], pts[:, 1])]
         if len(pp) < OBST_MIN_PTS:
             keep.append(f)
             continue
@@ -624,7 +624,7 @@ def extract_obstructions(facets, pts):
 
     for f in facets:
         plane = np.array([f["plane_a"], f["plane_b"], f["plane_c"]])
-        inside = pts[shapely.vectorized.contains(f["geometry"], pts[:, 0], pts[:, 1])]
+        inside = pts[shapely.contains_xy(f["geometry"], pts[:, 0], pts[:, 1])]
         if len(inside) < OBST_MIN_PTS:
             continue
         sel = inside[-residuals(plane, inside) > OBST_MIN_HEIGHT_M]
@@ -733,7 +733,7 @@ def merge_to_earn_setback(facets, pts):
         _, i, j, union = best
         f, g = facets[i], facets[j]
         member = pts[np.abs(residuals((f["plane_a"], f["plane_b"], f["plane_c"]), pts)) < RANSAC_TOL_M]
-        inside = member[shapely.vectorized.contains(union, member[:, 0], member[:, 1])] \
+        inside = member[shapely.contains_xy(union, member[:, 0], member[:, 1])] \
             if len(member) else member
         plane = fit_plane(inside) if len(inside) >= 8 else (f["plane_a"], f["plane_b"], f["plane_c"])
         slope, aspect = plane_slope_aspect(plane)
@@ -786,7 +786,7 @@ def reconstruct(building_id, outline, pts, seed=0, with_obstructions=True):
                                     r=math.hypot(*(np.array(cell.bounds[2:]) - np.array(cell.bounds[:2]))) / 2 + 1.0)
         if idx:
             sub = pts[idx]
-            inside = shapely.vectorized.contains(cell, sub[:, 0], sub[:, 1])
+            inside = shapely.contains_xy(cell, sub[:, 0], sub[:, 1])
             sub = sub[inside]
         else:
             sub = pts[:0]
@@ -839,7 +839,7 @@ def reconstruct(building_id, outline, pts, seed=0, with_obstructions=True):
             if poly.area < MIN_FACET_M2:
                 continue
             member = pts[np.abs(residuals(planes[pi], pts)) < RANSAC_TOL_M]
-            inside = member[shapely.vectorized.contains(poly, member[:, 0], member[:, 1])] \
+            inside = member[shapely.contains_xy(poly, member[:, 0], member[:, 1])] \
                 if len(member) else member
             plane = fit_plane(inside) if len(inside) >= 8 else planes[pi]
             slope, aspect = plane_slope_aspect(plane)

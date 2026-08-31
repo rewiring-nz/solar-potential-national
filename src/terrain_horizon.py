@@ -41,8 +41,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
-import shapely.vectorized
-
+import shapely
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 AZIMUTH_STEP_DEG = 2.0
@@ -105,7 +104,7 @@ def compute_horizon_profile_from_array(band, transform, nodata, observer_x, obse
         zs = np.where(zs == nodata, np.nan, zs)
     valid = in_bounds & ~np.isnan(zs)
     if exclude_geom is not None:
-        in_excl = shapely.vectorized.contains(exclude_geom, xs, ys).reshape(xs.shape)
+        in_excl = shapely.contains_xy(exclude_geom, xs, ys).reshape(xs.shape)
         if exclude_max_z is not None:
             # Only mask what is plausibly the observer's OWN ROOF. Anything
             # inside the footprint standing well above it -- overhanging tree

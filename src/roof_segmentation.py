@@ -21,7 +21,7 @@ import cv2
 import math
 import numpy as np
 import rasterio
-import shapely.vectorized
+import shapely
 from rasterio.features import rasterize, shapes as rasterio_shapes
 from rasterio.mask import mask as rasterio_mask
 from scipy import ndimage
@@ -1208,14 +1208,13 @@ def segment_building_orientation_clustered(pc_source, building_geom, building_id
     # callers may pass None to mean "use the module default"
     if min_facet_area_m2 is None:
         min_facet_area_m2 = MIN_FACET_AREA_M2
-    import shapely.vectorized as _sv
     from scipy.sparse import coo_matrix as _coo
     from scipy.sparse.csgraph import connected_components as _cc
 
     pts = pc_source.points_in_bbox(*building_geom.bounds, building_only=True)
     if len(pts) < 60:
         return []
-    inside = _sv.contains(building_geom, pts[:, 0], pts[:, 1])
+    inside = shapely.contains_xy(building_geom, pts[:, 0], pts[:, 1])
     p = pts[inside]
     if len(p) < 60:
         return []
@@ -1898,14 +1897,13 @@ def _reconstruct_facets(pc_source, building_geom, building_id):
     on anything unexpected so the caller falls back rather than failing a
     whole area's build for one awkward roof."""
     try:
-        import shapely.vectorized
         from src.roof_reconstruct import reconstruct
         minx, miny, maxx, maxy = building_geom.bounds
         pts = pc_source.points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1,
                                        building_only=True)
         if len(pts) < RECONSTRUCT_MIN_POINTS:
             return []
-        inside = shapely.vectorized.contains(building_geom.buffer(0.3), pts[:, 0], pts[:, 1])
+        inside = shapely.contains_xy(building_geom.buffer(0.3), pts[:, 0], pts[:, 1])
         pts = pts[inside]
         if len(pts) < RECONSTRUCT_MIN_POINTS:
             return []
@@ -1996,7 +1994,7 @@ def _arrangement_facets(pts, building_geom, building_id):
     correctly, 7 planes in 4 aspect families all near 25 degrees."""
     from src.roof_partition import partition_with_labels
     footprint = building_geom.buffer(GLOBAL_BUILDING_MARGIN_M)
-    m = shapely.vectorized.contains(footprint, pts[:, 0], pts[:, 1])
+    m = shapely.contains_xy(footprint, pts[:, 0], pts[:, 1])
     pin = pts[m]
     if len(pin) < RG_MIN_REGION_POINTS:
         return []
@@ -2019,7 +2017,7 @@ def _partition_facets(pc_source, building_geom, building_id, imagery_ds=None):
                                        building_only=True)
         if len(pts) < RECONSTRUCT_MIN_POINTS:
             return []
-        inside = shapely.vectorized.contains(building_geom, pts[:, 0], pts[:, 1])
+        inside = shapely.contains_xy(building_geom, pts[:, 0], pts[:, 1])
         pts = pts[inside]
         if len(pts) < RECONSTRUCT_MIN_POINTS:
             return []
@@ -2477,7 +2475,7 @@ def segment_points_global(points, building_geom, building_id, min_facet_area_m2=
 
     if len(points) > 0:
         footprint = building_geom.buffer(GLOBAL_BUILDING_MARGIN_M)
-        inside = shapely.vectorized.contains(footprint, points[:, 0], points[:, 1])
+        inside = shapely.contains_xy(footprint, points[:, 0], points[:, 1])
         points = points[inside]
     if len(points) < RANSAC_MIN_INLIERS:
         return []
@@ -2782,7 +2780,7 @@ def segment_points_regiongrow(points, building_geom, building_id, min_facet_area
 
     if len(points) > 0:
         footprint = building_geom.buffer(GLOBAL_BUILDING_MARGIN_M)
-        inside = shapely.vectorized.contains(footprint, points[:, 0], points[:, 1])
+        inside = shapely.contains_xy(footprint, points[:, 0], points[:, 1])
         points = points[inside]
     if len(points) < RG_MIN_REGION_POINTS:
         return []

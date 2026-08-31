@@ -30,7 +30,7 @@ import warnings
 from pathlib import Path
 
 import numpy as np
-import shapely.vectorized
+import shapely
 from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
 
@@ -239,7 +239,7 @@ def _facets_from_envelope(building_id, edges, eaves, pitch, region, pts):
     ys = np.arange(miny, maxy + GRID_RES_M, GRID_RES_M)
     gx, gy = np.meshgrid(xs, ys)
     flat_x, flat_y = gx.ravel(), gy.ravel()
-    inside = shapely.vectorized.contains(region, flat_x, flat_y)
+    inside = shapely.contains_xy(region, flat_x, flat_y)
     _, lab = _envelope(edges, eaves, pitch, flat_x, flat_y)
     lab[~inside] = -1
     lab_grid = lab.reshape(gx.shape)

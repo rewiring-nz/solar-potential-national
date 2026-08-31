@@ -34,7 +34,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import rasterio
-import shapely.vectorized
+import shapely
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from PIL import Image
 from rasterio.warp import transform as warp_transform
@@ -125,7 +125,7 @@ def shading_grid(dsm_band, dsm_transform, dsm_nodata, geom, hourly,
 
     # Only near the roof: everything else is discarded downstream anyway, and
     # a sprawling L-shaped footprint would otherwise pay for its whole bbox.
-    near = shapely.vectorized.contains(geom.buffer(SHADE_PAD_M), gx, gy)
+    near = shapely.contains_xy(geom.buffer(SHADE_PAD_M), gx, gy)
     rows, cols = np.nonzero(near)
     for r, c in zip(rows, cols):
         grid[r, c] = building_shading_factor(
@@ -192,7 +192,7 @@ def render_building(points, geom, lookup, x_origin, y_origin, shading_factor):
         shade = shading_factor
     poa = lookup[slope_idx, aspect_idx] * shade
 
-    inside = shapely.vectorized.contains(geom, gx, gy)
+    inside = shapely.contains_xy(geom, gx, gy)
     poa[~inside | no_evidence] = np.nan
     return poa.astype(np.float32), row0, col0
 

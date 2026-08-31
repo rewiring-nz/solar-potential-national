@@ -46,7 +46,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyproj
 import rasterio
-import shapely.vectorized
+import shapely
 from matplotlib.patches import Polygon as MplPolygon
 from shapely.geometry import shape
 from shapely.ops import transform as shp_transform
@@ -91,7 +91,7 @@ def flag_panels(g, pc):
     for fg in facets:
         minx, miny, maxx, maxy = fg.bounds
         pts = pc.points_in_bbox(minx, miny, maxx, maxy, building_only=True)
-        fp = pts[shapely.vectorized.contains(fg, pts[:, 0], pts[:, 1])] if len(pts) >= 12 else pts[:0]
+        fp = pts[shapely.contains_xy(fg, pts[:, 0], pts[:, 1])] if len(pts) >= 12 else pts[:0]
         planes.append(plane_from_facet_points(fp) if len(fp) >= 12 else None)
     lumpy, zsplit = set(), set()
     for i, panel in enumerate(g["panel"]):
@@ -111,7 +111,7 @@ def flag_panels(g, pc):
         pts = pc.points_in_bbox(minx, miny, maxx, maxy, building_only=True)
         if len(pts) < LUMPY_MIN_PTS:
             continue
-        pp = pts[shapely.vectorized.contains(panel, pts[:, 0], pts[:, 1])]
+        pp = pts[shapely.contains_xy(panel, pts[:, 0], pts[:, 1])]
         if len(pp) < LUMPY_MIN_PTS:
             continue
         x0, y0, cf = planes[fi]

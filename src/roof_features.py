@@ -40,7 +40,7 @@ import warnings
 from pathlib import Path
 
 import numpy as np
-import shapely.vectorized
+import shapely
 from scipy.spatial import cKDTree
 from shapely.geometry import LineString, MultiPoint, Point, Polygon
 from shapely.ops import split as shapely_split, unary_union
@@ -176,7 +176,7 @@ def extract_features(face_poly, pts, plane):
     subtracts them from the face. [] when the face carries no such region."""
     if face_poly.is_empty or face_poly.area < TRIGGER_MIN_AREA_M2:
         return []
-    inside = pts[shapely.vectorized.contains(face_poly, pts[:, 0], pts[:, 1])] \
+    inside = pts[shapely.contains_xy(face_poly, pts[:, 0], pts[:, 1])] \
         if len(pts) else pts
     if len(inside) < TRIGGER_MIN_POINTS:
         return []
@@ -227,7 +227,7 @@ def extract_features(face_poly, pts, plane):
             mrr = q.minimum_rotated_rectangle
             if mrr.is_empty or q.area / mrr.area < FEATURE_MIN_COMPACTNESS:
                 continue                   # a long thin strip is not an object
-            sub = inside[shapely.vectorized.contains(q, inside[:, 0], inside[:, 1])]
+            sub = inside[shapely.contains_xy(q, inside[:, 0], inside[:, 1])]
             out.append((q, _fit(sub) if len(sub) >= 8 else pl))
     return out
 
@@ -244,7 +244,7 @@ def subdivide_face(face_poly, pts, plane):
     Returns [(polygon, plane), ...] or None."""
     if face_poly.is_empty or face_poly.area < TRIGGER_MIN_AREA_M2:
         return None
-    inside = pts[shapely.vectorized.contains(face_poly, pts[:, 0], pts[:, 1])] \
+    inside = pts[shapely.contains_xy(face_poly, pts[:, 0], pts[:, 1])] \
         if len(pts) else pts
     if len(inside) < TRIGGER_MIN_POINTS:
         return None
@@ -268,7 +268,7 @@ def subdivide_face(face_poly, pts, plane):
     # Each cell goes to whichever sub-plane its own points sit on.
     labelled = {}
     for cell in cells:
-        sub = inside[shapely.vectorized.contains(cell, inside[:, 0], inside[:, 1])]
+        sub = inside[shapely.contains_xy(cell, inside[:, 0], inside[:, 1])]
         if len(sub) < 6:
             best = min(range(len(planes)),
                        key=lambda k: abs(planes[k][0] * cell.centroid.x
@@ -285,7 +285,7 @@ def subdivide_face(face_poly, pts, plane):
         for q in (merged.geoms if merged.geom_type == "MultiPolygon" else [merged]):
             if q.area < MIN_SUBFACE_M2:
                 continue
-            sub = inside[shapely.vectorized.contains(q, inside[:, 0], inside[:, 1])]
+            sub = inside[shapely.contains_xy(q, inside[:, 0], inside[:, 1])]
             out.append((Polygon(q.exterior, [r for r in q.interiors]),
                         _fit(sub) if len(sub) >= 8 else planes[k]))
     if len(out) < 2:
@@ -295,7 +295,7 @@ def subdivide_face(face_poly, pts, plane):
     before = _inlier(inside, plane)
     tot = num = 0.0
     for q, pl in out:
-        sub = inside[shapely.vectorized.contains(q, inside[:, 0], inside[:, 1])]
+        sub = inside[shapely.contains_xy(q, inside[:, 0], inside[:, 1])]
         if len(sub) < 8:
             continue
         num += _inlier(sub, pl) * q.area

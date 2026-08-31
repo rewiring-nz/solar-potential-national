@@ -41,6 +41,7 @@ from shapely.ops import transform as shp_transform, unary_union
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import shapely
 from src.region_build import area_paths
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -114,11 +115,10 @@ def _refit_ids(area, ids, partition=False):
             continue
         geom = gdf.loc[bid].geometry
         if partition:
-            import shapely.vectorized
             from src.roof_partition import partition_roof
             mn, mi, mx, ma = geom.bounds
             allp = pc.points_in_bbox(mn - 2, mi - 2, mx + 2, ma + 2, building_only=True)
-            allp = allp[shapely.vectorized.contains(geom, allp[:, 0], allp[:, 1])]
+            allp = allp[shapely.contains_xy(geom, allp[:, 0], allp[:, 1])]
             facets = partition_roof(bid, geom, allp)
             for f in facets:
                 f["building_geometry"] = geom   # panel_fitting aligns rows to it

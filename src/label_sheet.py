@@ -36,7 +36,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyproj
 import rasterio
-import shapely.vectorized
+import shapely
 from scipy import ndimage
 from scipy.interpolate import griddata
 from shapely.geometry import shape
@@ -179,7 +179,7 @@ def main():
             continue
         minx, miny, maxx, maxy = o.bounds
         pts = pc.points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1, building_only=True)
-        pts = pts[shapely.vectorized.contains(o.buffer(0.3), pts[:, 0], pts[:, 1])]
+        pts = pts[shapely.contains_xy(o.buffer(0.3), pts[:, 0], pts[:, 1])]
         if len(pts) < 40:
             continue
         planes, _ = ransac_planes(pts, np.random.default_rng(0))

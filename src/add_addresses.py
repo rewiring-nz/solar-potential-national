@@ -26,8 +26,7 @@ import numpy as np
 from dotenv import load_dotenv
 from scipy.spatial import cKDTree
 from shapely.geometry import shape
-import shapely.vectorized
-
+import shapely
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.preflight import preflight
 import config
@@ -84,7 +83,7 @@ def main(area="pilot"):
     n_contained = n_nearest = n_none = 0
     for feat in sp["features"]:
         geom = shape(feat["geometry"])
-        inside = shapely.vectorized.contains(geom, pts[:, 0], pts[:, 1])
+        inside = shapely.contains_xy(geom, pts[:, 0], pts[:, 1])
         idx = np.where(inside)[0]
         if len(idx) == 0:
             c = geom.centroid

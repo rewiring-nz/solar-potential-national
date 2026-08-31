@@ -128,7 +128,7 @@ def score(bid):
         pts = c["pc"].points_in_bbox(minx, miny, maxx, maxy, building_only=True)
         pl = None
         if len(pts) >= 12:
-            inside = shapely.vectorized.contains(f["geometry"], pts[:, 0], pts[:, 1])
+            inside = shapely.contains_xy(f["geometry"], pts[:, 0], pts[:, 1])
             fp = pts[inside]
             if len(fp) >= 12:
                 pl = plane_from_facet_points(fp)
@@ -151,7 +151,7 @@ def score(bid):
         pts = c["pc"].points_in_bbox(minx, miny, maxx, maxy, building_only=True)
         if len(pts) < 6:
             continue
-        inside = shapely.vectorized.contains(g, pts[:, 0], pts[:, 1])
+        inside = shapely.contains_xy(g, pts[:, 0], pts[:, 1])
         pp = pts[inside]
         if len(pp) < 6:
             continue

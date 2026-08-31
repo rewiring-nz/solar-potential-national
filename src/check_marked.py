@@ -11,7 +11,7 @@ import argparse, sys, warnings
 from pathlib import Path
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import numpy as np, geopandas as gpd, rasterio, shapely.vectorized
+import numpy as np, geopandas as gpd, rasterio, shapely
 from shapely.geometry import Point
 from shapely.ops import unary_union
 from src.region_build import area_paths
@@ -37,7 +37,7 @@ print(f"  world origin x {int(mnx//1000)*1000}  y {int(mny//1000)*1000}")
 
 facets = segment_building_best(dsm, pc, g, a.building_id, imagery_ds=img)
 raw = pc.points_in_bbox(mnx-4, mny-4, mxx+4, mxy+4, building_only=True)
-pts = raw[shapely.vectorized.contains(g, raw[:, 0], raw[:, 1])]
+pts = raw[shapely.contains_xy(g, raw[:, 0], raw[:, 1])]
 roof = unary_union([f["geometry"] for f in facets]) if facets else None
 print(f"\nFACES: {len(facets)}")
 for f in sorted(facets, key=lambda x: -x["geometry"].area):
@@ -67,7 +67,7 @@ else:
 zin = pts[:, 2]
 lo, hi = np.percentile(zin, [5, 95])
 near = raw[(raw[:, 2] > lo - 0.5) & (raw[:, 2] < hi + 0.5)]
-out = near[~shapely.vectorized.contains(g, near[:, 0], near[:, 1])]
+out = near[~shapely.contains_xy(g, near[:, 0], near[:, 1])]
 if len(out):
     d = np.array([g.distance(Point(x, y)) for x, y in out[:, :2]])
     k = d <= 3.0

@@ -8,7 +8,7 @@ import json, sys, warnings
 from pathlib import Path
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import numpy as np, geopandas as gpd, rasterio, shapely.vectorized
+import numpy as np, geopandas as gpd, rasterio, shapely
 from shapely.geometry import Polygon, box, Point
 from shapely.ops import unary_union
 from src.region_build import area_paths
@@ -54,7 +54,7 @@ for r in TRUTH["roofs"]:
     roof = unary_union([f["geometry"] for f in facets]) if facets else None
     mnx, mny, mxx, mxy = g.bounds
     raw = pc.points_in_bbox(mnx-1, mny-1, mxx+1, mxy+1, building_only=True)
-    pts = raw[shapely.vectorized.contains(g, raw[:, 0], raw[:, 1])]
+    pts = raw[shapely.contains_xy(g, raw[:, 0], raw[:, 1])]
     fits = []
     for f in facets:
         pl = np.array([f["plane_a"], f["plane_b"], f["plane_c"]])
@@ -113,5 +113,14 @@ if prev.exists():
             dw = v["wtd"] - old[k]["wtd"]
             if dw < -0.03:
                 print(f"  REGRESSION {k}: weighted fit {old[k]['wtd']:.1%} -> {v['wtd']:.1%}")
-json.dump(cur, open(prev, "w"), indent=1)
-print("scores saved to data/marked_scores.json")
+# Only overwrite the committed baseline when this is RUN, never when it is
+# merely imported. This module has no main() guard -- its whole body executes
+# on import -- so `import src.score_all_marked` from any tool silently rescored
+# every marked building and replaced the baseline it was supposed to be
+# compared against. That happened once during the 31 Aug code review, from a
+# loop doing nothing but checking that modules import cleanly.
+if __name__ == "__main__":
+    json.dump(cur, open(prev, "w"), indent=1)
+    print("scores saved to data/marked_scores.json")
+else:
+    print("(imported, not run -- baseline data/marked_scores.json left alone)")

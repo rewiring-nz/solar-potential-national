@@ -22,7 +22,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
-import shapely.vectorized
+import shapely
 from matplotlib.patches import Polygon as MplPolygon
 
 warnings.filterwarnings("ignore")
@@ -110,7 +110,7 @@ def main():
         g = gdf.loc[bid].geometry
         mn, mi, mx, ma = g.bounds
         pts = pc.points_in_bbox(mn - 2, mi - 2, mx + 2, ma + 2, building_only=True)
-        pts = pts[shapely.vectorized.contains(g, pts[:, 0], pts[:, 1])]
+        pts = pts[shapely.contains_xy(g, pts[:, 0], pts[:, 1])]
         if len(pts) < 50:
             continue
         RP._best_cut = orig_best

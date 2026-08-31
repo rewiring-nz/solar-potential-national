@@ -37,7 +37,7 @@ from pathlib import Path
 
 import numpy as np
 import pyproj
-import shapely.vectorized
+import shapely
 from shapely.geometry import shape
 from shapely.ops import transform as shp_transform, unary_union
 
@@ -57,7 +57,7 @@ def off_plane_share(facets, pts):
     bad = tot = 0
     for f in facets:
         g = f["geometry"] if isinstance(f, dict) else f
-        pp = pts[shapely.vectorized.contains(g, pts[:, 0], pts[:, 1])]
+        pp = pts[shapely.contains_xy(g, pts[:, 0], pts[:, 1])]
         if len(pp) < 8:
             continue
         if isinstance(f, dict) and "plane_a" in f:
@@ -110,7 +110,7 @@ def main():
         outline = outlines[bid]
         minx, miny, maxx, maxy = outline.bounds
         pts = pc.points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1, building_only=True)
-        pts = pts[shapely.vectorized.contains(outline.buffer(0.3), pts[:, 0], pts[:, 1])]
+        pts = pts[shapely.contains_xy(outline.buffer(0.3), pts[:, 0], pts[:, 1])]
         if len(pts) < 40:
             continue
         old = shipped[bid]

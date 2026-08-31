@@ -76,6 +76,7 @@ import numpy as np
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import shapely
 
 # A real roof plane is DSM noise. These are the bars above which a signal is
 # worth a human looking at, not pass/fail thresholds for the pipeline.
@@ -117,7 +118,6 @@ def _ctx(area):
 
 def _scan_one(args):
     area, bid = args
-    import shapely.vectorized
     from shapely.ops import unary_union
     from src.roof_segmentation import segment_building_best
     from src.obstruction_detection import detect_obstructions_combined
@@ -151,7 +151,7 @@ def _scan_one(args):
                     spill += 1
                 if len(fpts_all) == 0:
                     continue
-                m = shapely.vectorized.contains(p["geometry"], fpts_all[:, 0], fpts_all[:, 1])
+                m = shapely.contains_xy(p["geometry"], fpts_all[:, 0], fpts_all[:, 1])
                 P = fpts_all[m]
                 if len(P) < BENT_MIN_POINTS:
                     continue
@@ -167,7 +167,7 @@ def _scan_one(args):
             minx, miny, maxx, maxy = f["geometry"].bounds
             pts = c["pc"].points_in_bbox(minx, miny, maxx, maxy, building_only=True)
             if len(pts) >= 12:
-                inside = shapely.vectorized.contains(f["geometry"], pts[:, 0], pts[:, 1])
+                inside = shapely.contains_xy(f["geometry"], pts[:, 0], pts[:, 1])
                 fp = pts[inside]
                 if len(fp) >= 12:
                     r = fp[:, 2] - (plane[0] * fp[:, 0] + plane[1] * fp[:, 1] + plane[2])

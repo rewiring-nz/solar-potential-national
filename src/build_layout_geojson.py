@@ -32,6 +32,7 @@ import rasterio
 from shapely.ops import transform as shapely_transform
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import shapely
 from src.preflight import preflight
 import geopandas as gpd
 
@@ -68,13 +69,12 @@ BIG_ROOF_MIN_PANELS = 8
 def _facet_fit(f, pc_source):
     """This one facet's own on-plane fraction -- how believable it is alone."""
     try:
-        import shapely.vectorized
         g = f["geometry"]
         minx, miny, maxx, maxy = g.bounds
         pts = pc_source.points_in_bbox(minx, miny, maxx, maxy, building_only=True)
         if len(pts) < 12:
             return 1.0            # too few points to judge: do not punish
-        inside = shapely.vectorized.contains(g, pts[:, 0], pts[:, 1])
+        inside = shapely.contains_xy(g, pts[:, 0], pts[:, 1])
         pts = pts[inside]
         if len(pts) < 12:
             return 1.0

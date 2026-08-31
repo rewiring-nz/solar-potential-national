@@ -52,7 +52,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
-import shapely.vectorized
+import shapely
 from rasterio.features import rasterize, shapes as rasterio_shapes
 from rasterio.mask import mask as rasterio_mask
 from scipy import ndimage
@@ -556,7 +556,7 @@ def detect_obstructions_from_height(pc_source, facet_geom, plane, residual_thres
     if len(pts) < HEIGHT_MIN_CLUSTER_POINTS:
         return []
 
-    inside = shapely.vectorized.contains(facet_geom, pts[:, 0], pts[:, 1])
+    inside = shapely.contains_xy(facet_geom, pts[:, 0], pts[:, 1])
     pts = pts[inside]
     if len(pts) < HEIGHT_MIN_CLUSTER_POINTS:
         return []
@@ -649,7 +649,7 @@ def detect_obstructions_from_height(pc_source, facet_geom, plane, residual_thres
                 # proxy before the evidence is what made raising sensitivity
                 # LOWER detection: more flagged points grow a cluster, the grown
                 # cluster trips the cap, and the whole thing is thrown away.
-                in_part = shapely.vectorized.contains(part, member_pts3d[:, 0], member_pts3d[:, 1])
+                in_part = shapely.contains_xy(part, member_pts3d[:, 0], member_pts3d[:, 1])
                 part_pts3d = member_pts3d[in_part]
                 frac_above = None
                 if len(part_pts3d) >= 5:
@@ -670,7 +670,7 @@ def detect_obstructions_from_height(pc_source, facet_geom, plane, residual_thres
                         continue
                 strong_area_used += part.area
                 if part.area >= HEIGHT_STRONG_PLANAR_MIN_AREA_M2:
-                    in_part = shapely.vectorized.contains(part, member_pts3d[:, 0], member_pts3d[:, 1])
+                    in_part = shapely.contains_xy(part, member_pts3d[:, 0], member_pts3d[:, 1])
                     part_pts = member_pts3d[in_part]
                     if len(part_pts) >= 6:
                         x0, y0 = part_pts[:, 0].mean(), part_pts[:, 1].mean()
@@ -766,8 +766,7 @@ def _lidar_signature(blob, pc_source, plane):
     pts = pc_source.points_in_bbox(minx, miny, maxx, maxy, building_only=True)
     if len(pts) < 4:
         return False
-    import shapely.vectorized as _sv
-    inside = _sv.contains(blob, pts[:, 0], pts[:, 1])
+    inside = shapely.contains_xy(blob, pts[:, 0], pts[:, 1])
     bp = pts[inside]
     if len(bp) < 4:
         return False
@@ -804,8 +803,7 @@ def _sunken_regions(pc_source, facet_geom, plane):
     pts = pc_source.points_in_bbox(minx, miny, maxx, maxy, building_only=True)
     if len(pts) < 12:
         return []
-    import shapely.vectorized as _sv
-    inside = _sv.contains(facet_geom, pts[:, 0], pts[:, 1])
+    inside = shapely.contains_xy(facet_geom, pts[:, 0], pts[:, 1])
     bp = pts[inside]
     if len(bp) < 12:
         return []
@@ -912,8 +910,7 @@ def detect_obstructions_combined(imagery_ds, pc_source, facet_geom, plane,
             minx, miny, maxx, maxy = blob.bounds
             bpts = pc_source.points_in_bbox(minx, miny, maxx, maxy, building_only=True)
             if len(bpts) >= 5:
-                import shapely.vectorized as _sv
-                inside = _sv.contains(blob, bpts[:, 0], bpts[:, 1])
+                inside = shapely.contains_xy(blob, bpts[:, 0], bpts[:, 1])
                 bp = bpts[inside]
                 if len(bp) >= 5:
                     res = bp[:, 2] - (va * bp[:, 0] + vb * bp[:, 1] + vc)
@@ -1024,7 +1021,7 @@ def detect_obstructions_combined(imagery_ds, pc_source, facet_geom, plane,
                 continue
             rows_idx, cols_idx = np.mgrid[r0:r1, c0:c1]
             xs, ys = rasterio.transform.xy(transform, rows_idx.ravel(), cols_idx.ravel())
-            inside = shapely.vectorized.contains(h, np.array(xs), np.array(ys)).reshape(rows_idx.shape)
+            inside = shapely.contains_xy(h, np.array(xs), np.array(ys)).reshape(rows_idx.shape)
             if not inside.any():
                 continue
             shape_dist = dist[r0:r1, c0:c1][inside]

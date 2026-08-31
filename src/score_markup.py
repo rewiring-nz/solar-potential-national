@@ -1,7 +1,7 @@
 """Score our faces against Josh's TRACED markup, not against a face count."""
 import sys, json, warnings; sys.path.insert(0,"."); sys.path.insert(0,"src")
 warnings.filterwarnings("ignore")
-import numpy as np, geopandas as gpd, shapely.vectorized
+import numpy as np, geopandas as gpd, shapely
 from shapely.geometry import Polygon, LineString
 from src.region_build import area_paths
 from src.pointcloud_source import PointCloudSource
@@ -14,7 +14,7 @@ pc = PointCloudSource()
 gdf = gpd.read_file(area_paths("pilot")["outlines"]).set_index("building_id", drop=False)
 g = gdf.loc[5371108].geometry; mnx,mny,mxx,mxy = g.bounds
 raw = pc.points_in_bbox(mnx-1,mny-1,mxx+1,mxy+1,building_only=True)
-pts = raw[shapely.vectorized.contains(g, raw[:,0], raw[:,1])]
+pts = raw[shapely.contains_xy(g, raw[:,0], raw[:,1])]
 faces = rp.partition_roof(5371108, g.buffer(0), pts)
 
 # the band's own long axis separates the NW section from the SE section

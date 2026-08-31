@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 import pyproj
 import rasterio
-import shapely.vectorized
+import shapely
 from shapely.geometry import shape
 from shapely.ops import transform as shp_transform
 
@@ -64,7 +64,7 @@ def panel_ok(poly, pc, dem, dem_transform_inv):
     if len(pts_all) == 0:
         return True, "no_coverage_kept"
     pts = pc.points_in_bbox(minx - 0.3, miny - 0.3, maxx + 0.3, maxy + 0.3, building_only=True)
-    inside_all = shapely.vectorized.contains(poly, pts_all[:, 0], pts_all[:, 1])
+    inside_all = shapely.contains_xy(poly, pts_all[:, 0], pts_all[:, 1])
     n_all = int(inside_all.sum())
     if n_all < MIN_EVIDENCE_PTS:
         return True, "thin_coverage_kept"  # not enough returns of ANY class to judge
@@ -89,7 +89,7 @@ def panel_ok(poly, pc, dem, dem_transform_inv):
         # sits at ground level: carpark, yard, slab, or air over a gap where
         # the only returns are the ground below
         return False, "sparse"
-    inside = shapely.vectorized.contains(poly, pts[:, 0], pts[:, 1]) if len(pts) else np.zeros(0, bool)
+    inside = shapely.contains_xy(poly, pts[:, 0], pts[:, 1]) if len(pts) else np.zeros(0, bool)
     pp = pts[inside] if len(pts) and inside.any() else all_in
     # NO height-above-DEM test. The wide DEM is 8m-resolution smoothed bare
     # earth: on sloping ground its cell averages uphill terrain, so a real

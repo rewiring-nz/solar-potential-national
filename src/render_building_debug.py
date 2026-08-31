@@ -23,6 +23,7 @@ from shapely.geometry import Polygon, MultiPolygon
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import shapely
 from src.refit_one import _area_of, _load
 from src.roof_segmentation import (
     segment_building_best,
@@ -34,30 +35,27 @@ from src.obstruction_detection import detect_obstructions_combined
 from src.panel_fitting import fit_panels_on_facet
 
 def _skeleton(ctx, geom, bid):
-    import shapely.vectorized
     from src.roof_partition import top_surface
     from src.roof_skeleton import skeleton_roof
     minx, miny, maxx, maxy = geom.bounds
     pts = ctx["pc"].points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1, building_only=True)
-    pts = pts[shapely.vectorized.contains(geom, pts[:, 0], pts[:, 1])]
+    pts = pts[shapely.contains_xy(geom, pts[:, 0], pts[:, 1])]
     return skeleton_roof(bid, geom.buffer(0), top_surface(pts))
 
 
 def _arrangement(ctx, geom, bid):
-    import shapely.vectorized
     from src.roof_segmentation import _arrangement_facets
     minx, miny, maxx, maxy = geom.bounds
     pts = ctx["pc"].points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1, building_only=True)
-    pts = pts[shapely.vectorized.contains(geom, pts[:, 0], pts[:, 1])]
+    pts = pts[shapely.contains_xy(geom, pts[:, 0], pts[:, 1])]
     return _arrangement_facets(pts, geom, bid)
 
 
 def _byplanes(ctx, geom, bid):
-    import shapely.vectorized
     from src.roof_partition import partition_by_planes
     minx, miny, maxx, maxy = geom.bounds
     pts = ctx["pc"].points_in_bbox(minx - 1, miny - 1, maxx + 1, maxy + 1, building_only=True)
-    pts = pts[shapely.vectorized.contains(geom, pts[:, 0], pts[:, 1])]
+    pts = pts[shapely.contains_xy(geom, pts[:, 0], pts[:, 1])]
     return partition_by_planes(bid, geom.buffer(0), pts)
 
 
