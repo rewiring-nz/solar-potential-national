@@ -306,6 +306,18 @@ def main(area="pilot", jobs=None, limit=0, dry_run=False):
     if limit:
         ids = ids[:limit]
 
+    # A missing imagery mosaic is ACCEPTED (rural regions genuinely have none --
+    # LINZ aerial is urban-only) but it must never pass unremarked: obstruction
+    # detection loses the colour half of its evidence and roof_partition loses
+    # its image lines, so the build is quietly worse than one with imagery. This
+    # bit us on Island Bay, where a rebuild was queued against a mosaic that had
+    # been cleaned up for disk and would have shipped a degraded layout with
+    # nothing in the log to say why.
+    if not paths["imagery"].exists():
+        print(f"[{area}] WARNING: no imagery mosaic -- building LiDAR-ONLY. "
+              f"Obstruction detection and roof partitioning are degraded. "
+              f"Fetch with: python src/fetch_regions.py {area}", flush=True)
+
     print(f"[{area}] Building solar yield lookup table (pvlib + NASA POWER)...")
     centroid = area_centroid_wgs84(area)
     model = SolarModel() if centroid is None else SolarModel(*centroid)
