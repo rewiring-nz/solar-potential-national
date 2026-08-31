@@ -44,52 +44,90 @@ AREA_REL_TOL = 0.01
 
 
 def _open_area(area):
-    """Rasters and point cloud for one area, or None if this machine lacks them."""
-    import rasterio
-    from src.region_build import area_paths
-    from src.pointcloud_source import PointCloudSource
+    """Prepare one area, or None if this machine lacks its data.
+
+    Deliberately sets up the REAL build worker rather than calling segmentation
+    directly. build_layout_geojson._build_one is the exact per-building path a
+    district rebuild runs, so what these tests pin is what actually ships:
+    facets, obstructions, panels and annual kWh -- not a reimplementation that
+    could drift away from the pipeline while still passing.
+    """
+    from src.region_build import area_paths, area_centroid_wgs84
     p = area_paths(area)
     if not p["outlines"].exists() or not p["dsm"].exists():
         return None
     import geopandas as gpd
+    from src.solar_model import SolarModel
+    import src.build_layout_geojson as B
+    try:
+        c = area_centroid_wgs84(area)
+        model = SolarModel() if c is None else SolarModel(*c)
+        B._init_worker(area, model)
+    except Exception as exc:
+        print(f"  (cannot prepare {area}: {type(exc).__name__}: {exc})")
+        return None
     return {
-        "gdf": gpd.read_file(p["outlines"]).set_index("building_id", drop=False),
-        "dsm": rasterio.open(p["dsm"]),
-        "imagery": rasterio.open(p["imagery"]) if p["imagery"].exists() else None,
-        "pc": PointCloudSource(),
+        "build_one": B._build_one,
+        "ids": set(gpd.read_file(p["outlines"])["building_id"].tolist()),
     }
 
 
 def _measure(ctx, building_id):
-    """The shape of one building's segmentation, as comparable numbers."""
-    from src.roof_segmentation import segment_building_best
-    if building_id not in ctx["gdf"].index:
+    """One building through the real pipeline, as comparable numbers."""
+    if building_id not in ctx["ids"]:
         return None
-    geom = ctx["gdf"].loc[building_id, "geometry"]
-    facets = segment_building_best(ctx["dsm"], ctx["pc"], geom, building_id,
-                                   imagery_ds=ctx["imagery"]) or []
+    feats = ctx["build_one"](building_id) or []
+    facets = [f for f in feats if f["properties"]["kind"] == "facet"]
+    panels = [f for f in feats if f["properties"]["kind"] == "panel"]
+    obstr = [f for f in feats if f["properties"]["kind"] == "obstruction"]
+    kwh = sum(f["properties"].get("ac_kwh_year") or 0.0 for f in panels)
     return {
         "facets": len(facets),
-        "areas": sorted(round(f["geometry"].area, 2) for f in facets),
-        "slopes": sorted(round(float(f["slope_deg"]), 1) for f in facets),
-        "total_area": round(sum(f["geometry"].area for f in facets), 2),
+        "panels": len(panels),
+        "obstructions": len(obstr),
+        "ac_kwh_year": round(kwh, 1),
+        # NOT areas: _build_one emits WGS84 geometry, where .area is degrees
+        # squared and means nothing. What the pipeline does carry per facet is
+        # its orientation, its irradiance and how many panels it took -- which
+        # are closer to the published numbers anyway.
+        "slopes": sorted(round(float(f["properties"].get("slope_deg") or 0.0), 1)
+                         for f in facets),
+        "aspects": sorted(round(float(f["properties"].get("aspect_deg") or 0.0), 1)
+                          for f in facets),
+        "facet_panels": sorted(int(f["properties"].get("panel_count") or 0)
+                               for f in facets),
+        "poa": sorted(round(float(f["properties"].get("poa_kwh_m2_yr") or 0.0), 1)
+                      for f in facets),
     }
 
 
 def _compare(name, got, want):
     """Returns a list of human-readable differences."""
     out = []
-    if got["facets"] != want["facets"]:
-        out.append(f"facet count {want['facets']} -> {got['facets']}")
-    if abs(got["total_area"] - want["total_area"]) > AREA_REL_TOL * max(want["total_area"], 1):
-        out.append(f"total area {want['total_area']} -> {got['total_area']} m2")
+    for key, label in (("facets", "facet count"),
+                       ("panels", "panel count"),
+                       ("obstructions", "obstruction count")):
+        if key in want and got.get(key) != want[key]:
+            out.append(f"{label} {want[key]} -> {got.get(key)}")
+    # The published number. 0.5% of a 13,000 kWh roof is 65 kWh -- tight enough
+    # that a real modelling change shows up, loose enough to survive rounding.
+    if "ac_kwh_year" in want and want["ac_kwh_year"]:
+        if abs(got.get("ac_kwh_year", 0) - want["ac_kwh_year"]) > 0.005 * want["ac_kwh_year"]:
+            out.append(f"annual yield {want['ac_kwh_year']} -> "
+                       f"{got.get('ac_kwh_year')} kWh")
     if got["facets"] == want["facets"]:
-        for a, b in zip(want["areas"], got["areas"]):
-            if abs(a - b) > AREA_REL_TOL * max(a, 1):
-                out.append(f"facet area {a} -> {b} m2")
-        for a, b in zip(want["slopes"], got["slopes"]):
+        for a, b in zip(want.get("slopes", []), got["slopes"]):
             if abs(a - b) > 0.5:
                 out.append(f"facet slope {a} -> {b} deg")
+        for a, b in zip(want.get("aspects", []), got["aspects"]):
+            if abs(a - b) > 0.5:
+                out.append(f"facet aspect {a} -> {b} deg")
+        if want.get("facet_panels") != got["facet_panels"]:
+            out.append(f"panels per facet {want.get('facet_panels')} -> "
+                       f"{got['facet_panels']}")
+        for a, b in zip(want.get("poa", []), got["poa"]):
+            if abs(a - b) > AREA_REL_TOL * max(a, 1):
+                out.append(f"facet irradiance {a} -> {b} kWh/m2/yr")
     return out
 
 
@@ -112,8 +150,9 @@ def record():
                 continue
             spec["buildings"][bid].update(m)
             print(f"  recorded {bid} ({area}): {m['facets']} facets, "
-                  f"{m['total_area']} m2")
-    spec["_note"] = ("Recorded output of segment_building_best, NOT ground truth. "
+                  f"{m['panels']} panels, {m['ac_kwh_year']:.0f} kWh/yr")
+    spec["_note"] = ("Recorded output of build_layout_geojson._build_one -- the "
+                     "real per-building pipeline path -- NOT ground truth. "
                      "Re-record deliberately and explain the change in the commit.")
     GOLDEN.write_text(json.dumps(spec, indent=1, sort_keys=True))
     print(f"\nwrote {GOLDEN}")
