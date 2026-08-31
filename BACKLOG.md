@@ -118,16 +118,45 @@ scratchpad). VM STOPPED. Three reasons to hold the push:
    threshold. They have degraded obstruction detection and roof partitioning.
    Rebuild them before shipping.
 
-2. **The headline number moved +8.3% on FLAT panel count.**
+2. **The headline number moved +8.3% on FLAT panel count, and MOST OF IT IS
+   UNEXPLAINED.**
        buildings     15,138 -> 15,138
        placed panels 750,672 -> 749,367  (-1,305, -0.2%)
        annual output 301.9  -> 327.0 GWh/yr  (+25.1)
-   Panels essentially unchanged, so this is entirely a MODEL change: per-panel
-   yield rose ~8.3%. And it rose DESPITE the derate going 14% -> 19%, which
-   alone cuts ~5.8% — so POA must have risen ~15%. That is consistent with
-   moving isotropic -> Perez sky (Perez raises tilted-plane diffuse), but a 15%
-   move in the number the public reads should be explained deliberately, not
-   noticed in a diff.
+   Panels are flat, so this is entirely per-panel yield.
+
+   I first assumed the Perez sky change explained it. MEASURED, it does not.
+   Running the pre-fix solar_model (4c7e4b3~1) against the current one on the
+   same nine angles:
+
+       tilt  aspect     OLD     NEW    change
+          0       0    1363    1388     +1.9%
+         10       0    1515    1490     -1.7%
+         20       0    1630    1559     -4.4%
+         30       0    1704    1595     -6.4%
+         20      90    1319    1350     +2.3%
+         20     180     972    1126    +15.9%
+         20     270    1318    1342     +1.9%
+         35       0    1726    1600     -7.3%
+         35     180     704     917    +30.2%
+       mean POA change: +1.0%   (big REDISTRIBUTION: north-facing down 4-7%,
+       south-facing up 16-30%, which is the anisotropic sky correcting diffuse
+       on badly-oriented roofs — a real improvement, and nearly net-neutral)
+
+   Isolating the sky model alone gives +1.3%. The derate 14% -> 19% gives -5.8%.
+   So irradiance + derate together predict **-4.9%**, against an observed
+   **+8.3%**. THERE IS A ~13-POINT GAP THAT NEITHER CHANGE ACCOUNTS FOR.
+
+   The gap must come from the other things in this build: the segmentation work
+   (skeleton reconstruction, top-surface filter, plane refit — all of which move
+   facet slopes and aspects) and/or the per-building horizon program, which
+   replaced ONE area-wide terrain profile with a per-building one. That second
+   one is the strongest suspect: a single area profile over-shades hilltop
+   buildings, and removing that pessimism district-wide would raise output
+   exactly like this. If so it is an improvement — but it is a ~13% improvement
+   to a public kWh figure that nobody has deliberately signed off.
+
+   DO NOT PUSH until this is attributed. It is 25 GWh/yr of claimed generation.
 
 3. **PVGIS says we are +4.7% high at the pilot, same sign at every angle**
    (+4.3, +4.3, +4.3, +4.2, +5.2, +5.8, +3.5, +4.2, +6.6; worst +6.6%). By
