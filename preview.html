@@ -3766,16 +3766,18 @@ map.on("load", async () => {
     // smear a shaded valley roof's early winter cut-off onto its neighbours.
     entries.forEach(([bid, entry]) => {
       const binKwp = binKwpFor(entry.facets, entry.panels);
-      const a = mkGrid(), p = mkGrid(), pd = mkGrid();
-      let haveDif = true;
+      const a = mkGrid(), p = mkGrid(), pd = mkGrid(), ad = mkGrid();
+      let haveDif = true, haveAvgDif = true;
       for (const [key, kwp] of Object.entries(binKwp)) {
         const cur = seasonCurves.curves[key];
         if (!cur) continue;
         if (!cur.peak_dif) haveDif = false;
+        if (!cur.avg_dif) haveAvgDif = false;
         for (let s2 = 0; s2 < S; s2++) for (let h = 0; h < 24; h++) {
           a[s2][h] += cur.avg[s2][h] * kwp * derateScale;
           p[s2][h] += cur.peak[s2][h] * kwp * derateScale;
           if (cur.peak_dif) pd[s2][h] += cur.peak_dif[s2][h] * kwp * derateScale;
+          if (cur.avg_dif) ad[s2][h] += cur.avg_dif[s2][h] * kwp * derateScale;
         }
       }
       const src = selectedPropsById[bid] || selectedBuildingProps;
@@ -3785,7 +3787,17 @@ map.on("load", async () => {
         let av = a[s2][h], pk = p[s2][h];
         if (masked) {
           const frac = (+tshade[s2 * 24 + h]) / 9;
-          av *= Math.max(frac, DIFFUSE_FLOOR);
+          // Blocked hours fall back to what the roof still gets with the beam
+          // removed. avg_dif is that curve, built from a real Erbs
+          // decomposition of the cloud-adjusted irradiance; the flat 0.18 floor
+          // it replaces was a stand-in from when the model could not split beam
+          // from diffuse on a cloudy mean. Interpolated by frac so a partly
+          // blocked hour lands between the two rather than snapping.
+          if (haveAvgDif) {
+            av = ad[s2][h] + frac * (av - ad[s2][h]);
+          } else {
+            av *= Math.max(frac, DIFFUSE_FLOOR);
+          }
           // one real day: terrain either blocks that hour or it doesn't
           pk = frac >= 0.5 ? pk : (haveDif ? pd[s2][h] : pk * DIFFUSE_FLOOR);
         }

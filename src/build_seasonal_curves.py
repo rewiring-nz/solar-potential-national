@@ -103,14 +103,14 @@ def main():
             # clear sky is DNI 699 W/m2 against DHI 14, so a north-facing 20
             # degree roof keeps 4.3%, not 18%.
             #
-            # The season-MEAN curve deliberately does NOT get one. It is
-            # clear-sky scaled by a monthly cloud factor, which preserves the
-            # clear-sky beam:diffuse ratio -- wrong for a cloudy day, where
-            # diffuse is most of the light and losing the beam to terrain costs
-            # little. Applying the clear-sky fraction to a cloud-averaged mean
-            # would understate typical winter afternoons. Decomposing the
-            # cloudy fraction is not something monthly scalars can do, so the
-            # frontend keeps a flat floor there and says so.
+            # The season-MEAN curve now gets one too. It used not to: the mean
+            # was clear-sky scaled by a monthly factor, which preserved the
+            # clear-sky beam:diffuse ratio, so its "beam removed" twin would
+            # have been a clear-day fraction applied to a cloudy mean -- far too
+            # harsh. The frontend carried a flat 0.18 floor instead and said so.
+            # Now that the mean is decomposed with Erbs, dni_avg and dhi_avg are
+            # real, so the honest twin is simply the same transposition with the
+            # beam removed. The floor is no longer needed.
             poa_dif = pvlib.irradiance.get_total_irradiance(
                 surface_tilt=slope, surface_azimuth=aspect,
                 dni=dni_cs * 0, ghi=dhi_cs, dhi=dhi_cs,
@@ -124,17 +124,26 @@ def main():
                 solar_zenith=solpos["apparent_zenith"], solar_azimuth=solpos["azimuth"],
                 **_perez,
             )["poa_global"].clip(lower=0)
+            poa_avg_dif = pvlib.irradiance.get_total_irradiance(
+                surface_tilt=slope, surface_azimuth=aspect,
+                dni=dni_avg * 0, ghi=dhi_avg, dhi=dhi_avg,
+                solar_zenith=solpos["apparent_zenith"], solar_azimuth=solpos["azimuth"],
+                **_perez,
+            )["poa_global"].clip(lower=0)
+
             kw_avg = poa_avg / 1000 * derate   # kW per kWp
             kw_peak = poa_cs / 1000 * derate
             kw_peak_dif = poa_dif / 1000 * derate
+            kw_avg_dif = poa_avg_dif / 1000 * derate
 
-            entry = {"avg": [], "peak": [], "peak_dif": []}
+            entry = {"avg": [], "peak": [], "peak_dif": [], "avg_dif": []}
             for months in SEASONS.values():
                 in_season = times.month.isin(months)
                 def hourly_mean(series):
                     x = series[in_season]
                     return [round(v, 3) for v in x.groupby(x.index.hour).mean().reindex(range(24), fill_value=0)]
                 entry["avg"].append(hourly_mean(kw_avg))
+                entry["avg_dif"].append(hourly_mean(kw_avg_dif))
                 sp = kw_peak[in_season]
                 best_day = sp.resample("1D").sum().idxmax().date()
                 # The diffuse twin must come from the SAME day, or the dotted
