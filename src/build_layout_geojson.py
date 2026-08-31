@@ -317,6 +317,15 @@ def main(area="pilot", jobs=None, limit=0, dry_run=False):
         print(f"[{area}] WARNING: no imagery mosaic -- building LiDAR-ONLY. "
               f"Obstruction detection and roof partitioning are degraded. "
               f"Fetch with: python src/fetch_regions.py {area}", flush=True)
+    # Same rule for the wide DEM: its absence turns the per-building far-horizon
+    # correction into a no-op, so yields quietly revert to the area-wide terrain
+    # profile. Written as a silent fallback when the horizon work landed -- which
+    # is precisely the failure mode that cost us the terrain masks and nearly
+    # cost us an Island Bay rebuild.
+    if not (DATA_DIR / "dem_wide_mosaic.tif").exists():
+        print(f"[{area}] WARNING: no data/dem_wide_mosaic.tif -- per-building "
+              f"horizons are OFF and yields fall back to the area terrain "
+              f"profile.", flush=True)
 
     print(f"[{area}] Building solar yield lookup table (pvlib + NASA POWER)...")
     centroid = area_centroid_wgs84(area)

@@ -224,6 +224,8 @@ def main(area="pilot"):
         dem_wide_band, dem_wide_transform, dem_wide_nodata = _dw.read(1), _dw.transform, _dw.nodata
     else:
         dem_wide_band = dem_wide_transform = dem_wide_nodata = None
+        print(f"[{area}] WARNING: no data/dem_wide_mosaic.tif -- far-terrain "
+              f"correction is OFF for this raster.", flush=True)
 
     for i, row in enumerate(gdf.itertuples()):
         bminx, bminy, bmaxx, bmaxy = row.geometry.bounds
