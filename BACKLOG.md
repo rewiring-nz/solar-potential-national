@@ -7,7 +7,7 @@ compacted, which is why Josh kept having to re-state the list.
 
 Ordered by evidence, not by appeal. Every item names what it is based on.
 
-## VM DISK IS TIGHT BUT STABLE — 31 Aug (my earlier ALARM WAS WRONG)
+## VM DISK IS DEGRADING THE BUILD — 31 Aug (two corrections, read both)
 
 CORRECTION. I first called this imminent: 20 GB free, 11 regions to go, and a
 2 GB drop over a few minutes. That extrapolation was wrong. `qtn_full2.sh` line
@@ -16,12 +16,29 @@ fetched them, so consumption is self-limiting. Measured across ~2 hours and 4
 regions, free space went 22 -> 20 -> 23 GB: FLUCTUATING, not trending to zero.
 The build is not on course to die, and no emergency action is needed.
 
-What remains TRUE and still worth doing: 45.5 GB of `*_export.zip` is genuinely
-redundant, and ~10% free on the build disk is thinner headroom than a 12-hour
-job deserves. Reclaiming is a good idea, not a rescue.
+SECOND CORRECTION, 14:41. The build is not dying — that part of the first
+alarm stays wrong — but disk IS now actively degrading it, in a way I did not
+anticipate. `qtn_full2.sh` line 27 only fetches imagery when free >= 20 GB;
+below that it logs "WARN low disk: <region> LiDAR only" and builds without it.
+Free hit 18 GB and town_south_lake is now building LiDAR-ONLY, as will every
+region after it.
 
-LESSON: two readings minutes apart is not a trend. I raised an alarm and sent a
-notification off it before checking whether anything already cleaned up.
+That matters: without imagery, obstruction detection loses its colour evidence
+and roof_partition loses its image lines. It is the exact degradation the
+Island Bay guard exists to prevent, and here it is happening by design in a
+different script.
+
+ACTION, worth doing NOW rather than later — it changes the output:
+    bash ~/reclaim_space.sh --yes     # frees 27.8 GB, restores free to ~46 GB
+Only ~2 regions remain after town_south_lake, so the window is small. Regions
+already built LiDAR-only can be rebuilt individually afterwards (run_stage makes
+that cheap) — check the status file for every "LiDAR only" warning and redo
+those regions.
+
+LESSON: two readings minutes apart is not a trend, and I raised the first alarm
+off one. But I then over-corrected to "no action needed" without checking what
+the build script DOES under disk pressure. The failure mode was never a crash;
+it was silent quality loss, which is the harder one to see.
 
 CAUSE: nothing deletes the Earth Engine `*_export.zip` downloads once they are
 unpacked into `*_mosaic.tif`. 45.5 GB of them had accumulated across 62 files.
