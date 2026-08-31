@@ -11,6 +11,7 @@ Usage: python src/fetch_data.py
 
 import json
 import os
+import shutil
 import sys
 import time
 import zipfile
@@ -129,7 +130,57 @@ def fetch_raster(bbox_wgs84, api_key, layer_id, name, out_dir=DATA_DIR, format_k
         s.close()
 
     print(f"Mosaicked {len(tifs)} tiles -> {mosaic_path}")
+    reclaim_export_intermediates(zip_path, extract_dir, mosaic_path)
     return mosaic_path
+
+
+def reclaim_export_intermediates(zip_path, extract_dir, mosaic_path,
+                                 keep=None):
+    """Delete the download archive and the unpacked tiles, once the mosaic
+    they produced actually exists.
+
+    Nothing used to remove these. On 31 Aug the Queenstown rebuild was down to
+    20 GB free with 11 of 25 regions still to write, while 45.5 GB of
+    `*_export.zip` sat on disk across 62 files -- plus the unpacked tiles
+    beside them, which are the same pixels a third time. The build would have
+    died hours in, and the failure would have looked like a disk problem rather
+    than a missing cleanup.
+
+    Both inputs are pure intermediates: the zip is the raw download, the
+    extracted tiles are only ever merged into the mosaic, and a re-fetch
+    reproduces either. The mosaic itself is NEVER touched here -- later stages
+    and the truth scorecard read it, and deleting imagery out from under a
+    later stage has broken a run before.
+
+    Deletes only when the mosaic exists and is non-empty, so a failed merge
+    leaves everything in place to retry from. Set SOLAR_KEEP_EXPORTS=1 to keep
+    them when debugging a bad mosaic.
+    """
+    if keep is None:
+        keep = os.environ.get("SOLAR_KEEP_EXPORTS") == "1"
+    if keep:
+        print("  (SOLAR_KEEP_EXPORTS=1 -- keeping export intermediates)")
+        return 0
+    if not (mosaic_path.exists() and mosaic_path.stat().st_size > 0):
+        print("  (mosaic missing or empty -- keeping intermediates to retry from)")
+        return 0
+
+    freed = 0
+    try:
+        if zip_path.exists():
+            freed += zip_path.stat().st_size
+            zip_path.unlink()
+        if extract_dir.exists() and extract_dir.is_dir():
+            freed += sum(f.stat().st_size for f in extract_dir.rglob("*")
+                         if f.is_file())
+            shutil.rmtree(extract_dir)
+    except OSError as exc:
+        # Never fail a fetch over cleanup -- a full disk is recoverable, a
+        # half-fetched region is not.
+        print(f"  (could not reclaim export intermediates: {exc})")
+    if freed:
+        print(f"  reclaimed {freed / 1024**3:.1f} GB of export intermediates")
+    return freed
 
 
 def main():

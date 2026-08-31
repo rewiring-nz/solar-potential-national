@@ -174,6 +174,77 @@ def test_inverter_loss_is_not_double_counted():
 
 
 # --------------------------------------------------------------------------
+# Export cleanup. This one deletes files, so its refusal cases matter more
+# than its happy path: a bug here either fills the disk (what happened) or
+# throws away the only copy of a half-fetched multi-GB download.
+# --------------------------------------------------------------------------
+
+def _export_fixture(tmp, mosaic_bytes=b"x" * 1000):
+    from pathlib import Path
+    d = Path(tmp)
+    z = d / "imagery_export.zip"
+    z.write_bytes(b"z" * 5000)
+    ex = d / "imagery"
+    ex.mkdir()
+    (ex / "a.tif").write_bytes(b"t" * 3000)
+    m = d / "imagery_mosaic.tif"
+    if mosaic_bytes is not None:
+        m.write_bytes(mosaic_bytes)
+    return z, ex, m
+
+
+def test_export_cleanup_removes_intermediates_but_keeps_the_mosaic():
+    import tempfile
+    from src.fetch_data import reclaim_export_intermediates as reclaim
+    with tempfile.TemporaryDirectory() as tmp:
+        z, ex, m = _export_fixture(tmp)
+        freed = reclaim(z, ex, m)
+        assert freed == 8000, freed
+        assert not z.exists() and not ex.exists()
+        assert m.exists(), "the mosaic must never be deleted"
+
+
+def test_export_cleanup_keeps_everything_when_the_mosaic_is_missing():
+    """A failed merge must leave the multi-GB download in place to retry from."""
+    import tempfile
+    from src.fetch_data import reclaim_export_intermediates as reclaim
+    with tempfile.TemporaryDirectory() as tmp:
+        z, ex, m = _export_fixture(tmp, mosaic_bytes=None)
+        assert reclaim(z, ex, m) == 0
+        assert z.exists() and ex.exists()
+
+
+def test_export_cleanup_keeps_everything_when_the_mosaic_is_empty():
+    """A zero-byte mosaic means the merge failed, even though the file exists."""
+    import tempfile
+    from src.fetch_data import reclaim_export_intermediates as reclaim
+    with tempfile.TemporaryDirectory() as tmp:
+        z, ex, m = _export_fixture(tmp, mosaic_bytes=b"")
+        assert reclaim(z, ex, m) == 0
+        assert z.exists() and ex.exists()
+
+
+def test_export_cleanup_can_be_opted_out_for_debugging():
+    import tempfile
+    from src.fetch_data import reclaim_export_intermediates as reclaim
+    with tempfile.TemporaryDirectory() as tmp:
+        z, ex, m = _export_fixture(tmp)
+        assert reclaim(z, ex, m, keep=True) == 0
+        assert z.exists() and ex.exists()
+
+
+def test_export_cleanup_never_raises():
+    """Cleanup must not fail a fetch: a full disk is recoverable, a
+    half-fetched region is not."""
+    import tempfile
+    from pathlib import Path
+    from src.fetch_data import reclaim_export_intermediates as reclaim
+    with tempfile.TemporaryDirectory() as tmp:
+        _, _, m = _export_fixture(tmp)
+        assert reclaim(Path("/nonexistent/x.zip"), Path("/nonexistent/d"), m) == 0
+
+
+# --------------------------------------------------------------------------
 
 def _main():
     tests = [(n, f) for n, f in sorted(globals().items())
