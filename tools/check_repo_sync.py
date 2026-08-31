@@ -49,6 +49,12 @@ def shared_files(root):
     """Everything both repos are expected to hold in common."""
     out = [p.relative_to(root).as_posix()
            for p in sorted((root / "src").glob("*.py"))]
+    # tools/ and tests/ count too. They were left out of the first version of
+    # this script, which would have let the guard itself drift between repos --
+    # the one file whose whole job is noticing drift.
+    for sub in ("tools", "tests"):
+        out += [p.relative_to(root).as_posix()
+                for p in sorted((root / sub).glob("*.py"))]
     for extra in ("preview.html", "config.py", "requirements.txt",
                   "requirements.lock.txt"):
         if (root / extra).exists():
