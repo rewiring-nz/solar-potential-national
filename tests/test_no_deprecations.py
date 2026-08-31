@@ -26,11 +26,19 @@ whether it actually failed:
            one that works. It cannot find deprecations nobody knows about, but
            it catches a known one ANYWHERE, including on rare branches.
 
-  EXERCISE segment one real building with deprecations fatal, to catch
-           call-time deprecations the ban list does not know about. Honest
-           limitation, measured rather than assumed: a deprecated call
+  EXERCISE run two real paths with deprecations fatal, to catch call-time
+           deprecations the ban list does not know about:
+             - the GEOMETRY core, by segmenting a real building;
+             - the YIELD model, which is pandas/numpy time-series code and
+               produces the kWh figures the public reads.
+           Both promote FutureWarning as well as DeprecationWarning, because
+           pandas signals upcoming breakage with FutureWarning -- a check that
+           promoted only DeprecationWarning would sail straight past the
+           warning class pandas actually uses.
+           Honest limitation, measured rather than assumed: a deprecated call
            reintroduced on a branch the sample building did not take passed
-           this step cleanly. It sees only what it runs.
+           this step cleanly. It sees only what it runs, which is why the
+           static ban list above carries the weight.
 
 Scripts are excluded from the import pass on purpose: several do their whole job
 at import (see score_all_marked, which used to rewrite its committed baseline
@@ -98,6 +106,7 @@ import sys, warnings
 sys.path.insert(0, {root!r})
 sys.argv = ["exercise"]
 warnings.simplefilter("error", DeprecationWarning)
+warnings.simplefilter("error", FutureWarning)
 import geopandas as gpd, rasterio
 from src.region_build import area_paths
 from src.pointcloud_source import PointCloudSource
@@ -117,11 +126,31 @@ print(f"OK: segmented building {{bid}} into {{len(facets or [])}} facets")
 """
 
 
-def exercise():
-    """Run the geometry core with deprecations fatal. None, or the message."""
+# The second path worth exercising, and a different risk entirely: the yield
+# model is pandas- and numpy-heavy time-series code, and it produces the kWh
+# figures the public reads. pandas signals upcoming breakage with FutureWarning
+# rather than DeprecationWarning, which is why both are fatal here -- a check
+# that only promoted DeprecationWarning would sail past the warning class
+# pandas actually uses.
+SOLAR_EXERCISE = """
+import sys, warnings
+sys.path.insert(0, {root!r})
+sys.argv = ["exercise"]
+warnings.simplefilter("error", DeprecationWarning)
+warnings.simplefilter("error", FutureWarning)
+from src.solar_model import SolarModel
+m = SolarModel()
+poa = m.annual_poa_kwh_per_m2(20, 0)
+assert poa > 0, poa
+print(f"OK: yield model clean (20deg north = {{poa:.0f}} kWh/m2/yr)")
+"""
+
+
+def exercise(script=None, label="geometry core"):
+    """Run a real path with deprecations fatal. None, or the message."""
     r = subprocess.run(
         [sys.executable, "-W", "error::DeprecationWarning", "-c",
-         EXERCISE.format(root=str(ROOT))],
+         (script or EXERCISE).format(root=str(ROOT))],
         capture_output=True, text=True, timeout=900)
     if r.returncode == 0:
         return None, (r.stdout.strip().splitlines() or ["ok"])[-1]
@@ -183,15 +212,17 @@ def main():
     else:
         print(f"  pass  none of {len(BANNED)} banned API(s) present")
 
-    print("\nexercising the geometry core (where call-time deprecations live)")
-    msg, note = exercise()
-    if msg:
-        bad.append(("<geometry exercise>", msg))
-        print(f"  FAIL  {msg[:170]}")
-    else:
-        print(f"  pass  {note}")
+    print("\nexercising real paths (where call-time deprecations live)")
+    for script, label in ((EXERCISE, "geometry core"),
+                          (SOLAR_EXERCISE, "yield model")):
+        msg, note = exercise(script, label)
+        if msg:
+            bad.append((f"<{label}>", msg))
+            print(f"  FAIL  {label}: {msg[:150]}")
+        else:
+            print(f"  pass  {note}")
 
-    total = len(mods) + 2
+    total = len(mods) + 3
     print(f"\n{total - len(bad)}/{total} checks clean")
     if bad:
         print("\nA deprecation here is a countdown to the pipeline breaking on a")
