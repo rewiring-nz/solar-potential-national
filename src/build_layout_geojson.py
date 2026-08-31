@@ -89,7 +89,20 @@ def _facet_fit(f, pc_source):
 # turned out to be PointCloudSource caching all 441 LiDAR tiles unbounded --
 # fixed with an LRU there -- but the cap was never put back. Measured startup is
 # 0.4s per worker and steady RSS is well under a gigabyte each.
-DEFAULT_MAX_JOBS = 10
+DEFAULT_MAX_JOBS = 10          # hard ceiling; the real limit is memory, below
+PER_WORKER_GB = 1.75           # decoded LiDAR tile cache per worker process
+USABLE_RAM_FRACTION = 0.6      # headroom for the parent process and the OS
+
+
+def _memory_bounded_jobs():
+    """Workers this machine can actually feed. See the long note in main()."""
+    try:
+        total_gb = (os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+                    / 1024 ** 3)
+    except (ValueError, OSError, AttributeError):
+        return 4               # unknown machine: the conservative middle
+    by_ram = int(total_gb * USABLE_RAM_FRACTION // PER_WORKER_GB)
+    return max(1, min(by_ram, (os.cpu_count() or 2) - 1, DEFAULT_MAX_JOBS))
 
 # How long the whole pool may go without a single building completing before it
 # says so, and before it gives up. Normal per-building time is around a second
@@ -346,15 +359,23 @@ def main(area="pilot", jobs=None, limit=0, dry_run=False):
     centroid = area_centroid_wgs84(area)
     model = SolarModel() if centroid is None else SolarModel(*centroid)
 
-    # Bounded deliberately, and not by core count. PointCloudSource caches every
-    # decoded LiDAR tile for the life of its process -- the module docstring for
-    # run_full_build.sh warns the full set is ~10GB decoded -- so each worker
-    # carries its own copy of whatever tiles its buildings touch. Defaulting to
-    # cpu_count-1 gave 11 workers on this machine and the run was killed before
-    # it produced a single feature. Six is what has actually been measured
-    # working, and it already gives most of the speedup (280s -> 114s on 100
-    # buildings).
-    jobs = jobs or min(DEFAULT_MAX_JOBS, max(1, (os.cpu_count() or 2) - 1))
+    # Bounded by MEMORY, not by core count. PointCloudSource caches every
+    # decoded LiDAR tile for the life of its process (the full set is ~10GB
+    # decoded), so each worker carries its own copy of whatever tiles its
+    # buildings touch, and the ceiling is RAM per worker rather than cores.
+    #
+    # This used to be a literal, and the literal and the comment above it had
+    # drifted apart: the comment recorded that 11 workers got a run killed and
+    # that six was the measured-safe number, while the constant said ten. Both
+    # were right about different machines -- 11 died on the 18GB Mac, and ten
+    # runs fine on the 62GB VM. No single number can be correct for both, which
+    # is exactly why it drifted, so derive it instead.
+    #
+    # PER_WORKER_GB is calibrated to reproduce both measured-good values:
+    # 18GB Mac -> 6 workers (the number actually measured working, 280s -> 114s
+    # on 100 buildings), 62GB VM -> 10. HARD_CAP keeps a very large machine from
+    # spawning a pool whose parent-side merge becomes the bottleneck.
+    jobs = jobs or _memory_bounded_jobs()
     print(f"[{area}] {len(ids)} buildings on {jobs} workers", flush=True)
 
     features, done, t0 = [], 0, time.time()
