@@ -50,6 +50,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
+# A district merge needs most regions actually built. Not 100%: a region can
+# legitimately have no layouts (no imagery, no buildings), and demanding
+# perfection would make the guard something people route around.
+MERGE_MIN_BUILT_FRACTION = 0.8
+
+
 class PreflightError(SystemExit):
     """SystemExit so an unguarded stage still dies with a readable message
     rather than a traceback the shell script will bury in a log."""
@@ -83,7 +89,13 @@ REQUIRED = {
     },
     "add_addresses":          {"region": ["solar_potential"]},
     "build_heatmap_raster":   {"region": ["solar_potential", "outlines", "dsm"]},
-    "merge_regions":          {},
+    # merge_regions REGENERATES the district files from the region files, so a
+    # full merge run while most regions are missing their outputs replaces a
+    # complete district with a partial one -- destructively, and with only a
+    # per-region WARNING line in a log nobody reads. Same shape as the
+    # terrain-mask incident. Checked below rather than here, because it is a
+    # proportion rather than a list of names.
+    "merge_regions":          {"most_regions_built": True},
     "bake_density_deciles":   {"root": ["panel_layouts.geojson", "solar_potential.geojson"]},
     "shrink_panels_for_tiles": {"root": ["panel_layouts.geojson"]},
     "build_terrain_masks": {
@@ -173,6 +185,26 @@ def preflight(stage, region=None, fatal=True):
 
     for name in spec.get("root", []):
         _check_file(DATA_DIR / name, name, problems)
+
+    # A DISTRICT-wide merge (no region named) must not run against a mostly
+    # empty tree. Merging a named subset is a normal, deliberate operation --
+    # the Wellington deploy does exactly that -- so the check applies only when
+    # no region was given.
+    if spec.get("most_regions_built") and region is None:
+        from src.region_build import all_areas, area_paths
+        areas = list(all_areas())
+        built = [a for a in areas if area_paths(a)["panel_layouts"].exists()]
+        if areas and len(built) < MERGE_MIN_BUILT_FRACTION * len(areas):
+            missing = sorted(set(areas) - set(built))
+            problems.append((
+                f"district merge with only {len(built)} of {len(areas)} regions built",
+                "    missing layouts: " + ", ".join(missing[:8])
+                + ("..." if len(missing) > 8 else "")
+                + "\n      merge_regions REGENERATES the district files from the"
+                  "\n      region files, so running it now would REPLACE the full"
+                  "\n      district with a partial one."
+                  "\n      If that is genuinely what you want, merge the regions"
+                  "\n      you mean by name: python src/merge_regions.py <region>..."))
 
     fresh_target = spec.get("fresher_than_regions")
     if fresh_target and not problems:

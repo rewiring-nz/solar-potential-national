@@ -107,6 +107,12 @@ def collect_heatmaps(regions):
 
 def main():
     regions = sys.argv[1:] or all_areas()
+    # No argument means a DISTRICT-wide merge, which regenerates the merged
+    # files from the region files -- so running it against a mostly-empty tree
+    # replaces a complete district with a partial one. preflight refuses that;
+    # naming regions explicitly is a deliberate subset merge and always allowed.
+    from src.preflight import preflight
+    preflight("merge_regions", None if not sys.argv[1:] else sys.argv[1])
     # Only the buildings file: panel_layouts goes through tippecanoe, which
     # quantizes to the tile grid anyway, and it is never fetched by a browser.
     merge_geojson(regions, "solar_potential", DATA_DIR / "solar_potential.geojson",
