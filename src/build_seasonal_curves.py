@@ -69,6 +69,20 @@ def main():
     month_abbr = dict(enumerate(MONTH_NAMES, start=1))
     factor = pd.Series(times.month.map(lambda m: model.monthly_factor[month_abbr[m]]), index=times)
 
+    # Same physics as build_poa_lookup_table, so the chart and the kWh figure
+    # above it cannot disagree: the cloud factor scales GHI, and Erbs splits
+    # that into beam and diffuse. Scaling clear-sky POA directly (what this did)
+    # preserves the clear-sky beam:diffuse ratio, which PVGIS showed costs up to
+    # 18 percentage points on a south face. Transposition is Perez rather than
+    # the isotropic default for the same reason.
+    ghi_avg = ghi_cs * factor
+    _split = pvlib.irradiance.erbs(ghi_avg, solpos["apparent_zenith"], times)
+    dni_avg = _split["dni"].fillna(0.0)
+    dhi_avg = _split["dhi"].fillna(0.0)
+    dni_extra = pvlib.irradiance.get_extra_radiation(times)
+    airmass = location.get_airmass(times, solar_position=solpos)["airmass_relative"]
+    _perez = dict(dni_extra=dni_extra, airmass=airmass, model="perez")
+
     a = config.PV_ASSUMPTIONS
     derate = (a["inverter_efficiency_pct"] / 100) * (1 - a["system_derate_pct"] / 100)
 
@@ -79,6 +93,7 @@ def main():
                 surface_tilt=slope, surface_azimuth=aspect,
                 dni=dni_cs, ghi=ghi_cs, dhi=dhi_cs,
                 solar_zenith=solpos["apparent_zenith"], solar_azimuth=solpos["azimuth"],
+                **_perez,
             )["poa_global"].clip(lower=0)
             # ...and the same POA with the DIRECT beam removed: what the roof
             # still receives from sky diffuse + ground reflection when terrain
@@ -100,9 +115,15 @@ def main():
                 surface_tilt=slope, surface_azimuth=aspect,
                 dni=dni_cs * 0, ghi=dhi_cs, dhi=dhi_cs,
                 solar_zenith=solpos["apparent_zenith"], solar_azimuth=solpos["azimuth"],
+                **_perez,
             )["poa_global"].clip(lower=0)
 
-            poa_avg = poa_cs * factor          # cloud-adjusted
+            poa_avg = pvlib.irradiance.get_total_irradiance(
+                surface_tilt=slope, surface_azimuth=aspect,
+                dni=dni_avg, ghi=ghi_avg, dhi=dhi_avg,
+                solar_zenith=solpos["apparent_zenith"], solar_azimuth=solpos["azimuth"],
+                **_perez,
+            )["poa_global"].clip(lower=0)
             kw_avg = poa_avg / 1000 * derate   # kW per kWp
             kw_peak = poa_cs / 1000 * derate
             kw_peak_dif = poa_dif / 1000 * derate
