@@ -104,12 +104,15 @@ PV_ASSUMPTIONS = {
     "notes": (
         "kWp = panel count x rated power at Standard Test Conditions "
         "(1000 W/m2, 25C cell temp) -- a nameplate figure, not a real-world "
-        "output. Daily/annual kWh applies pvlib clear-sky irradiance per "
-        "roof facet's slope/aspect, bias-corrected against NASA POWER's "
-        "actual cloud-adjusted averages for the area, then derates for "
-        "inverter efficiency and system losses above. Real output varies "
-        "with weather, panel brand/age, and shading not captured by the "
-        "2021 LiDAR survey (e.g. tree growth since capture)."
+        "output. Daily/annual kWh starts from pvlib clear-sky irradiance, "
+        "scales it to NIWA's measured radiation record for this area, splits "
+        "that into direct and diffuse light, and projects it onto each roof "
+        "face's own slope and aspect using an anisotropic sky model. Each "
+        "face and panel is then reduced for the terrain, trees and "
+        "neighbouring buildings that actually shade it, before the inverter "
+        "and system losses above. Real output still varies with weather, "
+        "panel brand and age, and anything that has changed since the LiDAR "
+        "survey was flown -- tree growth in particular."
     ),
 }
 
