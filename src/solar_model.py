@@ -218,7 +218,9 @@ def fetch_niwa_derived_monthly_factors(lat, lon, pvlib_clearsky_daily_mean):
 # models themselves agree closely (~1800 kWh/m2/yr cloudless both sides), so
 # calibrating the monthly factor directly against SolarView's measured monthly
 # means transfers 36 years of real radiation data into the pipeline in one
-# step. Sunshine-derived factors remain as the fallback outside the pilot.
+# step. Outside the district the fallback is NIWA's measured station normals
+# (see NIWA_MEASURED_GHI_STATIONS); the sunshine-hours inference is now only
+# reached when no measured station is within range at all.
 # Attribution & licensing: these 12 monthly aggregates are derived from NIWA
 # SolarView output (https://niwa.co.nz/renewable-energy/solarview), used here
 # as a non-commercial calibration reference per NIWA's EULA. The raw SolarView
