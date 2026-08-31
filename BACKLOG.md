@@ -12,9 +12,23 @@ Ordered by evidence, not by appeal. Every item names what it is based on.
 Full write-up published as an artifact. The measured findings, in the order
 they should be worked:
 
-STATUS 31 Aug: items 1 and 4 DONE, item 3 half done, plus a SECOND divergence
-bug found and fixed (see 1b). Items 2, 5, 6, 7 open — item 2 is the next one
-to do.
+STATUS 31 Aug (second pass): items 1, 2, 4, 5 DONE. Item 3 mostly done
+(pure-function tests + golden segmentation tests). Item 6 partly done. Item 7
+turned out to be two-thirds WRONG — see the corrections below, which matter
+more than the original items.
+
+TWO THINGS THIS REVIEW GOT WRONG, both corrected in code:
+  * "roof_reconstruct.py is 860 lines of dead code behind USE_RECONSTRUCTION
+    = False — delete it." NO. That flag governs only the UNCONDITIONAL path.
+    `_attach_building_geometry` calls `_maybe_reconstruct` on every building,
+    which runs reconstruction whenever the segmenter fits a roof below 0.70
+    inlier and keeps it only on a clear gain that does not shatter the roof.
+    It is LIVE guarded fallback code. Deleting it would have removed real
+    handling for exactly the awkward roofs that need it. Consider renaming the
+    flag to USE_RECONSTRUCTION_UNCONDITIONALLY so nobody repeats this.
+  * "Prepared geometries missing from the point-in-polygon hot paths." The hot
+    paths already use array-at-a-time contains, which is better than prep. BUT
+    chasing it found something real — see the shapely item below.
 
 1. **The two repos are a hand-maintained fork, and had already diverged.**
    66 of 68 source files were byte-identical; `panel_fitting.py` differed by
@@ -38,7 +52,12 @@ to do.
    patching a Queenstown building gave it new panels on the map while the
    dashboard kept quoting the old panel count, kW, generation and savings.
    Wellington had the implementation all along. Ported + pushed 31 Aug.
-2. **Preflight assertions on stage inputs.** Three incidents this month share
+2. **Preflight assertions on stage inputs.** DONE 31 Aug — `src/preflight.py`,
+   wired into all twelve stages so it cannot be forgotten. Existence + non-empty
+   checks, plus the merge-before-masks ordering as an mtime invariant. Verified
+   against all three incidents below, with no false alarm on a healthy tree.
+   `python src/preflight.py --all-stages <region>` reports everything at once.
+   Was: three incidents this month share
    one shape — missing input, no error, plausible-but-wrong output: the absent
    `dem_wide_mosaic.tif` shipped UNGATED panels; `build_terrain_masks` before
    `merge_regions` silently wiped the masks; JIT imagery cleanup broke the
@@ -61,7 +80,11 @@ to do.
    CONTAINER still open. Was: `requirements.txt` has 12 deps and
    ZERO pinned versions. An unpinned pvlib/shapely minor bump can move
    published kWh figures with no commit to explain it.
-5. **Per-region resume markers.** No build script skips completed work; the
+5. **Per-region resume markers.** DONE 31 Aug — `src/run_stage.py` wraps each
+   stage with preflight + a completion marker + `--skip-done`; staleness reuses
+   preflight's input table, so a marker only counts while every declared input
+   is older than it. `src/run_district_build.sh` is the resumable loop, with the
+   merge-before-masks order written down and enforced. Was: the
    Queenstown rebuild has been relaunched 3x and each restart redoes region 1.
    ~25 regions x ~28 min = ~12 h all-or-nothing. Same change makes regions
    distributable.
@@ -75,10 +98,40 @@ to do.
    `panel_layouts.geojson` >80 MB. `shapely.prepared.prep` used in 0 files
    despite repeated point-in-polygon being the panel-fitting inner loop.
 
+8. **DEPRECATED SHAPELY API — found while chasing item 7, and the most
+   dangerous thing in this whole review.** 68 calls to
+   `shapely.vectorized.contains` across 28 files. That API is deprecated in
+   Shapely 2.x and documented as "will be removed in a future version", and
+   `requirements.txt` asked for `shapely>=2.0` — so a routine reinstall would
+   have broken the geometry core outright. It was INVISIBLE because 28 modules
+   call `warnings.filterwarnings("ignore")`.
+   FIXED 31 Aug: migrated to `shapely.contains_xy`. Verified behaviour-neutral
+   rather than assumed — bit-identical over 200,000 points on 400 real
+   footprints including on-boundary vertices, and identical facet counts AND
+   areas through the full segmentation path, A/B against the pre-migration tree.
+   LESSON: those blanket `filterwarnings("ignore")` calls hid a countdown to a
+   hard breakage. Worth narrowing them to the specific warnings they were added
+   for.
+
+9. **`score_all_marked.py` rewrote its own committed baseline ON IMPORT.**
+   It has no `if __name__ == "__main__"` guard, so its whole body runs when the
+   module is merely imported — which happened during this review, from a loop
+   that only checked that modules import. The write is now guarded.
+   Still open: `check_marked.py` and `score_markup.py` have the same missing
+   guard (they only print, so they are noisy rather than destructive).
+
 Also found: **`DEFAULT_MAX_JOBS = 10` contradicts the comment directly above
 it**, which records that 11 workers got a run OOM-killed and says "six is what
-has actually been measured working". Memory-bound, so it should derive from
-available RAM, not `cpu_count`.
+has actually been measured working". FIXED 31 Aug, and the contradiction had a
+reason: 11 workers died on the 18GB Mac and 10 runs fine on the 62GB VM, so no
+single literal could be right for both. Now derived from total RAM, calibrated
+to reproduce both measured-good numbers exactly (6 on the Mac, 10 on the VM).
+NOTE for whoever revisits this: there is a SECOND comment at the definition site
+saying the cap was raised from 6 because the real OOM cause (unbounded LiDAR
+tile caching) was fixed with an LRU, and that steady RSS is "well under a
+gigabyte" per worker. If that is still true, PER_WORKER_GB = 1.75 is
+conservative and the Mac could run more than 6. Worth measuring rather than
+guessing.
 
 Genuinely good and worth not breaking: 25-27% comment density explaining WHY
 with measured evidence, zero hardcoded absolute paths, resource limits derived
