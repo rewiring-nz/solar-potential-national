@@ -181,6 +181,49 @@ ORDER TO FINISH THIS:
   4. Rebuild the four regions WITH imagery, then merge + tile.
   5. Re-read the diff, decide on the +8.3%, then push.
 
+## PANELS ON WALLS — FIXED 1 Sep (Josh spotted it on the map)
+
+Josh, looking at 9 Henry Street (#5371115): "These panels seem completely the
+wrong size."
+
+MEASURED. Footprint 85 m2, 13.8 x 13.4 m. Four facets at 2.1, 5.6, 67.1 and
+67.3 degrees. ALL 44 PANELS -- the entire 19.4 kW the dashboard claimed -- were
+on the two 67-degree faces. The two actual roof facets got nothing.
+
+Why they LOOK wrong, which is what caught his eye: a panel on a 67-degree face
+foreshortens to cos(67) = 39% of its length in plan view, so a 1.0 x 2.0 m panel
+draws as a 1.0 x 0.78 m squat rectangle, in the wrong place. The panel polygons
+in the data measure exactly 1.0 x 0.77 m.
+
+CAUSE: config.MAX_ROOF_SLOPE_DEG was 72, chosen to match roof_reconstruct's
+WALL_SLOPE_DEG and to "admit every real roof including steep mansards". It
+admitted walls too. This is the SAME finding already sitting in roof_truth.json
+under 26 Panorama Terrace ("MAX_ROOF_SLOPE_DEG is 72, which lets a wall through
+as a facet") -- known, documented, and never acted on until Josh saw it on the
+map himself.
+
+FIXED: MAX_ROOF_SLOPE_DEG 72 -> 55. District cost is small and the per-building
+benefit is total:
+    slope > 45 deg   7,685 panels  1.0%
+    slope > 55 deg   2,555 panels  0.3%
+    slope > 60 deg     506 panels  0.1%
+Golden tests: 28/28 unchanged -- none of the truth buildings has a face over 55
+degrees, so this is surgical, not broad.
+
+STILL OPEN, and worse than the thing I fixed: 9 Henry Street now models only
+19 m2 of its 85 m2 footprint (23%) and gets ZERO panels. The 67-degree faces
+were 61 m2 -- most of the roof -- fitted as near-vertical planes, which is not
+physically possible on a 13.8 m single-storey building. So this is a flat
+commercial roof the segmenter cannot see, in the same family as 32 Frankton
+Road. Removing the wrong answer is right (Josh's own rule: a confident layout
+on a roof we have not understood is worse than nothing) but it is not the same
+as producing the right one.
+
+ALSO STILL OPEN: the 42-50 degree band. Josh's truth data for 26 Panorama
+Terrace calls 42.3 and 44.5 degree faces "risers between levels -- walls, not
+roof planes", but genuinely steep roofs live there too. That band needs
+evidence, not a threshold.
+
 ## 24 BEACH ST DIAGNOSED — 31 Aug (Josh's open question, now answered)
 
 Josh, 30 Aug live test: "Why do only some of the ridges on this roof get

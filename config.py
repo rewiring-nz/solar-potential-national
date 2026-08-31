@@ -83,12 +83,32 @@ RIDGE_SETBACK_M = 0.25  # extra clearance specifically along a boundary shared w
 # a badly-oriented panel as red. A hard slope cut is doing that job twice, and
 # worse.
 #
-# It is not raised to 90 because past about 72 degrees a surface is a WALL, not a
-# roof, and the facets here come from points inside the building footprint, so
-# wall returns would start collecting panels. 72 is the same threshold
-# roof_reconstruct already uses to tell roof from wall. That admits every real
-# roof including steep mansards, and leaves the economics to decide the rest.
-MAX_ROOF_SLOPE_DEG = 72
+# It is not raised to 90 because past this a surface is a WALL, not a roof, and
+# the facets here come from points inside the building footprint, so wall
+# returns collect panels.
+#
+# LOWERED 72 -> 55 on 1 Sep. 72 was chosen to match roof_reconstruct's
+# WALL_SLOPE_DEG and to "admit every real roof including steep mansards", but it
+# admitted walls too, and the cost is not spread evenly -- it is concentrated
+# and total on the buildings it hits.
+#
+# Josh spotted it on the map at 9 Henry Street (#5371115, footprint 85 m2). Its
+# four facets were 2.1, 5.6, 67.1 and 67.3 degrees, and ALL 44 PANELS -- the
+# entire 19.4 kW the dashboard claimed -- sat on the two 67-degree faces. The
+# actual roof got nothing. The panels also LOOK wrong there, which is what drew
+# his eye: a panel on a 67-degree wall foreshortens to 39% of its length in plan
+# view, so it draws as a squat rectangle in the wrong place.
+#
+# District-wide this is small in aggregate and severe per building:
+#     slope > 45 deg   7,685 panels  1.0%
+#     slope > 55 deg   2,555 panels  0.3%
+#     slope > 60 deg     506 panels  0.1%
+# 55 removes 0.3% of district panels while fixing the class of building where
+# the error is 100% of the claim. It stays clear of the genuinely ambiguous
+# 42-50 degree band, where Josh's own truth data has both real steep roofs and
+# the stepped-house risers at 26 Panorama Terrace that are also walls -- that
+# band needs evidence, not a threshold, and is still open.
+MAX_ROOF_SLOPE_DEG = 55
 
 # --- PV system assumptions ---
 # These are shown to the end user in the UI, not just baked into the model
