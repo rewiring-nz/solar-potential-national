@@ -7,6 +7,41 @@ compacted, which is why Josh kept having to re-state the list.
 
 Ordered by evidence, not by appeal. Every item names what it is based on.
 
+## ISLAND BAY REBUILD IS BLOCKED ON IMAGERY — found 31 Aug
+
+**Do not run the Island Bay rebuild on the VM until the imagery is shipped
+there.** Doing so would REPLACE a good build with a worse one.
+
+  * The VM has NEVER had `data/regions/island_bay/imagery_mosaic.tif`. Its
+    Island Bay layouts (71.8 MB, 30 Aug 20:40) were built LiDAR-only.
+  * The Mac HAS it (2.0 GB) and its layouts (86.9 MB, 30 Aug 21:39) were built
+    WITH imagery. That Mac build is what is LIVE — pmtiles committed 31 Aug
+    09:24. So the public site is currently fine.
+  * `fetch_regions.py island_bay` on the VM fails with a ReadTimeout from Earth
+    Engine, so the VM cannot self-heal. Ship the local file instead; it is also
+    deterministic, which the export is not.
+
+Without imagery, obstruction detection loses its colour evidence and
+roof_partition loses its image lines — silently, which is why both `ib_full2.sh`
+and its replacement `~/ib_full3.sh` refuse to build LiDAR-only rather than
+producing a plausible worse map.
+
+ORDER OF OPERATIONS once the Queenstown rebuild finishes:
+  1. Check VM disk. It was 89% full (22 GB free) with 12 regions still to
+     write, which is why the 2 GB imagery was NOT shipped during the build.
+  2. `gcloud compute scp` the imagery to
+     `~/solar-wellington/data/regions/island_bay/imagery_mosaic.tif`.
+  3. `./tools/sync_vm.sh` from the Mac — it REFUSES while a build runs, and
+     verifies gap-fill + preflight landed in both trees afterwards.
+  4. `bash ~/ib_full3.sh` (mirrored in the repo as
+     `solar-wellington/src/run_island_bay.sh`). It checks the tree is current
+     before spending the compute, resumes if interrupted, and writes
+     `~/ib_diff3.txt` for review before anything is pushed.
+
+This will be the FIRST Island Bay build carrying the gap-fill pass and the
+straggler yield fix, so expect more panels at 100% and a different removal
+order as the density slider comes down. That is the fix, not a regression.
+
 ## CODE REVIEW — 31 Aug (Josh asked for one; findings ranked)
 
 Full write-up published as an artifact. The measured findings, in the order
