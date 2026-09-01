@@ -128,37 +128,34 @@ PV_ASSUMPTIONS = {
     "panel_area_m2": PANEL_WIDTH_M * PANEL_HEIGHT_M,
     "panel_efficiency_pct": 22.5,  # STC efficiency implied by 500W / 2.2238m2 / 1000W/m2
     "inverter_efficiency_pct": 97.0,  # typical string/micro-inverter conversion efficiency
-    # 15%, following the PVWatts convention with two deliberate departures.
-    # PVWatts' 14% default EXCLUDES cell temperature (it models that from
-    # weather) and EXCLUDES the inverter (a separate parameter, as here). We
-    # cannot model cell temperature -- it needs hourly ambient temperature and
-    # wind we do not fetch -- so it is folded in; and we drop PVWatts' 3%
-    # shading allowance because shading is modelled explicitly, per panel, from
-    # the LiDAR surface.
+    # TOTAL system losses are 14%, INCLUDING the inverter (Josh, 1 Sep).
     #
-    # RECALIBRATED 1 Sep for N-TYPE panels. Josh: "check the figures are based
-    # on modern solar tech not historic." The old 19% was a p-type PERC loss
-    # budget, which is wrong for the N-type i-TOPCon module now modelled above:
-    #   cell temperature   6    was 8 -- the datasheet's -0.29%/degC against
-    #                            ~-0.38 for p-type is ~25% less thermal loss
-    #   soiling            2
-    #   mismatch           2
-    #   wiring/connections 2.5
-    #   light-induced deg. 0    was 1.5 -- LID is a p-type boron-oxygen effect;
-    #                            n-type does not have it (Trina quote 1% first
-    #                            year, 0.4%/yr after, against 2%/0.55% p-type)
-    #   nameplate tolerance 0.5  was 1 -- modern binning is positive-only
-    #   availability       2
-    #   shading            0    -- modelled per panel instead
+    # Read this with inverter_efficiency_pct above: the two multiply, and the
+    # product is what matters.
+    #     0.97 inverter x (1 - 0.1134) = 0.860   ->  14.0% total loss
+    # so system_derate_pct is 11.34 rather than a round number BECAUSE losses
+    # compound multiplicatively, not additively: 3% + 11% is not 14%.
     #
-    # History: 14% omitted temperature entirely and the PVGIS cross-check
-    # measured it ~5% optimistic. 19% over-corrected using p-type figures.
+    # This departs from PVWatts, whose 14% default EXCLUDES the inverter (a
+    # separate parameter there, default 96%) and EXCLUDES cell temperature.
+    # Ours is 14% for everything after the panel nameplate. Shading is still
+    # excluded and modelled per panel from the LiDAR, which is the one part we
+    # do better than a generic loss figure.
     #
-    # WORTH KNOWING: 0.97 x 0.85 = 0.825 now sits ~4% ABOVE PVGIS's effective
-    # 0.791. That is a deliberate divergence, per Josh: "aim to always update
-    # to what we believe the best data tells us is right, not what convention
-    # says." PVGIS's generic loss default is not panel-specific; ours is.
-    "system_derate_pct": 15.0,
+    # What the 14% covers: cell temperature, soiling, mismatch, wiring and
+    # connections, nameplate tolerance, availability, and inverter conversion.
+    # Light-induced degradation is ~0 because the modelled panel is n-type
+    # i-TOPCon, where LID is not the p-type boron-oxygen mechanism.
+    #
+    # History, since this has moved three times and each move changed a public
+    # number: 14% (no temperature, ~5% optimistic against PVGIS) -> 19%
+    # (p-type loss budget, over-corrected) -> 15% (recalibrated for the n-type
+    # panel) -> 14% total incl. inverter, here. Against the 19% era this is
+    # +9.4% generation, and against 15% it is +4.2%.
+    #
+    # It now sits ~8% above PVGIS's effective 0.791. Deliberate: PVGIS applies
+    # a generic loss default, ours is specific to the module actually modelled.
+    "system_derate_pct": 11.34,
     "notes": (
         "kWp = panel count x rated power at Standard Test Conditions "
         "(1000 W/m2, 25C cell temp) -- a nameplate figure, not a real-world "
@@ -168,7 +165,7 @@ PV_ASSUMPTIONS = {
         "face's own slope and aspect using an anisotropic sky model. Each "
         "face and panel is then reduced for the terrain, trees and "
         "neighbouring buildings that actually shade it, before the inverter "
-        "and system losses above -- 15% covering cell temperature, soiling, "
+        "and system losses above -- 14% in total, including the inverter, covering cell temperature, soiling, "
         "wiring, mismatch and downtime, which follows the industry "
         "(PVWatts) convention except that shading is not in that number: "
         "we model it per panel from the laser scan instead. Real output "

@@ -2,7 +2,7 @@
  "_note": "Recorded output of build_layout_geojson._build_one -- the real per-building pipeline path -- NOT ground truth. Re-record deliberately and explain the change in the commit.",
  "buildings": {
   "4719759": {
-   "ac_kwh_year": 2957.0,
+   "ac_kwh_year": 3084.0,
    "address": "17 Cardigan St",
    "area": "arrowtown_millbrook",
    "aspects": [
@@ -55,7 +55,7 @@
    ]
   },
   "4725474": {
-   "ac_kwh_year": 10579.0,
+   "ac_kwh_year": 11031.0,
    "address": "23 Brisbane Street",
    "area": "pilot",
    "aspects": [
@@ -84,7 +84,7 @@
    ]
   },
   "4725521": {
-   "ac_kwh_year": 18264.0,
+   "ac_kwh_year": 19049.0,
    "address": "9 Brisbane Street",
    "area": "pilot",
    "aspects": [
@@ -117,7 +117,7 @@
    ]
   },
   "4725546": {
-   "ac_kwh_year": 25680.0,
+   "ac_kwh_year": 26784.0,
    "address": "15B Frankton Road",
    "area": "pilot",
    "aspects": [
@@ -174,7 +174,7 @@
    ]
   },
   "4725584": {
-   "ac_kwh_year": 244667.0,
+   "ac_kwh_year": 255202.0,
    "address": "32 Frankton Road",
    "area": "pilot",
    "aspects": [
@@ -323,7 +323,7 @@
    ]
   },
   "4726047": {
-   "ac_kwh_year": 79383.0,
+   "ac_kwh_year": 82787.0,
    "address": "7 Coronation Drive",
    "area": "pilot",
    "aspects": [
@@ -356,7 +356,7 @@
    ]
   },
   "4734678": {
-   "ac_kwh_year": 28822.0,
+   "ac_kwh_year": 30060.0,
    "address": "10 Memorial Street",
    "area": "pilot",
    "aspects": [
@@ -385,7 +385,7 @@
    ]
   },
   "4734816": {
-   "ac_kwh_year": 21815.0,
+   "ac_kwh_year": 22753.0,
    "address": "6 Weaver Street",
    "area": "pilot",
    "aspects": [
@@ -410,7 +410,7 @@
    ]
   },
   "4734850": {
-   "ac_kwh_year": 15855.0,
+   "ac_kwh_year": 16538.0,
    "address": "47 Robins Road",
    "area": "pilot",
    "aspects": [
@@ -431,7 +431,7 @@
    ]
   },
   "4734915": {
-   "ac_kwh_year": 9042.0,
+   "ac_kwh_year": 9435.0,
    "address": "40 Camp Street",
    "area": "pilot",
    "aspects": [
@@ -488,7 +488,7 @@
    ]
   },
   "4735015": {
-   "ac_kwh_year": 110882.0,
+   "ac_kwh_year": 115649.0,
    "address": "5 Isle St",
    "area": "pilot",
    "aspects": [
@@ -517,7 +517,7 @@
    ]
   },
   "4735075": {
-   "ac_kwh_year": 21004.0,
+   "ac_kwh_year": 21909.0,
    "address": "6B Limerick Lane",
    "area": "pilot",
    "aspects": [
@@ -562,7 +562,7 @@
    ]
   },
   "4735237": {
-   "ac_kwh_year": 57926.0,
+   "ac_kwh_year": 60428.0,
    "address": "24 Beach Street",
    "area": "pilot",
    "aspects": [
@@ -679,7 +679,7 @@
    ]
   },
   "4735242": {
-   "ac_kwh_year": 87529.0,
+   "ac_kwh_year": 91294.0,
    "address": "5 Church St",
    "area": "pilot",
    "aspects": [
@@ -732,7 +732,7 @@
    ]
   },
   "4735263": {
-   "ac_kwh_year": 18624.0,
+   "ac_kwh_year": 19427.0,
    "address": "89 Hallenstein Street",
    "area": "pilot",
    "aspects": [
@@ -777,7 +777,7 @@
    ]
   },
   "4735316": {
-   "ac_kwh_year": 189932.0,
+   "ac_kwh_year": 198104.0,
    "address": "101/8 Duke Street",
    "area": "pilot",
    "aspects": [
@@ -838,7 +838,7 @@
    ]
   },
   "4735318": {
-   "ac_kwh_year": 11609.0,
+   "ac_kwh_year": 12107.0,
    "address": "1 Gorge Road",
    "area": "pilot",
    "aspects": [
@@ -867,7 +867,7 @@
    ]
   },
   "4735623": {
-   "ac_kwh_year": 32592.0,
+   "ac_kwh_year": 33998.0,
    "address": "1 Church Street",
    "area": "pilot",
    "aspects": [
@@ -928,7 +928,7 @@
    ]
   },
   "4740517": {
-   "ac_kwh_year": 9976.0,
+   "ac_kwh_year": 10404.0,
    "address": "26 Panorama Terrace",
    "area": "pilot",
    "aspects": [
@@ -973,7 +973,7 @@
    ]
   },
   "4740662": {
-   "ac_kwh_year": 95820.0,
+   "ac_kwh_year": 99935.0,
    "address": "(no address)",
    "area": "shotover_lakehayes",
    "aspects": [
@@ -1030,7 +1030,7 @@
    ]
   },
   "4751041": {
-   "ac_kwh_year": 30376.0,
+   "ac_kwh_year": 31684.0,
    "address": "29 Edinburgh Dr",
    "area": "pilot",
    "aspects": [
@@ -1067,7 +1067,7 @@
    ]
   },
   "5370340": {
-   "ac_kwh_year": 35789.0,
+   "ac_kwh_year": 37328.0,
    "address": "5 Beach Street",
    "area": "pilot",
    "aspects": [
@@ -1108,7 +1108,7 @@
    ]
   },
   "5371108": {
-   "ac_kwh_year": 8788.0,
+   "ac_kwh_year": 9165.0,
    "address": "7 Anderson Heights",
    "area": "pilot",
    "aspects": [
@@ -1161,7 +1161,7 @@
    ]
   },
   "5372565": {
-   "ac_kwh_year": 180601.0,
+   "ac_kwh_year": 188393.0,
    "address": "1 Memorial Street",
    "area": "pilot",
    "aspects": [
@@ -1214,7 +1214,7 @@
    ]
   },
   "5372566": {
-   "ac_kwh_year": 108177.0,
+   "ac_kwh_year": 112843.0,
    "address": "19 Camp Street",
    "area": "pilot",
    "aspects": [
@@ -1255,7 +1255,7 @@
    ]
   },
   "5372585": {
-   "ac_kwh_year": 19518.0,
+   "ac_kwh_year": 20361.0,
    "address": "45 Camp Street",
    "area": "pilot",
    "aspects": [
@@ -1292,7 +1292,7 @@
    ]
   },
   "5372588": {
-   "ac_kwh_year": 56154.0,
+   "ac_kwh_year": 58568.0,
    "address": "36 Shotover Street",
    "area": "pilot",
    "aspects": [
@@ -1341,7 +1341,7 @@
    ]
   },
   "5373363": {
-   "ac_kwh_year": 40504.0,
+   "ac_kwh_year": 42240.0,
    "address": "no address on file; behind 10 Robins Road",
    "area": "pilot",
    "aspects": [

@@ -149,22 +149,27 @@ def test_nearest_bin_clamps_slope():
 # Published assumptions. These are numbers the public reads.
 # --------------------------------------------------------------------------
 
-def test_dc_to_ac_matches_the_documented_derate():
-    """Pins the published DC-to-AC factor. Updated 1 Sep from 0.97 x 0.81 when
-    the derate was recalibrated 19% -> 15% for n-type panels; this test is what
-    forced that change to be acknowledged rather than slipping through."""
+def test_total_losses_are_fourteen_percent_including_the_inverter():
+    """Josh set the TOTAL at 14% including the inverter, so the thing to pin is
+    the product, not either factor alone. Losses compound multiplicatively --
+    3% inverter plus 11% everything-else is NOT 14% -- which is why the derate
+    is 11.34 and not a round number.
+
+    This test has now caught three deliberate changes to a published figure
+    (0.81 -> 0.85 -> 0.86). That is what it is for."""
     pv = config.PV_ASSUMPTIONS
     factor = (pv["inverter_efficiency_pct"] / 100.0) * (1 - pv["system_derate_pct"] / 100.0)
-    assert abs(factor - 0.97 * 0.85) < 1e-9, factor
+    assert abs(factor - 0.86) < 5e-5, f"DC->AC {factor:.5f}, total loss {100*(1-factor):.2f}%"
 
 
 def test_derate_stays_in_a_defensible_band():
-    """Cross-checked against PVGIS (~0.791) on 31 Aug. A change that puts this
-    outside 0.72-0.85 is either a typo or a decision that needs the public
-    assumptions text updated with it -- either way it should stop the build."""
+    """A change that puts this outside 0.72-0.90 is either a typo or a decision
+    that needs the public assumptions text updated with it -- either way it
+    should stop the build. The upper bound was 0.85 and had to move when the
+    total was set to 14%; it is a sanity rail, not a target."""
     pv = config.PV_ASSUMPTIONS
     factor = (pv["inverter_efficiency_pct"] / 100.0) * (1 - pv["system_derate_pct"] / 100.0)
-    assert 0.72 <= factor <= 0.85, f"DC->AC factor {factor:.3f} outside sane band"
+    assert 0.72 <= factor <= 0.90, f"DC->AC factor {factor:.3f} outside sane band"
 
 
 def test_inverter_loss_is_not_double_counted():
