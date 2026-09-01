@@ -54,8 +54,16 @@ LINZ_IMAGERY_LAYER = 105744  # "Queenstown 0.1m Urban Aerial Photos (2026)" -- c
 # (both still 2021) -- worth revisiting if that skew ever shows up as a real building-outline/roof
 # misalignment, but the two are already independently-sourced datasets with their own tolerances.
 
-PANEL_WIDTH_M = 1.0
-PANEL_HEIGHT_M = 2.0
+# Trina Vertex S+ TSM-500NEG18R.25 -- the panel Josh picked as representative
+# of what is actually installed in NZ now (Lightforce, 2025). N-type i-TOPCon,
+# 1961 x 1134 mm, 500 W, which works out at 22.5% module efficiency.
+#
+# The old 1.0 x 2.0 m / 440 W panel was a round-number stand-in. It was close
+# on power density (220 vs 225 W/m2) but wrong in SHAPE, and shape is what
+# decides how many fit on a narrow roof face: a real panel is half a metre
+# longer and 13 cm wider than the placeholder.
+PANEL_WIDTH_M = 1.134
+PANEL_HEIGHT_M = 1.961
 PANEL_EDGE_SETBACK_M = 0.3  # clearance from the roof's own outer edge (eave/verge) -- common
 # fire-code convention. Lowered to 0.1 earlier per explicit request after it was found strangling
 # narrow facets (a real ~1.4m-wide strip loses 0.6m total, under the panel's own 1m minimum
@@ -116,9 +124,9 @@ MAX_ROOF_SLOPE_DEG = 55
 # single source of truth so the frontend can render exactly these numbers
 # next to every estimate.
 PV_ASSUMPTIONS = {
-    "panel_rated_power_w": 440,  # W per panel at STC, typical current residential panel
+    "panel_rated_power_w": 500,  # W per panel at STC (Trina TSM-500NEG18R.25)
     "panel_area_m2": PANEL_WIDTH_M * PANEL_HEIGHT_M,
-    "panel_efficiency_pct": 22.0,  # STC efficiency implied by 440W / 2m2 / 1000W/m2
+    "panel_efficiency_pct": 22.5,  # STC efficiency implied by 500W / 2.2238m2 / 1000W/m2
     "inverter_efficiency_pct": 97.0,  # typical string/micro-inverter conversion efficiency
     # 19%, following the PVWatts convention with two deliberate departures.
     # PVWatts' 14% default EXCLUDES cell temperature (it models that from
