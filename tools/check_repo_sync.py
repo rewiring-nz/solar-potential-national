@@ -62,7 +62,7 @@ def shared_files(root):
         out += [p.relative_to(root).as_posix()
                 for p in sorted((root / sub).glob("*.py"))]
     for extra in ("preview.html", "config.py", "requirements.txt",
-                  "requirements.lock.txt", "site-config.js"):
+                  "requirements.lock.txt", "site-config.js", "economics.js"):
         if (root / extra).exists():
             out.append(extra)
     return out
