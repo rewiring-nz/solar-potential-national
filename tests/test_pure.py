@@ -150,9 +150,12 @@ def test_nearest_bin_clamps_slope():
 # --------------------------------------------------------------------------
 
 def test_dc_to_ac_matches_the_documented_derate():
+    """Pins the published DC-to-AC factor. Updated 1 Sep from 0.97 x 0.81 when
+    the derate was recalibrated 19% -> 15% for n-type panels; this test is what
+    forced that change to be acknowledged rather than slipping through."""
     pv = config.PV_ASSUMPTIONS
     factor = (pv["inverter_efficiency_pct"] / 100.0) * (1 - pv["system_derate_pct"] / 100.0)
-    assert abs(factor - 0.97 * 0.81) < 1e-9
+    assert abs(factor - 0.97 * 0.85) < 1e-9, factor
 
 
 def test_derate_stays_in_a_defensible_band():
