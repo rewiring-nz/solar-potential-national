@@ -34,6 +34,7 @@ from shapely.ops import transform as shapely_transform
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import shapely
+import config
 from src.preflight import preflight
 import geopandas as gpd
 
@@ -173,12 +174,97 @@ def _build_one(building_id):
     except _BuildingTimeout:
         print(f"  building {building_id} DROPPED: over {BUILDING_TIME_BUDGET_S}s budget",
               file=sys.stderr, flush=True)
-        return []
+        return _no_estimate_only(building_id, "timed_out")
     except Exception as exc:
         print(f"  building {building_id} FAILED: {exc!r}", flush=True)
-        return []
+        return _no_estimate_only(building_id, "failed")
     finally:
         signal.alarm(0)
+
+
+# WHY A BUILDING HAS NO ESTIMATE.
+#
+# Until now a building we could not model simply vanished: it emitted no
+# features, so derive_solar_potential -- which aggregates over whatever appears
+# in panel_layouts -- never saw it, and it was absent from the map entirely.
+# Josh: "The buildings should stay. We should have a marking on the building
+# saying why it is not estimated."
+#
+# He is right, and the failure mode is worse than a wrong number. A homeowner
+# who searches their address and finds NOTHING cannot tell whether we think
+# their roof is hopeless, whether we have never looked, or whether the site is
+# broken. An honest "too steep to model" is a better answer than silence.
+NO_ESTIMATE_REASONS = {
+    "too_steep":     "Roof is steeper than we model (over {cap}\u00b0)",
+    "no_lidar":      "Not enough laser survey data over this roof",
+    "no_surface":    "No usable roof surface could be resolved",
+    "low_confidence": "Roof shape could not be read confidently enough",
+    "all_obstructed": "Roof is covered by vents, plant or other obstructions",
+    "too_small":     "No roof area large enough for a panel",
+    "demolished":    "Recorded as demolished or replaced since the survey",
+    "timed_out":     "Too complex to finish modelling",
+    "failed":        "Modelling failed on this building",
+}
+
+
+def _diagnose_no_facets(row_geom, pc_source):
+    """Best available answer for why segmentation produced nothing.
+
+    Deliberately cheap -- this runs only for buildings that already failed, and
+    a wrong-but-honest reason is better than none."""
+    import numpy as np
+    try:
+        pts = pc_source.points_in_bbox(*row_geom.bounds)
+    except Exception:
+        return "no_surface"
+    if pts is None or len(pts) < 12:
+        return "no_lidar"
+    try:
+        import shapely
+        inside = pts[shapely.contains_xy(row_geom, pts[:, 0], pts[:, 1])]
+        if len(inside) < 12:
+            return "no_lidar"
+        A = np.c_[inside[:, 0] - inside[:, 0].mean(),
+                  inside[:, 1] - inside[:, 1].mean(), np.ones(len(inside))]
+        coef, *_ = np.linalg.lstsq(A, inside[:, 2], rcond=None)
+        slope = float(np.degrees(np.arctan(np.hypot(coef[0], coef[1]))))
+        if slope > config.MAX_ROOF_SLOPE_DEG:
+            return "too_steep"
+    except Exception:
+        return "no_surface"
+    if row_geom.area < 8:
+        return "too_small"
+    return "no_surface"
+
+
+def _no_estimate_feature(building_id, row_geom, to_wgs84, reason):
+    """One feature carrying the building and the reason, so it still draws."""
+    try:
+        geom_wgs = shapely_transform(to_wgs84, row_geom)
+    except Exception:
+        return None
+    return {
+        "type": "Feature",
+        "geometry": geom_wgs.__geo_interface__,
+        "properties": {
+            "kind": "no_estimate",
+            "building_id": int(building_id),
+            "no_estimate_reason": reason,
+            "no_estimate_text": NO_ESTIMATE_REASONS.get(reason, reason).format(
+                cap=config.MAX_ROOF_SLOPE_DEG),
+        },
+    }
+
+
+def _no_estimate_only(building_id, reason):
+    """Keep the building on the map even when its build blew up."""
+    try:
+        c = _CTX
+        f = _no_estimate_feature(building_id, c["gdf"].loc[building_id].geometry,
+                                 c["to_wgs84"], reason)
+        return [f] if f else []
+    except Exception:
+        return []
 
 
 def _build_one_inner(building_id):
@@ -193,6 +279,10 @@ def _build_one_inner(building_id):
     # imagery and fall back to LiDAR-only cuts.
     facets = segment_building_best(dsm_ds, pc_source, row_geom, building_id,
                                    imagery_ds=imagery_ds)
+    if not facets:
+        f = _no_estimate_feature(building_id, row_geom, to_wgs84,
+                                 _diagnose_no_facets(row_geom, pc_source))
+        return [f] if f else []
 
     # Do not propose panels on a roof we have not understood -- see
     # MIN_ROOF_CONFIDENCE. Facets are still emitted so the roof draws on the

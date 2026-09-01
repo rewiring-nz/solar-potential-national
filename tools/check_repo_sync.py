@@ -61,11 +61,19 @@ def shared_files(root):
     for sub in ("tools", "tests"):
         out += [p.relative_to(root).as_posix()
                 for p in sorted((root / sub).glob("*.py"))]
+    # Root-level shared JS is globbed, not listed. preview.html is shared
+    # byte-for-byte, so it can only reference scripts BOTH repos have -- and a
+    # named list means a new one is invisible to this guard until someone
+    # remembers to add it. panel_editor.js was added to solar-map on 2 Sep and
+    # sat outside this check entirely: copying preview.html across would have
+    # left the national site asking for a script that 404s, with the editor
+    # silently absent and nothing here complaining.
+    out += [p.relative_to(root).as_posix() for p in sorted(root.glob("*.js"))]
     for extra in ("preview.html", "config.py", "requirements.txt",
-                  "requirements.lock.txt", "site-config.js", "economics.js"):
+                  "requirements.lock.txt"):
         if (root / extra).exists():
             out.append(extra)
-    return out
+    return sorted(set(out))
 
 
 def main():

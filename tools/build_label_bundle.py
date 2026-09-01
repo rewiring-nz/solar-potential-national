@@ -43,23 +43,35 @@ sys.path.insert(0, str(ROOT))
 DATA_DIR = ROOT / "data"
 OUT_DIR = DATA_DIR / "label_set"
 PAD_M = 4.0
-MAX_PX = 820          # per-roof crop; bigger is nicer to draw on but heavier
+MAX_PX = 1400         # per-roof crop. Only a handful of roofs are this big;
+                      # the cap exists to stop one warehouse dominating the
+                      # bundle, not to downscale ordinary houses.
 
 
 def crop(imagery, bounds):
     import numpy as np
     import rasterio.windows
-    from PIL import Image
+    from PIL import Image, ImageFilter
     minx, miny, maxx, maxy = bounds
     w = rasterio.windows.from_bounds(minx, miny, maxx, maxy, imagery.transform)
     rgb = np.moveaxis(imagery.read([1, 2, 3], window=w,
                                    boundless=True, fill_value=0), 0, -1)
     im = Image.fromarray(rgb.astype("uint8"))
+    # Source is 0.1 m/px and the tool always views it upscaled, so roof creases
+    # sit right at the resolution limit. A mild unsharp mask does not invent
+    # detail but it does make the edges that ARE there easier to trace against.
+    # Applied before the resize below so it works on real pixels, not resampled
+    # ones.
+    im = im.filter(ImageFilter.UnsharpMask(radius=1.4, percent=115, threshold=3))
     if max(im.size) > MAX_PX:
         s = MAX_PX / max(im.size)
-        im = im.resize((max(1, int(im.width * s)), max(1, int(im.height * s))))
+        im = im.resize((max(1, int(im.width * s)), max(1, int(im.height * s))),
+                       Image.LANCZOS)
     buf = io.BytesIO()
-    im.save(buf, format="JPEG", quality=82, optimize=True)
+    # Crops are tiny (median 291 px) and get fitted up ~3-4x on screen, so
+    # compression artefacts are magnified along with everything else. On images
+    # this small the extra quality costs very little.
+    im.save(buf, format="JPEG", quality=95, optimize=True)
     return base64.b64encode(buf.getvalue()).decode("ascii"), im.size
 
 
@@ -71,8 +83,16 @@ def main():
     a = ap.parse_args()
 
     import geopandas as gpd
+    import pyproj
     import rasterio
     from src.region_build import area_paths, all_areas
+
+    # Josh: "some rooftops I need to check the 3D shape". The imagery is a
+    # single orthophoto, so a dormer and a flat vent can look identical from
+    # straight above. A lat/lon per roof lets the tool link straight out to
+    # Google Earth's 3D mesh, which settles it in seconds.
+    to_wgs = pyproj.Transformer.from_crs("EPSG:2193", "EPSG:4326",
+                                         always_xy=True).transform
 
     ids = a.ids
     if ids is None:
@@ -127,18 +147,23 @@ def main():
                            for x, y in og.exterior.coords])
                 if len(nb) >= 12:
                     break
+            lon, lat = to_wgs((minx + maxx) / 2, (miny + maxy) / 2)
             t = truth.get(bid, {})
             roofs.append({
                 "id": bid, "area": name,
                 "address": t.get("address", ""),
                 "m2": round(g.area, 1),
+                "ll": [round(lat, 6), round(lon, 6)],
                 "bounds": [round(v, 2) for v in b],
                 "px": list(size),
                 "outline": [[round(x, 2), round(y, 2)] for x, y in g.exterior.coords],
+                # courtyards. Rare (1 in 156 here) but a hole drawn as solid
+                # roof invites a labeller to mark faces over open air, and on a
+                # big commercial block that is a 1200 m2 mistake.
+                "holes": [[[round(x, 2), round(y, 2)] for x, y in r.coords]
+                          for r in g.interiors],
                 "neighbours": nb,
                 "jpg": jpg,
-                "note": (f"You said {t['faces']} faces. " if t.get("faces") else "")
-                        + (t.get("structure", "")[:180] if t.get("structure") else ""),
             })
             placed = True
             break
