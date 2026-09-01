@@ -3,7 +3,7 @@
 <title>Mark up roofs</title>
 <style>
   :root{--bg:#13161a;--panel:#1b2026;--ink:#e9eef2;--muted:#93a1ab;--rule:#2a323a;
-        --ridge:#ff4d4d;--hip:#ff9f1c;--valley:#4dabf7;--step:#c77dff;--obs:#ffd400;--ok:#2ecc71}
+        --ridge:#ff4d4d;--hip:#ff9f1c;--valley:#4dabf7;--step:#c77dff;--edge:#2ecc71;--obs:#ffd400;--ok:#2ecc71}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -56,13 +56,14 @@
   <button data-tool="hip"><span><span class="sw" style="background:var(--hip)"></span> Hip</span><span class="k">2</span></button>
   <button data-tool="valley"><span><span class="sw" style="background:var(--valley)"></span> Valley</span><span class="k">3</span></button>
   <button data-tool="step"><span><span class="sw" style="background:var(--step)"></span> Level change</span><span class="k">4</span></button>
-  <div class="hint">Each line is its own segment &mdash; two clicks and it&rsquo;s done. <b>Esc</b> abandons a half-drawn one. Hold <b>Shift</b> to snap to 15&deg;.</div>
+  <button data-tool="edge"><span><span class="sw" style="background:var(--edge)"></span> Edge / drop-off</span><span class="k">5</span></button>
+  <div class="hint">Each line is its own segment &mdash; two clicks and it&rsquo;s done. <b>Esc</b> abandons a half-drawn one. Hold <b>Shift</b> to snap to 15&deg;.<br>No need to trace the outer edge of the roof &mdash; the yellow outline is already known.</div>
   <div id="tooldesc" class="desc"></div>
   <button id="helpbtn" style="margin-top:6px">What&rsquo;s the difference?<span class="k">?</span></button>
 
   <h2>Obstructions &mdash; drag out a shape</h2>
-  <button data-tool="rect"><span><span class="sw" style="background:var(--obs)"></span> Box</span><span class="k">5</span></button>
-  <button data-tool="ellipse"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">6</span></button>
+  <button data-tool="rect"><span><span class="sw" style="background:var(--obs)"></span> Box</span><span class="k">6</span></button>
+  <button data-tool="ellipse"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">7</span></button>
   <div class="hint">Drag on the image to place one. Drag its middle to move, drag a corner to resize, <b>Delete</b> removes the selected shape.</div>
 
   <h2>Actions</h2>
@@ -104,6 +105,9 @@
     <text x="470" y="82" fill="#ff4d4d" font-size="13" text-anchor="middle">ridge</text>
     <text x="452" y="163" fill="#4dabf7" font-size="13" text-anchor="end">valley</text>
     <text x="475" y="232" fill="#93a1ab" font-size="12" text-anchor="middle">L-shaped roof — two sections meeting</text>
+    <rect x="398" y="46" width="52" height="34" fill="#3a444d" stroke="#2ecc71" stroke-width="3"/>
+    <text x="424" y="38" fill="#2ecc71" font-size="12" text-anchor="middle">edge</text>
+    <text x="424" y="68" fill="#93a1ab" font-size="10" text-anchor="middle">dormer</text>
   </svg>
 
   <dl>
@@ -116,6 +120,9 @@
     <dt><span class="sw" style="background:#4dabf7"></span>Valley</dt>
     <dd>The opposite of a hip: two slopes meeting on an <b>inside</b> angle, so rain <b>collects</b> and runs down it. You get one wherever two roof sections join, most often on an L or T shaped house.</dd>
 
+    <dt><span class="sw" style="background:#2ecc71"></span>Edge&nbsp;/ drop-off</dt>
+    <dd>Where a raised feature <b>ends and the roof falls away vertically</b> &mdash; the sides of a dormer, a clerestory, a plant box, a lift overrun. Not a fold: the surface simply <b>stops</b>, like a little cliff, with roof (or nothing) well below. Draw it around the edge of the raised bit.</dd>
+
     <dt><span class="sw" style="background:#c77dff"></span>Level&nbsp;change</dt>
     <dd><b>Not a fold at all</b> &mdash; a step where one part of the roof is simply higher than the next, with a little wall between them. Common on stepped houses down a slope, and around parapets on commercial roofs. If the two surfaces do not meet at an angle but at a <b>height jump</b>, it is this.</dd>
   </dl>
@@ -124,8 +131,10 @@
     <b style="color:var(--ink)">The quick test.</b> Does the line sit at the top with roof falling away both sides? <b style="color:#ff4d4d">Ridge</b>.
     Does it run downhill to a corner, with roof falling away both sides? <b style="color:#ff9f1c">Hip</b>.
     Does it run downhill with roof rising away both sides, so water would sit in it? <b style="color:#4dabf7">Valley</b>.
-    Is one side plainly higher than the other with a step between? <b style="color:#c77dff">Level change</b>.
-    <br><br>If you genuinely cannot tell, leave it out rather than guess &mdash; a wrong label is worse than a missing one.
+    Is one side plainly higher with a step between, roof on both sides? <b style="color:#c77dff">Level change</b>.
+    Does a raised feature just <i>stop</i>, dropping away like a cliff? <b style="color:#2ecc71">Edge / drop-off</b>.
+    <br><br>Level change and edge are close cousins &mdash; both are a height <b style="color:var(--ink)">break</b> rather than a fold, and the model mostly cares about that. If you are torn between those two, pick either and move on.
+    <br><br>But if you cannot tell whether a line is a fold or a break at all, leave it out rather than guess &mdash; a wrong label is worse than a missing one.
   </div>
   <button class="close" id="helpclose">Got it<span class="k">Esc</span></button>
 </div></div>
@@ -134,9 +143,9 @@
 
 <script>
 const ROOFS = /*__ROOFS__*/;
-const COL = {ridge:"#ff4d4d",hip:"#ff9f1c",valley:"#4dabf7",step:"#c77dff"};
+const COL = {ridge:"#ff4d4d",hip:"#ff9f1c",valley:"#4dabf7",step:"#c77dff",edge:"#2ecc71"};
 const KEY = "roof_labels_v1";
-const LINE_TOOLS = new Set(["ridge","hip","valley","step"]);
+const LINE_TOOLS = new Set(["ridge","hip","valley","step","edge"]);
 const HANDLE = 7;
 
 let idx=0, tool="ridge", data=load(), img=new Image();
@@ -294,7 +303,8 @@ const DESC = {
   ridge:"Along the TOP, roof falling away both sides. Usually the longest line.",
   hip:"Runs DOWNHILL to a corner, an outside fold. Roof falls away both sides.",
   valley:"Runs downhill, an INSIDE fold. Water would collect in it.",
-  step:"A height JUMP, not a fold — one side simply higher than the other.",
+  step:"A height JUMP between two roof AREAS — stepped house, split level.",
+  edge:"Where a raised feature ENDS and the roof drops away — dormer, plant box.",
   rect:"Drag out a box over a skylight, vent or existing panel.",
   ellipse:"Drag out a circle over a round vent or flue."};
 function setTool(t){ tool=t; pending=null;
@@ -336,7 +346,7 @@ document.getElementById("download").onclick=()=>{
 addEventListener("keydown", e=>{
   if(e.key==="Shift"){ shift=true; return; }
   if((e.metaKey||e.ctrlKey) && (e.key==="z"||e.key==="Z")){ e.preventDefault(); undo(); return; }
-  const t={"1":"ridge","2":"hip","3":"valley","4":"step","5":"rect","6":"ellipse"}[e.key];
+  const t={"1":"ridge","2":"hip","3":"valley","4":"step","5":"edge","6":"rect","7":"ellipse"}[e.key];
   if(t){ setTool(t); return; }
   if(e.key==="?"){ document.getElementById("help").classList.toggle("on"); return; }
   if(e.key==="Escape"){ document.getElementById("help").classList.remove("on");
