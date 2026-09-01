@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Mark up roofs</title>
+<style>
+  :root{--bg:#13161a;--panel:#1b2026;--ink:#e9eef2;--muted:#93a1ab;--rule:#2a323a;
+        --ridge:#ff4d4d;--hip:#ff9f1c;--valley:#4dabf7;--step:#c77dff;--obs:#ffd400;--ok:#2ecc71}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+       display:flex;height:100vh;overflow:hidden}
+  #side{width:275px;flex:none;background:var(--panel);border-right:1px solid var(--rule);
+        padding:14px;overflow-y:auto}
+  #stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0f12}
+  canvas{cursor:crosshair;max-width:100%;max-height:100%;touch-action:none}
+  h1{font-size:15px;margin:0 0 2px}
+  .addr{color:var(--muted);font-size:12.5px;margin-bottom:12px}
+  h2{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+     margin:14px 0 6px;font-weight:600}
+  button{width:100%;text-align:left;background:#232a31;color:var(--ink);border:1px solid var(--rule);
+         border-radius:3px;padding:6px 9px;margin-bottom:4px;cursor:pointer;font-size:13px;
+         display:flex;justify-content:space-between;align-items:center;gap:8px}
+  button:hover{background:#2b333a}
+  button.on{border-color:#fff;background:#2f3841}
+  button .k{font-family:ui-monospace,monospace;font-size:11px;color:var(--muted)}
+  .sw{width:11px;height:11px;border-radius:2px;flex:none}
+  .row{display:flex;gap:5px}.row button{margin-bottom:0}
+  .hint{color:var(--muted);font-size:11.5px;margin-top:5px;line-height:1.45}
+  .note{background:#232a31;border-radius:3px;padding:8px 10px;font-size:12px;color:var(--muted);margin-top:10px}
+  #status{position:absolute;left:12px;bottom:12px;background:rgba(0,0,0,.75);padding:5px 10px;
+          border-radius:3px;font-size:12.5px}
+  #prog{position:absolute;right:12px;bottom:12px;background:rgba(0,0,0,.75);padding:5px 10px;
+        border-radius:3px;font-size:12.5px;color:var(--muted)}
+  .dl{background:#1f6f4a;border-color:#2ecc71}
+</style></head><body>
+
+<div id="side">
+  <h1 id="title">—</h1>
+  <div class="addr" id="addr"></div>
+
+  <h2>Lines &mdash; click, then click</h2>
+  <button data-tool="ridge" class="on"><span><span class="sw" style="background:var(--ridge)"></span> Ridge</span><span class="k">1</span></button>
+  <button data-tool="hip"><span><span class="sw" style="background:var(--hip)"></span> Hip</span><span class="k">2</span></button>
+  <button data-tool="valley"><span><span class="sw" style="background:var(--valley)"></span> Valley</span><span class="k">3</span></button>
+  <button data-tool="step"><span><span class="sw" style="background:var(--step)"></span> Level change</span><span class="k">4</span></button>
+  <div class="hint">Each line is its own segment &mdash; two clicks and it&rsquo;s done. <b>Esc</b> abandons a half-drawn one. Hold <b>Shift</b> to snap to 15&deg;.</div>
+
+  <h2>Obstructions &mdash; drag out a shape</h2>
+  <button data-tool="rect"><span><span class="sw" style="background:var(--obs)"></span> Box</span><span class="k">5</span></button>
+  <button data-tool="ellipse"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">6</span></button>
+  <div class="hint">Drag on the image to place one. Drag its middle to move, drag a corner to resize, <b>Delete</b> removes the selected shape.</div>
+
+  <h2>Actions</h2>
+  <div class="row">
+    <button id="undo">Undo<span class="k">⌘Z</span></button>
+    <button id="clear">Clear roof</button>
+  </div>
+  <div class="row" style="margin-top:4px">
+    <button id="prev">← Prev<span class="k">P</span></button>
+    <button id="next">Next →<span class="k">N</span></button>
+  </div>
+  <button id="download" class="dl" style="margin-top:8px">Download labels<span class="k">S</span></button>
+  <div class="hint">Saved in this browser as you go, so closing the tab is safe. Download when you&rsquo;re done and send me the file.</div>
+  <div class="note" id="note" style="display:none"></div>
+</div>
+
+<div id="stage"><canvas id="c"></canvas><div id="status">…</div><div id="prog"></div></div>
+
+<script>
+const ROOFS = /*__ROOFS__*/;
+const COL = {ridge:"#ff4d4d",hip:"#ff9f1c",valley:"#4dabf7",step:"#c77dff"};
+const KEY = "roof_labels_v1";
+const LINE_TOOLS = new Set(["ridge","hip","valley","step"]);
+const HANDLE = 7;
+
+let idx=0, tool="ridge", data=load(), img=new Image();
+let pending=null, drag=null, sel=null, shift=false;
+const cv=document.getElementById("c"), ctx=cv.getContext("2d");
+const R = () => ROOFS[idx];
+const rec = () => (data[R().id] = data[R().id] || {lines:[], obstructions:[]});
+
+function load(){ try{ return JSON.parse(localStorage.getItem(KEY)||"{}"); }catch(e){ return {}; } }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify(data)); }catch(e){} }
+const say = t => document.getElementById("status").textContent = t;
+
+// canvas <-> NZTM metres
+function toPx(x,y){ const[a,b,c,d]=R().bounds;
+  return [ (x-a)/(c-a)*cv.width, (1-(y-b)/(d-b))*cv.height ]; }
+function toW(px,py){ const[a,b,c,d]=R().bounds;
+  return [ +(a+px/cv.width*(c-a)).toFixed(3), +(b+(1-py/cv.height)*(d-b)).toFixed(3) ]; }
+
+function ring(pts, stroke, dash, width){
+  ctx.strokeStyle=stroke; ctx.lineWidth=width||1.4; ctx.setLineDash(dash||[]);
+  ctx.beginPath(); pts.forEach(([x,y],i)=>{const[p,q]=toPx(x,y); i?ctx.lineTo(p,q):ctx.moveTo(p,q);});
+  ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+}
+
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if(img.complete && img.naturalWidth) ctx.drawImage(img,0,0,cv.width,cv.height);
+  // neighbours first, dimmed -- so a busy block reads correctly
+  (R().neighbours||[]).forEach(n => ring(n,"rgba(255,255,255,.30)",[4,4],1));
+  ring(R().outline,"#ffd400",[],2.2);            // THIS building, solid
+  const r = rec();
+  r.lines.forEach((l,i)=>{
+    ctx.strokeStyle=COL[l.kind]; ctx.lineWidth=2.6; ctx.setLineDash([]);
+    const[x1,y1]=toPx(l.a[0],l.a[1]), [x2,y2]=toPx(l.b[0],l.b[1]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    [[x1,y1],[x2,y2]].forEach(([px,py])=>{ctx.fillStyle=COL[l.kind];
+      ctx.beginPath();ctx.arc(px,py,3,0,7);ctx.fill();});
+  });
+  r.obstructions.forEach((o,i)=>{
+    const[x1,y1]=toPx(o.x,o.y+o.h), [x2,y2]=toPx(o.x+o.w,o.y);
+    const w=x2-x1, h=y2-y1;
+    ctx.strokeStyle="#ffd400"; ctx.fillStyle="rgba(255,212,0,.18)"; ctx.lineWidth=2;
+    ctx.beginPath();
+    if(o.shape==="ellipse") ctx.ellipse(x1+w/2,y1+h/2,Math.abs(w)/2,Math.abs(h)/2,0,0,7);
+    else ctx.rect(x1,y1,w,h);
+    ctx.fill(); ctx.stroke();
+    if(sel===i){ ctx.fillStyle="#fff";
+      [[x1,y1],[x2,y1],[x1,y2],[x2,y2]].forEach(([px,py])=>ctx.fillRect(px-HANDLE/2,py-HANDLE/2,HANDLE,HANDLE)); }
+  });
+  if(pending){
+    ctx.strokeStyle=COL[tool]||"#fff"; ctx.lineWidth=2; ctx.setLineDash([6,4]);
+    const[x1,y1]=toPx(pending.a[0],pending.a[1]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(pending.px,pending.py); ctx.stroke(); ctx.setLineDash([]);
+  }
+  if(drag && drag.mode==="new"){
+    ctx.strokeStyle="#ffd400"; ctx.setLineDash([5,4]); ctx.lineWidth=1.6;
+    const x=Math.min(drag.x0,drag.x1), y=Math.min(drag.y0,drag.y1);
+    const w=Math.abs(drag.x1-drag.x0), h=Math.abs(drag.y1-drag.y0);
+    ctx.beginPath();
+    if(tool==="ellipse") ctx.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,7); else ctx.rect(x,y,w,h);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  const r2=rec();
+  document.getElementById("prog").textContent =
+    `${r2.lines.length} lines · ${r2.obstructions.length} obstructions · ${Object.keys(data).length}/${ROOFS.length} roofs touched`;
+}
+
+function show(i){
+  idx=(i+ROOFS.length)%ROOFS.length; pending=null; drag=null; sel=null;
+  const r=R();
+  document.getElementById("title").textContent = `#${r.id} · ${r.m2} m²`;
+  document.getElementById("addr").textContent = r.address || r.area;
+  const n=document.getElementById("note");
+  n.textContent = r.note||""; n.style.display = r.note ? "" : "none";
+  cv.width=r.px[0]; cv.height=r.px[1];
+  img=new Image(); img.onload=draw; img.src="data:image/jpeg;base64,"+r.jpg;
+  say(`#${r.id} — ${idx+1} of ${ROOFS.length}`); draw();
+}
+
+function snap(a,px,py){
+  if(!shift) return [px,py];
+  const [ax,ay]=toPx(a[0],a[1]);
+  const ang=Math.atan2(py-ay,px-ax), step=Math.PI/12;
+  const s=Math.round(ang/step)*step, d=Math.hypot(px-ax,py-ay);
+  return [ax+Math.cos(s)*d, ay+Math.sin(s)*d];
+}
+
+function hit(px,py){
+  const r=rec();
+  for(let i=r.obstructions.length-1;i>=0;i--){
+    const o=r.obstructions[i];
+    const[x1,y1]=toPx(o.x,o.y+o.h), [x2,y2]=toPx(o.x+o.w,o.y);
+    const corners=[[x1,y1,"nw"],[x2,y1,"ne"],[x1,y2,"sw"],[x2,y2,"se"]];
+    for(const[cx,cy,which] of corners)
+      if(Math.abs(px-cx)<=HANDLE && Math.abs(py-cy)<=HANDLE) return {i,mode:"resize",which};
+    if(px>=Math.min(x1,x2)&&px<=Math.max(x1,x2)&&py>=Math.min(y1,y2)&&py<=Math.max(y1,y2))
+      return {i,mode:"move"};
+  }
+  return null;
+}
+
+function evPx(e){ const r=cv.getBoundingClientRect();
+  return [ (e.clientX-r.left)*cv.width/r.width, (e.clientY-r.top)*cv.height/r.height ]; }
+
+cv.addEventListener("pointerdown", e=>{
+  const [px,py]=evPx(e);
+  if(LINE_TOOLS.has(tool)){
+    if(!pending){ pending={a:toW(px,py),px,py}; }
+    else { const [sx,sy]=snap(pending.a,px,py);
+      rec().lines.push({kind:tool,a:pending.a,b:toW(sx,sy)}); pending=null; save(); }
+    draw(); return;
+  }
+  const h=hit(px,py);
+  if(h){ sel=h.i; drag={mode:h.mode,which:h.which,i:h.i,px,py,orig:{...rec().obstructions[h.i]}}; }
+  else { sel=null; drag={mode:"new",x0:px,y0:py,x1:px,y1:py}; }
+  cv.setPointerCapture(e.pointerId); draw();
+});
+
+cv.addEventListener("pointermove", e=>{
+  const [px,py]=evPx(e);
+  if(pending){ const[sx,sy]=snap(pending.a,px,py); pending.px=sx; pending.py=sy; draw(); return; }
+  if(!drag) return;
+  if(drag.mode==="new"){ drag.x1=px; drag.y1=py; }
+  else {
+    const o=rec().obstructions[drag.i], g=drag.orig;
+    const [wx,wy]=toW(px,py), [ox,oy]=toW(drag.px,drag.py);
+    if(drag.mode==="move"){ o.x=+(g.x+wx-ox).toFixed(3); o.y=+(g.y+wy-oy).toFixed(3); }
+    else {
+      let x0=g.x, y0=g.y, x1=g.x+g.w, y1=g.y+g.h;
+      if(drag.which.includes("w")) x0=wx; else x1=wx;
+      if(drag.which.includes("s")) y0=wy; else y1=wy;
+      o.x=+Math.min(x0,x1).toFixed(3); o.y=+Math.min(y0,y1).toFixed(3);
+      o.w=+Math.abs(x1-x0).toFixed(3); o.h=+Math.abs(y1-y0).toFixed(3);
+    }
+  }
+  draw();
+});
+
+cv.addEventListener("pointerup", e=>{
+  if(drag && drag.mode==="new"){
+    const [ax,ay]=toW(Math.min(drag.x0,drag.x1), Math.max(drag.y0,drag.y1));
+    const [bx,by]=toW(Math.max(drag.x0,drag.x1), Math.min(drag.y0,drag.y1));
+    const w=Math.abs(bx-ax), h=Math.abs(by-ay);
+    if(w>0.25 && h>0.25){
+      rec().obstructions.push({shape:tool==="ellipse"?"ellipse":"rect",
+        x:+Math.min(ax,bx).toFixed(3), y:+Math.min(ay,by).toFixed(3),
+        w:+w.toFixed(3), h:+h.toFixed(3)});
+      sel=rec().obstructions.length-1;
+    }
+  }
+  drag=null; save(); draw();
+});
+
+function setTool(t){ tool=t; pending=null;
+  document.querySelectorAll("[data-tool]").forEach(b=>b.classList.toggle("on", b.dataset.tool===t));
+  draw(); }
+document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+
+function undo(){
+  const r=rec();
+  if(pending){ pending=null; }
+  else if(r.obstructions.length && sel!==null){ r.obstructions.splice(sel,1); sel=null; }
+  else if(r.lines.length){ r.lines.pop(); }
+  else if(r.obstructions.length){ r.obstructions.pop(); }
+  save(); draw();
+}
+document.getElementById("undo").onclick=undo;
+document.getElementById("clear").onclick=()=>{ data[R().id]={lines:[],obstructions:[]};
+  pending=null; sel=null; save(); draw(); };
+document.getElementById("next").onclick=()=>show(idx+1);
+document.getElementById("prev").onclick=()=>show(idx-1);
+document.getElementById("download").onclick=()=>{
+  const out={ tool:"label_template", saved_utc:new Date().toISOString(),
+    crs:"EPSG:2193", buildings:{} };
+  ROOFS.forEach(r=>{ const d=data[r.id];
+    if(d && (d.lines.length||d.obstructions.length))
+      out.buildings[r.id]={area:r.area,address:r.address,lines:d.lines,obstructions:d.obstructions}; });
+  const blob=new Blob([JSON.stringify(out,null,1)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="roof_labels.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  say(`downloaded ${Object.keys(out.buildings).length} labelled roofs`);
+};
+
+addEventListener("keydown", e=>{
+  if(e.key==="Shift"){ shift=true; return; }
+  if((e.metaKey||e.ctrlKey) && (e.key==="z"||e.key==="Z")){ e.preventDefault(); undo(); return; }
+  const t={"1":"ridge","2":"hip","3":"valley","4":"step","5":"rect","6":"ellipse"}[e.key];
+  if(t){ setTool(t); return; }
+  if(e.key==="Escape"){ pending=null; sel=null; draw(); return; }
+  if(e.key==="Delete"||e.key==="Backspace"){
+    if(sel!==null){ e.preventDefault(); rec().obstructions.splice(sel,1); sel=null; save(); draw(); } return; }
+  const k=e.key.toLowerCase();
+  if(k==="n"){ show(idx+1); } else if(k==="p"){ show(idx-1); }
+  else if(k==="s"){ document.getElementById("download").click(); }
+});
+addEventListener("keyup", e=>{ if(e.key==="Shift"){ shift=false; draw(); } });
+
+show(0);
+</script>
+</body></html>
