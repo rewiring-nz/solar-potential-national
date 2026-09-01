@@ -3,7 +3,7 @@
 <title>Mark up roofs</title>
 <style>
   :root{--bg:#13161a;--panel:#1b2026;--ink:#e9eef2;--muted:#93a1ab;--rule:#2a323a;
-        --ridge:#ff4d4d;--hip:#ff9f1c;--valley:#4dabf7;--step:#c77dff;--edge:#2ecc71;--obs:#ffd400;--ok:#2ecc71}
+        --ridge:#ff4d4d;--hip:#ff9f1c;--valley:#4dabf7;--cliff:#c77dff;--edge:#2ecc71;--obs:#ffd400;--ok:#2ecc71}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -51,19 +51,17 @@
   <h1 id="title">—</h1>
   <div class="addr" id="addr"></div>
 
-  <h2>Lines &mdash; click, then click</h2>
-  <button data-tool="ridge" class="on"><span><span class="sw" style="background:var(--ridge)"></span> Ridge</span><span class="k">1</span></button>
-  <button data-tool="hip"><span><span class="sw" style="background:var(--hip)"></span> Hip</span><span class="k">2</span></button>
-  <button data-tool="valley"><span><span class="sw" style="background:var(--valley)"></span> Valley</span><span class="k">3</span></button>
-  <button data-tool="step"><span><span class="sw" style="background:var(--step)"></span> Level change</span><span class="k">4</span></button>
-  <button data-tool="edge"><span><span class="sw" style="background:var(--edge)"></span> Edge / drop-off</span><span class="k">5</span></button>
+  <h2>Three lines &mdash; click, then click</h2>
+  <button data-tool="ridge" class="on"><span><span class="sw" style="background:var(--ridge)"></span> Ridge line</span><span class="k">1</span></button>
+  <button data-tool="valley"><span><span class="sw" style="background:var(--valley)"></span> Valley line</span><span class="k">2</span></button>
+  <button data-tool="cliff"><span><span class="sw" style="background:var(--cliff)"></span> Cliff line</span><span class="k">3</span></button>
   <div class="hint">Each line is its own segment &mdash; two clicks and it&rsquo;s done. <b>Esc</b> abandons a half-drawn one. Hold <b>Shift</b> to snap to 15&deg;.<br>No need to trace the outer edge of the roof &mdash; the yellow outline is already known.</div>
   <div id="tooldesc" class="desc"></div>
   <button id="helpbtn" style="margin-top:6px">What&rsquo;s the difference?<span class="k">?</span></button>
 
   <h2>Obstructions &mdash; drag out a shape</h2>
-  <button data-tool="rect"><span><span class="sw" style="background:var(--obs)"></span> Box</span><span class="k">6</span></button>
-  <button data-tool="ellipse"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">7</span></button>
+  <button data-tool="rect"><span><span class="sw" style="background:var(--obs)"></span> Box</span><span class="k">4</span></button>
+  <button data-tool="ellipse"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">5</span></button>
   <div class="hint">Drag on the image to place one. Drag its middle to move, drag a corner to resize, <b>Delete</b> removes the selected shape.</div>
 
   <h2>Actions</h2>
@@ -82,19 +80,19 @@
 
 
 <div id="help"><div class="box">
-  <h3>Ridge, hip, valley, level change</h3>
+  <h3>Three kinds of line</h3>
   <div style="color:var(--muted);font-size:13px">Seen from above, which is how you&rsquo;ll be looking at them.</div>
 
   <svg viewBox="0 0 700 260" style="width:100%;margin-top:20px;background:#161b21;border-radius:4px">
     <!-- hipped roof, left -->
     <rect x="30" y="40" width="230" height="170" fill="#2a3138" stroke="#ffd400" stroke-width="2"/>
     <line x1="90" y1="100" x2="200" y2="100" stroke="#ff4d4d" stroke-width="4"/>
-    <line x1="30" y1="40"  x2="90"  y2="100" stroke="#ff9f1c" stroke-width="3"/>
-    <line x1="260" y1="40" x2="200" y2="100" stroke="#ff9f1c" stroke-width="3"/>
-    <line x1="30" y1="210" x2="90"  y2="100" stroke="#ff9f1c" stroke-width="3"/>
-    <line x1="260" y1="210" x2="200" y2="100" stroke="#ff9f1c" stroke-width="3"/>
+    <line x1="30" y1="40"  x2="90"  y2="100" stroke="#ff4d4d" stroke-width="3"/>
+    <line x1="260" y1="40" x2="200" y2="100" stroke="#ff4d4d" stroke-width="3"/>
+    <line x1="30" y1="210" x2="90"  y2="100" stroke="#ff4d4d" stroke-width="3"/>
+    <line x1="260" y1="210" x2="200" y2="100" stroke="#ff4d4d" stroke-width="3"/>
     <text x="145" y="92" fill="#ff4d4d" font-size="13" text-anchor="middle">ridge</text>
-    <text x="52" y="78" fill="#ff9f1c" font-size="13">hip</text>
+    <text x="46" y="78" fill="#ff4d4d" font-size="12">hip — same</text>
     <text x="145" y="232" fill="#93a1ab" font-size="12" text-anchor="middle">hipped roof — slopes on all four sides</text>
 
     <!-- L-shaped roof with valley, right -->
@@ -105,36 +103,30 @@
     <text x="470" y="82" fill="#ff4d4d" font-size="13" text-anchor="middle">ridge</text>
     <text x="452" y="163" fill="#4dabf7" font-size="13" text-anchor="end">valley</text>
     <text x="475" y="232" fill="#93a1ab" font-size="12" text-anchor="middle">L-shaped roof — two sections meeting</text>
-    <rect x="398" y="46" width="52" height="34" fill="#3a444d" stroke="#2ecc71" stroke-width="3"/>
-    <text x="424" y="38" fill="#2ecc71" font-size="12" text-anchor="middle">edge</text>
+    <rect x="398" y="46" width="52" height="34" fill="#3a444d" stroke="#c77dff" stroke-width="3"/>
+    <text x="424" y="38" fill="#c77dff" font-size="12" text-anchor="middle">cliff</text>
     <text x="424" y="68" fill="#93a1ab" font-size="10" text-anchor="middle">dormer</text>
   </svg>
 
   <dl>
-    <dt><span class="sw" style="background:#ff4d4d"></span>Ridge</dt>
-    <dd>The <b>line along the top</b> where two slopes meet and rise to meet each other. It is the highest line on that part of the roof, and usually the longest. Rain runs <b>away</b> from it on both sides.</dd>
+    <dt><span class="sw" style="background:#ff4d4d"></span>Ridge line</dt>
+    <dd>Any fold where the roof <b>falls away on both sides</b>. Flat along the top (a ridge) or running downhill to a corner (a hip) &mdash; <b>both go here</b>. They are the same thing to the model, so do not spend time deciding which. A roof shaped angle&ndash;flat&ndash;angle has several of these; mark them all.</dd>
 
-    <dt><span class="sw" style="background:#ff9f1c"></span>Hip</dt>
-    <dd>A <b>sloping line running down to a corner</b>, where two slopes meet on an <b>outside</b> angle. Think of the corner of a tent seen from above &mdash; the roof folds away from you. A ridge is flat along the top; a hip runs downhill from the end of a ridge to the eave.</dd>
+    <dt><span class="sw" style="background:#4dabf7"></span>Valley line</dt>
+    <dd>The opposite fold: the roof <b>rises away on both sides</b>, so rain would collect and run down it. You get one wherever two roof sections join, most often on an L or T shaped house.</dd>
 
-    <dt><span class="sw" style="background:#4dabf7"></span>Valley</dt>
-    <dd>The opposite of a hip: two slopes meeting on an <b>inside</b> angle, so rain <b>collects</b> and runs down it. You get one wherever two roof sections join, most often on an L or T shaped house.</dd>
-
-    <dt><span class="sw" style="background:#2ecc71"></span>Edge&nbsp;/ drop-off</dt>
-    <dd>Where a raised feature <b>ends and the roof falls away vertically</b> &mdash; the sides of a dormer, a clerestory, a plant box, a lift overrun. Not a fold: the surface simply <b>stops</b>, like a little cliff, with roof (or nothing) well below. Draw it around the edge of the raised bit.</dd>
-
-    <dt><span class="sw" style="background:#c77dff"></span>Level&nbsp;change</dt>
-    <dd><b>Not a fold at all</b> &mdash; a step where one part of the roof is simply higher than the next, with a little wall between them. Common on stepped houses down a slope, and around parapets on commercial roofs. If the two surfaces do not meet at an angle but at a <b>height jump</b>, it is this.</dd>
+    <dt><span class="sw" style="background:#c77dff"></span>Cliff line</dt>
+    <dd><b>Not a fold at all</b> &mdash; the surface stops and the height jumps. Covers both a stepped or split-level roof and the sides of something raised: a dormer, clerestory, plant box or lift overrun.
+    <br><br><b>How to draw it:</b> put the line along the <b>top edge of the higher surface</b>, following the lip where it drops away. For a dormer, that means drawing round its sides &mdash; one line per side.</dd>
   </dl>
 
   <div style="margin-top:20px;font-size:13px;color:var(--muted);line-height:1.6">
     <b style="color:var(--ink)">The quick test.</b> Does the line sit at the top with roof falling away both sides? <b style="color:#ff4d4d">Ridge</b>.
     Does it run downhill to a corner, with roof falling away both sides? <b style="color:#ff9f1c">Hip</b>.
     Does it run downhill with roof rising away both sides, so water would sit in it? <b style="color:#4dabf7">Valley</b>.
-    Is one side plainly higher with a step between, roof on both sides? <b style="color:#c77dff">Level change</b>.
-    Does a raised feature just <i>stop</i>, dropping away like a cliff? <b style="color:#2ecc71">Edge / drop-off</b>.
-    <br><br>Level change and edge are close cousins &mdash; both are a height <b style="color:var(--ink)">break</b> rather than a fold, and the model mostly cares about that. If you are torn between those two, pick either and move on.
-    <br><br>But if you cannot tell whether a line is a fold or a break at all, leave it out rather than guess &mdash; a wrong label is worse than a missing one.
+    Does the surface simply <i>stop</i> and drop, like a little cliff? <b style="color:#c77dff">Cliff line</b>.
+    <br><br>There are only three because that is all the code actually uses: is this a <b style="color:var(--ink)">fold</b> (the surface carries on at a new angle) or a <b style="color:var(--ink)">break</b> (it stops and drops)? Ridge versus hip is architectural vocabulary the pipeline never consults, so it is not worth your time.
+    <br><br>If you cannot tell whether a line is a fold or a break at all, leave it out rather than guess &mdash; a wrong label is worse than a missing one.
   </div>
   <button class="close" id="helpclose">Got it<span class="k">Esc</span></button>
 </div></div>
@@ -143,9 +135,9 @@
 
 <script>
 const ROOFS = /*__ROOFS__*/;
-const COL = {ridge:"#ff4d4d",hip:"#ff9f1c",valley:"#4dabf7",step:"#c77dff",edge:"#2ecc71"};
+const COL = {ridge:"#ff4d4d",hip:"#ff9f1c",valley:"#4dabf7",cliff:"#c77dff",edge:"#2ecc71"};
 const KEY = "roof_labels_v1";
-const LINE_TOOLS = new Set(["ridge","hip","valley","step","edge"]);
+const LINE_TOOLS = new Set(["ridge","valley","cliff"]);
 const HANDLE = 7;
 
 let idx=0, tool="ridge", data=load(), img=new Image();
@@ -300,11 +292,9 @@ cv.addEventListener("pointerup", e=>{
 });
 
 const DESC = {
-  ridge:"Along the TOP, roof falling away both sides. Usually the longest line.",
-  hip:"Runs DOWNHILL to a corner, an outside fold. Roof falls away both sides.",
-  valley:"Runs downhill, an INSIDE fold. Water would collect in it.",
-  step:"A height JUMP between two roof AREAS — stepped house, split level.",
-  edge:"Where a raised feature ENDS and the roof drops away — dormer, plant box.",
+  ridge:"Any fold where roof falls AWAY on both sides — flat along the top or running down to a corner, both count.",
+  valley:"A fold where roof RISES away on both sides. Water would collect in it.",
+  cliff:"A height BREAK, not a fold. Draw along the TOP edge, on the higher side.",
   rect:"Drag out a box over a skylight, vent or existing panel.",
   ellipse:"Drag out a circle over a round vent or flue."};
 function setTool(t){ tool=t; pending=null;
@@ -346,7 +336,7 @@ document.getElementById("download").onclick=()=>{
 addEventListener("keydown", e=>{
   if(e.key==="Shift"){ shift=true; return; }
   if((e.metaKey||e.ctrlKey) && (e.key==="z"||e.key==="Z")){ e.preventDefault(); undo(); return; }
-  const t={"1":"ridge","2":"hip","3":"valley","4":"step","5":"edge","6":"rect","7":"ellipse"}[e.key];
+  const t={"1":"ridge","2":"valley","3":"cliff","4":"rect","5":"ellipse"}[e.key];
   if(t){ setTool(t); return; }
   if(e.key==="?"){ document.getElementById("help").classList.toggle("on"); return; }
   if(e.key==="Escape"){ document.getElementById("help").classList.remove("on");
