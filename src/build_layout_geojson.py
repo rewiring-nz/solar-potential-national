@@ -24,6 +24,7 @@ import os
 import signal
 import sys
 import time
+import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, wait
 from pathlib import Path
 
@@ -397,8 +398,26 @@ def main(area="pilot", jobs=None, limit=0, dry_run=False):
         # dispatch overhead is microseconds against ~1s of work per building, so
         # the chunking was buying nothing worth this.
         results = {}
+        # SPAWN, not the Linux default fork. On 1 Sep every worker on the VM
+        # blocked in futex_wait_queue the instant the pool started: 209
+        # buildings, ten workers, load average 0.00, and not one building
+        # completed in half an hour. The same building built in 10 seconds when
+        # called directly, so the work was fine and the POOL was deadlocked.
+        #
+        # That is the classic fork hazard: a child inherits the parent's memory
+        # including any lock held at fork time, and the numeric stack this
+        # pipeline sits on (numpy/OpenBLAS, GEOS, GDAL, pvlib) all take locks
+        # the parent has already touched by the time the SolarModel is built.
+        # A child that inherits one held lock waits on it forever, and no owner
+        # exists in that process to release it.
+        #
+        # spawn starts each worker from a clean interpreter, so no lock is
+        # inherited. It costs a little startup per worker -- which is why the
+        # SolarModel is built ONCE in the parent and shipped in as an argument
+        # rather than reconstructed per worker.
         with ProcessPoolExecutor(max_workers=jobs, initializer=_init_worker,
-                                 initargs=(area, model)) as ex:
+                                 initargs=(area, model),
+                                 mp_context=multiprocessing.get_context("spawn")) as ex:
             futs = {ex.submit(_build_one, b): b for b in ids}
             pending, last_progress = set(futs), time.time()
             while pending:
