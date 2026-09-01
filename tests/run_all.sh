@@ -18,6 +18,9 @@
 #                the geometry core on a routine dependency upgrade.
 #   sync         the two repos have already diverged twice, silently, with
 #                both bugs reaching the public site.
+#   diagram      the architecture page names 78 functions and constants. This
+#                fails if any has moved or changed value, because a diagram
+#                that drifts is worse than none -- a reviewer trusts it.
 #   golden       pins what segmentation currently produces for the 28
 #                ground-truth buildings, so a refactor cannot move geometry
 #                unnoticed. Needs local region data; skips without it.
@@ -43,6 +46,7 @@ else
 fi
 run "deprecated APIs"       $PY tests/test_no_deprecations.py
 run "repo sync"             $PY tools/check_repo_sync.py
+run "diagram vs code"       $PY tools/check_diagram.py
 if [ $FAST -eq 0 ]; then
   run "golden buildings"    $PY -W ignore tests/test_golden.py
 else
