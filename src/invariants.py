@@ -99,6 +99,40 @@ def _physical_yield_ceiling():
     return best * m2_per_kwp * eff * dc2ac * YIELD_CEILING_TOLERANCE
 
 
+# --- module 7 again: the two files must agree ------------------------------
+# solar_potential's fill_panels_100 is baked FROM panel_layouts, so they must
+# hold the same number of panels for every building. On 1 Sep they did not, for
+# 67.8% of buildings -- the deciles had been baked from an earlier panel set and
+# nothing noticed. District-wide the dashboard was quoting 750,672 panels while
+# the map drew 774,642.
+#
+# Josh found it by counting panels on one roof: 15 Kent Street read "25 panels"
+# against 79 actually placed. Re-running bake_density_deciles fixed every one,
+# so the failure is ORDERING, not arithmetic -- which is exactly the kind of
+# thing a build does silently and a check catches in a second.
+def _decile_layout_agreement(regions):
+    """Buildings where fill_panels_100 disagrees with the actual panel count."""
+    from collections import Counter
+    lay_path = DATA_DIR / "panel_layouts.geojson"
+    if not lay_path.exists():
+        return None
+    actual = Counter()
+    for f in json.loads(lay_path.read_text())["features"]:
+        if f["properties"].get("kind") == "panel":
+            actual[f["properties"]["building_id"]] += 1
+    out = []
+    for f in json.loads((DATA_DIR / "solar_potential.geojson").read_text())["features"]:
+        p = f["properties"]
+        d = p.get("fill_panels_100")
+        if d is None:
+            continue
+        a = actual.get(p["building_id"], 0)
+        if a != d:
+            out.append((abs(a - d), int(p["building_id"]), (p.get("address") or "").strip(),
+                        f"dashboard says {d} panels, the map draws {a}"))
+    return out
+
+
 def _footprints(regions):
     import geopandas as gpd
     from src.region_build import area_paths
@@ -126,7 +160,8 @@ def check(regions=None, top=15):
     panel_m2 = config.PV_ASSUMPTIONS["panel_area_m2"]
     yield_max = _physical_yield_ceiling()
 
-    findings = {"7 panel placement": [], "6 roof geometry": [], "4 yield conversion": []}
+    findings = {"7 panel placement": [], "6 roof geometry": [], "4 yield conversion": [],
+                "7 deciles vs layouts": []}
     checked = 0
 
     for f in sp["features"]:
@@ -170,10 +205,15 @@ def check(regions=None, top=15):
                      f"{per:.0f} kWh per kWp -- implausibly low "
                      f"(floor {YIELD_PER_KWP_MIN:.0f})"))
 
+    agree = _decile_layout_agreement(regions)
+    if agree is not None:
+        findings["7 deciles vs layouts"] = agree
+
     total = sum(len(v) for v in findings.values())
     print(f"invariant check over {checked:,} buildings in "
           f"{len(regions)} region(s)\n")
-    for module in ("6 roof geometry", "7 panel placement", "4 yield conversion"):
+    for module in ("7 deciles vs layouts", "6 roof geometry", "7 panel placement",
+                   "4 yield conversion"):
         hits = sorted(findings[module], reverse=True)
         pct = 100 * len(hits) / checked if checked else 0
         print(f"module {module}: {len(hits):,} flagged ({pct:.2f}%)")

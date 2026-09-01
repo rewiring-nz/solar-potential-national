@@ -1756,6 +1756,17 @@ map.on("load", async () => {
     // density (5 Beach St: 135 vs 203), so switching source when the first band
     // is hidden made the count go UP. Once this mode is on, every figure comes
     // from the tiles, and hiding a band can only ever subtract.
+    // queryRenderedFeatures only sees what is CURRENTLY DRAWN, so this count
+    // moves with the viewport: pan a roof half off-screen and its panel count
+    // drops. Josh hit that on 15 Kent Street -- the panel read "25 panels"
+    // where the tiles hold 54 at that density and 79 exist in the layout.
+    //
+    // So this path is now used ONLY when a band is actually hidden, which is
+    // the one case a per-panel count is genuinely needed for. With every band
+    // shown -- the normal case, and the one Josh was looking at -- fall through
+    // to the baked deciles, which are per-building and do not care where the
+    // map is pointing.
+    if (Object.keys(panelEconShow).every(k => panelEconShow[k])) return null;
     let feats;
     try {
       // Only the query is guarded -- a missing layer is expected during startup.
