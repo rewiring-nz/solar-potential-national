@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Roof labelling</title>
+<style>
+  :root {
+    --bg:#14171a; --panel:#1c2126; --ink:#e8edf1; --muted:#94a3ad; --rule:#2b333a;
+    --ridge:#ff4d4d; --hip:#ff9f1c; --valley:#4dabf7; --step:#c77dff;
+    --outline:#2ecc71; --obs:#ffd400;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         display:flex; height:100vh; overflow:hidden; }
+  #side { width:290px; flex:none; background:var(--panel); border-right:1px solid var(--rule);
+          padding:16px; overflow-y:auto; }
+  #stage { flex:1; position:relative; display:flex; align-items:center; justify-content:center;
+           background:#0d1013; overflow:hidden; }
+  canvas { cursor:crosshair; max-width:100%; max-height:100%; }
+  h1 { font-size:15px; margin:0 0 4px; }
+  .addr { color:var(--muted); font-size:12.5px; margin-bottom:14px; }
+  .grp { margin-bottom:16px; }
+  .grp h2 { font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+            color:var(--muted); margin:0 0 7px; font-weight:600; }
+  button { width:100%; text-align:left; background:#232a31; color:var(--ink);
+           border:1px solid var(--rule); border-radius:3px; padding:7px 10px;
+           margin-bottom:5px; cursor:pointer; font-size:13px; display:flex;
+           justify-content:space-between; align-items:center; gap:8px; }
+  button:hover { background:#2b333a; }
+  button.on { border-color:currentColor; }
+  button .k { font-family:ui-monospace,monospace; font-size:11px; color:var(--muted); }
+  .sw { width:11px; height:11px; border-radius:2px; flex:none; }
+  .row { display:flex; gap:6px; }
+  .row button { margin-bottom:0; }
+  .hint { color:var(--muted); font-size:12px; margin-top:6px; }
+  .known { background:#232a31; border-radius:3px; padding:9px 11px; font-size:12.5px;
+           color:var(--muted); margin-top:10px; }
+  .known b { color:var(--ink); }
+  #status { position:absolute; left:12px; bottom:12px; background:rgba(0,0,0,.72);
+            padding:6px 11px; border-radius:3px; font-size:12.5px; }
+  #count { color:var(--muted); font-size:12px; margin-top:8px; }
+</style></head>
+<body>
+
+<div id="side">
+  <h1 id="title">—</h1>
+  <div class="addr" id="addr"></div>
+
+  <div class="grp">
+    <h2>Draw</h2>
+    <button data-tool="ridge"   class="on"><span><span class="sw" style="background:var(--ridge)"></span> Ridge</span><span class="k">1</span></button>
+    <button data-tool="hip"><span><span class="sw" style="background:var(--hip)"></span> Hip</span><span class="k">2</span></button>
+    <button data-tool="valley"><span><span class="sw" style="background:var(--valley)"></span> Valley</span><span class="k">3</span></button>
+    <button data-tool="step"><span><span class="sw" style="background:var(--step)"></span> Level change</span><span class="k">4</span></button>
+    <button data-tool="outline"><span><span class="sw" style="background:var(--outline)"></span> Roof outline</span><span class="k">5</span></button>
+    <button data-tool="obstruction"><span><span class="sw" style="background:var(--obs)"></span> Obstruction</span><span class="k">6</span></button>
+    <div class="hint">Click to place points. <b>Enter</b> finishes a shape, <b>Esc</b> cancels it. Outline and obstruction close automatically.</div>
+  </div>
+
+  <div class="grp">
+    <h2>Model guess</h2>
+    <button id="toggle-guess"><span>Show the segmenter's guess</span><span class="k">G</span></button>
+    <button id="seed">Copy guess into my lines <span class="k">S</span></button>
+    <div class="hint">Starting from the guess is faster but anchors you to what the pipeline already believes. Whichever you use is recorded.</div>
+  </div>
+
+  <div class="grp">
+    <h2>Actions</h2>
+    <div class="row">
+      <button id="undo">Undo <span class="k">⌘Z</span></button>
+      <button id="clear">Clear</button>
+    </div>
+    <button id="save" style="margin-top:5px">Save &amp; next <span class="k">↵↵ / N</span></button>
+    <button id="skip">Skip <span class="k">K</span></button>
+    <div id="count"></div>
+  </div>
+
+  <div id="known" class="known" style="display:none"></div>
+</div>
+
+<div id="stage"><canvas id="c"></canvas><div id="status">loading…</div></div>
+
+<script>
+const COLOURS = { ridge:"#ff4d4d", hip:"#ff9f1c", valley:"#4dabf7",
+                  step:"#c77dff", outline:"#2ecc71", obstruction:"#ffd400" };
+const CLOSED = new Set(["outline","obstruction"]);
+
+let queue = [], idx = 0, B = null, img = new Image();
+let tool = "ridge", shapes = [], current = [], showGuess = true, seeded = false;
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+
+const say = t => document.getElementById("status").textContent = t;
+
+// NZTM <-> canvas. The bundle gives real-world bounds for the crop, so every
+// drawn point converts straight to metres and never needs a second transform.
+function toPx(x, y) {
+  const [minx, miny, maxx, maxy] = B.bounds;
+  return [ (x - minx) / (maxx - minx) * cv.width,
+           (1 - (y - miny) / (maxy - miny)) * cv.height ];
+}
+function toWorld(px, py) {
+  const [minx, miny, maxx, maxy] = B.bounds;
+  return [ minx + px / cv.width * (maxx - minx),
+           miny + (1 - py / cv.height) * (maxy - miny) ];
+}
+
+function draw() {
+  if (!B) return;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (img.complete && img.naturalWidth) ctx.drawImage(img, 0, 0, cv.width, cv.height);
+
+  // footprint, for orientation only
+  ctx.strokeStyle = "rgba(255,255,255,.45)"; ctx.lineWidth = 1; ctx.setLineDash([5,4]);
+  ctx.beginPath();
+  B.footprint.forEach(([x,y],i) => { const [px,py]=toPx(x,y); i?ctx.lineTo(px,py):ctx.moveTo(px,py); });
+  ctx.stroke(); ctx.setLineDash([]);
+
+  if (showGuess) {
+    ctx.strokeStyle = "rgba(120,200,255,.5)"; ctx.lineWidth = 1.2;
+    (B.model_guess||[]).forEach(ring => {
+      ctx.beginPath();
+      ring.forEach(([x,y],i) => { const [px,py]=toPx(x,y); i?ctx.lineTo(px,py):ctx.moveTo(px,py); });
+      ctx.stroke();
+    });
+  }
+
+  const paint = (pts, kind, live) => {
+    if (pts.length < 1) return;
+    ctx.strokeStyle = COLOURS[kind]; ctx.lineWidth = live ? 2 : 2.4;
+    ctx.setLineDash(live ? [6,4] : []);
+    ctx.beginPath();
+    pts.forEach(([x,y],i) => { const [px,py]=toPx(x,y); i?ctx.lineTo(px,py):ctx.moveTo(px,py); });
+    if (CLOSED.has(kind) && !live && pts.length > 2) ctx.closePath();
+    ctx.stroke(); ctx.setLineDash([]);
+    pts.forEach(([x,y]) => { const [px,py]=toPx(x,y);
+      ctx.fillStyle = COLOURS[kind]; ctx.beginPath(); ctx.arc(px,py,3,0,7); ctx.fill(); });
+  };
+  shapes.forEach(s => paint(s.points, s.kind, false));
+  paint(current, tool, true);
+}
+
+async function load(i) {
+  idx = Math.max(0, Math.min(i, queue.length - 1));
+  const id = queue[idx];
+  say(`loading #${id}…`);
+  B = await (await fetch(`/api/building/${id}`)).json();
+  if (B.error) { say(B.error); return; }
+  shapes = []; current = []; seeded = false;
+  if (B.existing) {
+    shapes = (B.existing.lines||[]).map(l => ({kind:l.kind, points:l.points}))
+      .concat((B.existing.obstructions||[]).map(o => ({kind:"obstruction", points:o})));
+    seeded = !!B.existing.seeded;
+  }
+  document.getElementById("title").textContent = `#${B.building_id}  ·  ${B.area_m2} m²`;
+  document.getElementById("addr").textContent = B.address || B.area;
+  const k = document.getElementById("known");
+  const bits = [];
+  if (B.known.faces) bits.push(`You said <b>${B.known.faces} faces</b>.`);
+  if (B.known.obstructions_marked) bits.push(`<b>${B.known.obstructions_marked}</b> obstructions marked.`);
+  if (B.known.structure) bits.push(B.known.structure.slice(0,240));
+  k.innerHTML = bits.join(" "); k.style.display = bits.length ? "" : "none";
+
+  const [w,h] = B.size_px.length===2 && B.size_px[0] ? B.size_px : [900,900];
+  cv.width = w; cv.height = h;
+  if (B.imagery_png) { img = new Image(); img.onload = draw; img.src = "data:image/png;base64," + B.imagery_png; }
+  else { img = new Image(); draw(); }
+  updateCount(); draw();
+  say(`#${B.building_id} — ${idx+1} of ${queue.length}`);
+}
+
+function updateCount() {
+  const lines = shapes.filter(s => s.kind !== "obstruction").length;
+  const obs = shapes.filter(s => s.kind === "obstruction").length;
+  document.getElementById("count").textContent =
+    `${lines} lines · ${obs} obstructions${seeded ? " · seeded" : ""}`;
+}
+
+cv.addEventListener("click", e => {
+  const r = cv.getBoundingClientRect();
+  const px = (e.clientX - r.left) * cv.width / r.width;
+  const py = (e.clientY - r.top) * cv.height / r.height;
+  current.push(toWorld(px, py).map(v => Math.round(v * 1000) / 1000));
+  draw();
+});
+
+function finish() {
+  const need = CLOSED.has(tool) ? 3 : 2;
+  if (current.length >= need) { shapes.push({kind: tool, points: current}); }
+  current = []; updateCount(); draw();
+}
+
+async function save(advance) {
+  if (current.length) finish();
+  const payload = {
+    lines: shapes.filter(s => s.kind !== "obstruction")
+                 .map(s => ({kind: s.kind, points: s.points})),
+    obstructions: shapes.filter(s => s.kind === "obstruction").map(s => s.points),
+    seeded, area: B.area, address: B.address,
+    saved_utc: new Date().toISOString(),
+  };
+  const r = await (await fetch(`/api/labels/${B.building_id}`,
+    {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)})).json();
+  say(`saved #${B.building_id} (${r.total} roofs done)`);
+  if (advance && idx < queue.length - 1) setTimeout(() => load(idx + 1), 250);
+}
+
+document.querySelectorAll("[data-tool]").forEach(b => b.onclick = () => {
+  document.querySelectorAll("[data-tool]").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); tool = b.dataset.tool; draw();
+});
+document.getElementById("toggle-guess").onclick = () => { showGuess = !showGuess; draw(); };
+document.getElementById("seed").onclick = () => {
+  (B.model_guess||[]).forEach(ring => shapes.push({kind:"outline", points: ring.slice(0,-1)}));
+  seeded = true; updateCount(); draw();
+  say("seeded from the model — recorded with the label");
+};
+document.getElementById("undo").onclick = () => {
+  if (current.length) current.pop(); else shapes.pop();
+  updateCount(); draw();
+};
+document.getElementById("clear").onclick = () => { shapes = []; current = []; seeded = false; updateCount(); draw(); };
+document.getElementById("save").onclick = () => save(true);
+document.getElementById("skip").onclick = () => load(idx + 1);
+
+addEventListener("keydown", e => {
+  const keys = {"1":"ridge","2":"hip","3":"valley","4":"step","5":"outline","6":"obstruction"};
+  if (keys[e.key]) { document.querySelector(`[data-tool="${keys[e.key]}"]`).click(); return; }
+  if (e.key === "Enter") { finish(); return; }
+  if (e.key === "Escape") { current = []; draw(); return; }
+  if (e.key.toLowerCase() === "g") { showGuess = !showGuess; draw(); return; }
+  if (e.key.toLowerCase() === "s") { document.getElementById("seed").click(); return; }
+  if (e.key.toLowerCase() === "n") { save(true); return; }
+  if (e.key.toLowerCase() === "k") { load(idx + 1); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); document.getElementById("undo").click(); }
+});
+
+(async () => {
+  const q = await (await fetch("/api/queue")).json();
+  queue = q.ids;
+  say(`${queue.length} roofs queued, ${q.done.length} already saved`);
+  load(0);
+})();
+</script>
+</body></html>
