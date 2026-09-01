@@ -48,7 +48,11 @@ LINZ_LIDAR_TILE_INDEX_LAYER = 105025  # "Otago - Queenstown LiDAR Tile Index (20
 LINZ_BUILDING_OUTLINES_LAYER = 101290
 LINZ_DSM_LAYER = 105024  # "Otago - Queenstown LiDAR 1m DSM (2021)"
 LINZ_DEM_LAYER = 105023  # "Otago - Queenstown LiDAR 1m DEM (2021)" -- bare earth, for shading horizon
-LINZ_IMAGERY_LAYER = 105744  # "Queenstown 0.1m Urban Aerial Photos (2026)" -- captured 12 Feb-3 Mar
+LINZ_IMAGERY_LAYER = 105744  # "Wellington 0.075m Urban Aerial Photos (2021)"
+# NOTE the comment here used to name the Queenstown layer -- a stale copy from
+# the fork. The id was always right; the description was not. Island Bay builds
+# at 0.075 m/px, sharper than Queenstown's 0.1 m ceiling. A 2025 recapture
+# exists at the same resolution (layer 124698) if fresher imagery is wanted.
 # 2026, replacing the 2021 capture this pilot originally used. More current (new/changed rooftop
 # equipment, growth) at the cost of no longer matching the DSM/building-outline capture year exactly
 # (both still 2021) -- worth revisiting if that skew ever shows up as a real building-outline/roof
