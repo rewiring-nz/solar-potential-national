@@ -2556,7 +2556,22 @@ map.on("load", async () => {
     // is a second ceiling, for the case where someone enters a very low yearly
     // figure -- a site cannot self-consume more than it uses. Whichever binds
     // first, binds; generation past it is exported.
-    const loadCeiling = daytimeKw * econ.daytime_hours * 365;
+    // Josh, 1 Sep: "if you change the consumption of a home from 7000 to
+    // 10,000 kWh, then the self consumption kW should go up higher, not stay
+    // the same". He is right, and the old code could not do that: the ceiling
+    // was min(daytime kW load, annual use), and for a typical home the kW side
+    // always bound -- 1.5 kW x 6.7 h x 365 = 3,668 kWh against 7,000 used --
+    // so editing annual use moved nothing at all until it dropped below 3,668.
+    //
+    // A house that uses more electricity uses more of it in daylight too, so
+    // the daytime load scales with annual consumption rather than sitting
+    // beside it as an independent number. The profile's kW is now read as
+    // "this load AT THE DEFAULT annual use", and moves proportionally from
+    // there. Both ceilings then respond together instead of one silently
+    // dominating.
+    const defaultUse = biz ? ECON_DEFAULTS.biz_use_kwh : ECON_DEFAULTS.home_use_kwh;
+    const scaledDaytimeKw = daytimeKw * (useKwh / defaultUse);
+    const loadCeiling = scaledDaytimeKw * econ.daytime_hours * 365;
     const ceiling = Math.min(loadCeiling, useKwh);
     const selfKwhFor = gen => Math.min(gen, ceiling);
     const valueInYear = y => {
@@ -2605,7 +2620,7 @@ map.on("load", async () => {
              exportLifetimePerKwhYr, retailLifetimePerKwhYr,
              sellLater: sellRate(THIS_YEAR + econ.life_years, sellNow),
              inverterCost,
-             daytimeKw, ceiling, useKwh, selfKwh: selfKwhFor(kwhYear),
+             daytimeKw: scaledDaytimeKw, ceiling, useKwh, selfKwh: selfKwhFor(kwhYear),
              // Share is now an OUTPUT of the model, not an input to it.
              selfPct: 100 * selfKwhFor(kwhYear) / kwhYear,
              capped: kwhYear > ceiling, capByUse: loadCeiling > useKwh };
