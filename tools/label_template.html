@@ -31,6 +31,20 @@
   #prog{position:absolute;right:12px;bottom:12px;background:rgba(0,0,0,.75);padding:5px 10px;
         border-radius:3px;font-size:12.5px;color:var(--muted)}
   .dl{background:#1f6f4a;border-color:#2ecc71}
+  .desc{background:#232a31;border-left:2px solid var(--rule);border-radius:2px;
+        padding:8px 10px;margin-top:8px;font-size:12px;line-height:1.5;color:var(--muted)}
+  .desc b{color:var(--ink)}
+  #help{position:fixed;inset:0;background:rgba(8,10,12,.93);z-index:20;display:none;
+        overflow-y:auto;padding:34px}
+  #help.on{display:block}
+  #help .box{max-width:760px;margin:0 auto;background:var(--panel);border:1px solid var(--rule);
+             border-radius:5px;padding:26px 30px}
+  #help h3{margin:0 0 4px;font-size:19px}
+  #help dl{display:grid;grid-template-columns:112px 1fr;gap:11px 16px;margin:18px 0 0;font-size:13.5px}
+  #help dt{font-weight:600;display:flex;align-items:center;gap:7px}
+  #help dd{margin:0;color:var(--muted);line-height:1.55}
+  #help dd b{color:var(--ink);font-weight:500}
+  #help .close{margin-top:22px;width:auto;padding:7px 16px;display:inline-flex}
 </style></head><body>
 
 <div id="side">
@@ -43,6 +57,8 @@
   <button data-tool="valley"><span><span class="sw" style="background:var(--valley)"></span> Valley</span><span class="k">3</span></button>
   <button data-tool="step"><span><span class="sw" style="background:var(--step)"></span> Level change</span><span class="k">4</span></button>
   <div class="hint">Each line is its own segment &mdash; two clicks and it&rsquo;s done. <b>Esc</b> abandons a half-drawn one. Hold <b>Shift</b> to snap to 15&deg;.</div>
+  <div id="tooldesc" class="desc"></div>
+  <button id="helpbtn" style="margin-top:6px">What&rsquo;s the difference?<span class="k">?</span></button>
 
   <h2>Obstructions &mdash; drag out a shape</h2>
   <button data-tool="rect"><span><span class="sw" style="background:var(--obs)"></span> Box</span><span class="k">5</span></button>
@@ -62,6 +78,57 @@
   <div class="hint">Saved in this browser as you go, so closing the tab is safe. Download when you&rsquo;re done and send me the file.</div>
   <div class="note" id="note" style="display:none"></div>
 </div>
+
+
+<div id="help"><div class="box">
+  <h3>Ridge, hip, valley, level change</h3>
+  <div style="color:var(--muted);font-size:13px">Seen from above, which is how you&rsquo;ll be looking at them.</div>
+
+  <svg viewBox="0 0 700 260" style="width:100%;margin-top:20px;background:#161b21;border-radius:4px">
+    <!-- hipped roof, left -->
+    <rect x="30" y="40" width="230" height="170" fill="#2a3138" stroke="#ffd400" stroke-width="2"/>
+    <line x1="90" y1="100" x2="200" y2="100" stroke="#ff4d4d" stroke-width="4"/>
+    <line x1="30" y1="40"  x2="90"  y2="100" stroke="#ff9f1c" stroke-width="3"/>
+    <line x1="260" y1="40" x2="200" y2="100" stroke="#ff9f1c" stroke-width="3"/>
+    <line x1="30" y1="210" x2="90"  y2="100" stroke="#ff9f1c" stroke-width="3"/>
+    <line x1="260" y1="210" x2="200" y2="100" stroke="#ff9f1c" stroke-width="3"/>
+    <text x="145" y="92" fill="#ff4d4d" font-size="13" text-anchor="middle">ridge</text>
+    <text x="52" y="78" fill="#ff9f1c" font-size="13">hip</text>
+    <text x="145" y="232" fill="#93a1ab" font-size="12" text-anchor="middle">hipped roof — slopes on all four sides</text>
+
+    <!-- L-shaped roof with valley, right -->
+    <path d="M330 40 L620 40 L620 210 L470 210 L470 140 L330 140 Z" fill="#2a3138" stroke="#ffd400" stroke-width="2"/>
+    <line x1="390" y1="90" x2="560" y2="90" stroke="#ff4d4d" stroke-width="4"/>
+    <line x1="560" y1="90" x2="560" y2="175" stroke="#ff4d4d" stroke-width="4"/>
+    <line x1="470" y1="140" x2="530" y2="120" stroke="#4dabf7" stroke-width="4"/>
+    <text x="470" y="82" fill="#ff4d4d" font-size="13" text-anchor="middle">ridge</text>
+    <text x="452" y="163" fill="#4dabf7" font-size="13" text-anchor="end">valley</text>
+    <text x="475" y="232" fill="#93a1ab" font-size="12" text-anchor="middle">L-shaped roof — two sections meeting</text>
+  </svg>
+
+  <dl>
+    <dt><span class="sw" style="background:#ff4d4d"></span>Ridge</dt>
+    <dd>The <b>line along the top</b> where two slopes meet and rise to meet each other. It is the highest line on that part of the roof, and usually the longest. Rain runs <b>away</b> from it on both sides.</dd>
+
+    <dt><span class="sw" style="background:#ff9f1c"></span>Hip</dt>
+    <dd>A <b>sloping line running down to a corner</b>, where two slopes meet on an <b>outside</b> angle. Think of the corner of a tent seen from above &mdash; the roof folds away from you. A ridge is flat along the top; a hip runs downhill from the end of a ridge to the eave.</dd>
+
+    <dt><span class="sw" style="background:#4dabf7"></span>Valley</dt>
+    <dd>The opposite of a hip: two slopes meeting on an <b>inside</b> angle, so rain <b>collects</b> and runs down it. You get one wherever two roof sections join, most often on an L or T shaped house.</dd>
+
+    <dt><span class="sw" style="background:#c77dff"></span>Level&nbsp;change</dt>
+    <dd><b>Not a fold at all</b> &mdash; a step where one part of the roof is simply higher than the next, with a little wall between them. Common on stepped houses down a slope, and around parapets on commercial roofs. If the two surfaces do not meet at an angle but at a <b>height jump</b>, it is this.</dd>
+  </dl>
+
+  <div style="margin-top:20px;font-size:13px;color:var(--muted);line-height:1.6">
+    <b style="color:var(--ink)">The quick test.</b> Does the line sit at the top with roof falling away both sides? <b style="color:#ff4d4d">Ridge</b>.
+    Does it run downhill to a corner, with roof falling away both sides? <b style="color:#ff9f1c">Hip</b>.
+    Does it run downhill with roof rising away both sides, so water would sit in it? <b style="color:#4dabf7">Valley</b>.
+    Is one side plainly higher than the other with a step between? <b style="color:#c77dff">Level change</b>.
+    <br><br>If you genuinely cannot tell, leave it out rather than guess &mdash; a wrong label is worse than a missing one.
+  </div>
+  <button class="close" id="helpclose">Got it<span class="k">Esc</span></button>
+</div></div>
 
 <div id="stage"><canvas id="c"></canvas><div id="status">…</div><div id="prog"></div></div>
 
@@ -223,10 +290,22 @@ cv.addEventListener("pointerup", e=>{
   drag=null; save(); draw();
 });
 
+const DESC = {
+  ridge:"Along the TOP, roof falling away both sides. Usually the longest line.",
+  hip:"Runs DOWNHILL to a corner, an outside fold. Roof falls away both sides.",
+  valley:"Runs downhill, an INSIDE fold. Water would collect in it.",
+  step:"A height JUMP, not a fold — one side simply higher than the other.",
+  rect:"Drag out a box over a skylight, vent or existing panel.",
+  ellipse:"Drag out a circle over a round vent or flue."};
 function setTool(t){ tool=t; pending=null;
+  document.getElementById("tooldesc").innerHTML = DESC[t] ? "<b>"+t[0].toUpperCase()+t.slice(1)+".</b> "+DESC[t] : "";
   document.querySelectorAll("[data-tool]").forEach(b=>b.classList.toggle("on", b.dataset.tool===t));
   draw(); }
 document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+const help=document.getElementById("help");
+document.getElementById("helpbtn").onclick=()=>help.classList.add("on");
+document.getElementById("helpclose").onclick=()=>help.classList.remove("on");
+help.onclick=e=>{ if(e.target===help) help.classList.remove("on"); };
 
 function undo(){
   const r=rec();
@@ -259,7 +338,9 @@ addEventListener("keydown", e=>{
   if((e.metaKey||e.ctrlKey) && (e.key==="z"||e.key==="Z")){ e.preventDefault(); undo(); return; }
   const t={"1":"ridge","2":"hip","3":"valley","4":"step","5":"rect","6":"ellipse"}[e.key];
   if(t){ setTool(t); return; }
-  if(e.key==="Escape"){ pending=null; sel=null; draw(); return; }
+  if(e.key==="?"){ document.getElementById("help").classList.toggle("on"); return; }
+  if(e.key==="Escape"){ document.getElementById("help").classList.remove("on");
+    pending=null; sel=null; draw(); return; }
   if(e.key==="Delete"||e.key==="Backspace"){
     if(sel!==null){ e.preventDefault(); rec().obstructions.splice(sel,1); sel=null; save(); draw(); } return; }
   const k=e.key.toLowerCase();
@@ -268,6 +349,7 @@ addEventListener("keydown", e=>{
 });
 addEventListener("keyup", e=>{ if(e.key==="Shift"){ shift=false; draw(); } });
 
+setTool("ridge");
 show(0);
 </script>
 </body></html>
