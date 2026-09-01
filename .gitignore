@@ -1,19 +1,29 @@
-.venv
-.env
-__pycache__/
-*.pyc
-
-# name, never with -A.
-
-# WHITELIST, not a blacklist. Everything under data/ is pipeline input or
-# intermediate (LiDAR, imagery mosaics, 80MB+ panel_layouts.geojson) EXCEPT the
-# handful of small outputs the static site actually fetches. A blacklist let
-# `git add -A data` commit two 86MB intermediates on 31 Aug; a whitelist cannot.
+.venv/
+# All of data/ is gitignored (raw LiDAR/imagery source, 3GB+) except the
+# small set of pre-built outputs the static frontend actually fetches --
+# committed so a static host (no Python backend) has something to serve.
 data/*
 !data/solar_potential.geojson
 !data/panel_layouts.pmtiles
+!data/heatmap_raster.png
+!data/heatmap_raster.json
 !data/seasonal_curves.json
+!data/marked_scores.json
+!data/roof_labels.json
+!data/label_set/
+!data/label_set/queue.json
+!data/label_set/summary.json
 !data/heatmaps/
 !data/heatmaps/*
-!data/heatmaps/lod/
-!data/heatmaps/lod/*
+tiles/
+.env
+*.laz
+*.las
+*.tif
+*.tiff
+*.zip
+__pycache__/
+*.pyc
+.DS_Store
+au_pilot/
+validation/
