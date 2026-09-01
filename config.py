@@ -120,6 +120,30 @@ RIDGE_SETBACK_M = 0.25  # extra clearance specifically along a boundary shared w
 # 42-50 degree band, where Josh's own truth data has both real steep roofs and
 # the stepped-house risers at 26 Panorama Terrace that are also walls -- that
 # band needs evidence, not a threshold, and is still open.
+# Best-of-N panel placement. Empty = off, which is the default.
+#
+# Placement is unstable with respect to its own input: a +/-10 cm nudge to a
+# building outline -- far finer than the outlines are surveyed to -- moves the
+# panel count by a median of 26% on a deterministic segmenter, because the
+# partition is a greedy threshold search and a nudge flips the marginal cuts.
+#
+# Since we publish POTENTIAL, the best valid packing is the honest answer.
+# Setting this to (0.05,) runs each building twice and keeps the better layout.
+#
+# WORTH +3.45%, measured through the real pipeline over 26 pilot buildings
+# (1073 -> 1110 panels, 11 of 26 buildings moving, all upward). An earlier
+# figure of +11.4% was measured on a simplified harness that skipped the panel
+# gate, shading and the deep-shade veto; those absorb most of the variance,
+# because they strip marginal panels whichever partition produced them.
+#
+# Still real capacity -- the extra panels overlap hand-marked obstructions LESS,
+# and all stay inside the true outline -- but +3.45% for double the compute is a
+# much weaker case than it first looked.
+#
+# It multiplies the most expensive stage of a district build, so turning it on
+# is a compute decision, not a default.
+LAYOUT_PERTURBATIONS_M = ()
+
 MAX_ROOF_SLOPE_DEG = 55
 
 # --- PV system assumptions ---

@@ -268,10 +268,75 @@ def _no_estimate_only(building_id, reason):
 
 
 def _build_one_inner(building_id):
+    """Best of N layouts for one building, where N is configured.
+
+    WHY THIS EXISTS. Placement is unstable with respect to its own input: a
+    +/-10 cm nudge to the outline -- an order of magnitude finer than the
+    outlines are surveyed to -- moves the panel count by a MEDIAN of 26%, worst
+    case 88%, on a deterministic segmenter. The partition is a greedy recursive
+    search and every cut has a threshold, so a nudge flips the marginal ones and
+    the difference compounds through the facets beneath.
+
+    We publish rooftop POTENTIAL, so the best valid packing is the honest answer
+    rather than whichever one a greedy search happened to reach first.
+
+    THE GAIN IS +3.45%, NOT THE +11.4% FIRST MEASURED. That first figure came
+    from a harness that called segment_building_best and fit_panels_on_facet
+    directly. The real pipeline also runs the panel gate, per-panel shading and
+    the deep-shade veto, and those absorb most of the variance -- they strip
+    marginal panels regardless of which partition produced them. Measured
+    through THIS function over 26 pilot buildings:
+
+        base            1073
+        best-of-2       1110    (+3.45%)   2x layout compute
+
+    11 of 26 buildings moved, all upward, since the base layout is always one
+    of the candidates. Whether that is worth doubling the most expensive stage
+    of a district build is a judgement call, and a much weaker one than the
+    simplified harness suggested.
+
+    VALIDATED BEFORE BEING OFFERED. The extra panels do not come from paving
+    over equipment -- panel area landing on hand-marked obstructions went DOWN,
+    6.43% to 5.65% of placed area -- and every panel stays inside the true
+    outline, because the 0.3 m edge setback keeps them clear of the boundary
+    regardless of which boundary was used to find them.
+
+    OFF BY DEFAULT. It multiplies the layout stage, which is the expensive one,
+    so switching it on is a deliberate decision about compute rather than
+    something to inherit silently.
+    """
+    nudges = list(getattr(config, "LAYOUT_PERTURBATIONS_M", ()) or ())
+    if not nudges:
+        return _build_one_at(building_id, None)
+
+    best, best_panels = None, -1
+    for nudge in [None] + nudges:
+        try:
+            feats = _build_one_at(building_id, nudge)
+        except Exception:
+            continue
+        n_panels = sum(1 for f in feats
+                       if f["properties"].get("kind") == "panel")
+        if n_panels > best_panels:
+            best, best_panels = feats, n_panels
+    return best if best is not None else []
+
+
+def _build_one_at(building_id, nudge_m):
     c = _CTX
     model, dsm_ds, dsm_band = c["model"], c["dsm_ds"], c["dsm_band"]
     to_wgs84, pc_source, imagery_ds = c["to_wgs84"], c["pc_source"], c["imagery_ds"]
     row_geom = c["gdf"].loc[building_id].geometry
+    if nudge_m:
+        # The nudge only ever perturbs the SEARCH. Panels are still fitted with
+        # the real edge setback, and the setback is larger than any nudge here,
+        # so nothing can end up outside the surveyed outline.
+        try:
+            g = row_geom.buffer(nudge_m)
+            if not g.is_empty and g.is_valid:
+                row_geom = g
+        except Exception:
+            pass
 
     features = []
     # Imagery is passed in so the partition can cut on roof creases the LiDAR

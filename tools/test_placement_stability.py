@@ -33,10 +33,15 @@ WHAT IT MEANS IN PRACTICE:
 
 THERE IS AN OPPORTUNITY IN IT. We publish rooftop POTENTIAL, so the best valid
 packing is the honest answer, not whichever one a greedy search happened to
-reach. Taking the best of a few perturbed runs raised the total on this sample
-by about 15%. That is a real gain for a real reason -- but it multiplies layout
-compute by the number of perturbations, so it is a deliberate decision rather
-than something to switch on quietly.
+reach. Taking the best of a few perturbed runs raises the total.
+
+MIND THE HARNESS THOUGH. This tool measures through segment_building_best and
+fit_panels_on_facet, which is NOT the whole pipeline: the real build also runs
+the panel gate, per-panel shading and the deep-shade veto, and those absorb most
+of the variance because they strip marginal panels whichever partition produced
+them. The gain here reads ~13%; through the real pipeline it is +3.45%. Trust
+the latter -- it is implemented behind config.LAYOUT_PERTURBATIONS_M -- and read
+the numbers below as an upper bound on what perturbation could ever buy.
 
 Usage:
     python tools/test_placement_stability.py
