@@ -1616,8 +1616,11 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
         # plausible and were meaningless. Import and geometry failures are the
         # only ones worth tolerating here.
         try:
-            from src.roof_lines import strong_roof_lines
-            for ang, off in strong_roof_lines(imagery_ds, footprint):
+            # Via roof_line_source so a vision model can propose these
+            # instead. With no model prediction on disk this is the same call
+            # it always was -- see that module's header for the fusion rule.
+            from src.roof_line_source import strong_lines
+            for ang, off in strong_lines(imagery_ds, footprint, building_id):
                 nxt = []
                 for c in cells:
                     parts = (_cut(c, ang, off)
