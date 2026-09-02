@@ -42,7 +42,7 @@ VALID_KINDS = {"ridge", "valley", "cliff"}
 # A roof can be wrong in ways geometry cannot express. "absent" feeds
 # config.DEMOLISHED_BUILDING_IDS, which the build already honours; the other two
 # are outline-quality findings that need LINZ to catch up, not a code change.
-VALID_PROBLEMS = {"absent", "not_building", "bad_outline"}
+VALID_PROBLEMS = {"absent", "not_building", "bad_outline", "unclear"}
 # A crop is the footprint plus a 4 m pad, so anything outside it by more than a
 # little cannot be a mark on that roof -- most likely the wrong CRS or the wrong
 # building.
@@ -200,6 +200,9 @@ def main():
             ids = sorted(flagged[prob])
             print(f"  {prob:<14} {len(ids)}")
             print(f"      {', '.join(ids[:10])}" + (" ..." if len(ids) > 10 else ""))
+        if flagged.get("unclear"):
+            print("\n  'unclear' means the imagery was too poor to mark. Those roofs")
+            print("  are excluded from scoring -- a guessed line would become truth.")
         absent = sorted(flagged.get("absent", []))
         if absent:
             print("\n  'absent' means nothing is there. config.py already excludes")

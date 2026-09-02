@@ -121,6 +121,7 @@
   <button class="prob" data-problem="absent"><span>&#9744; Nothing is there</span><span class="k">X</span></button>
   <button class="prob" data-problem="not_building"><span>&#9744; Not a building</span><span class="k">Z</span></button>
   <button class="prob" data-problem="bad_outline"><span>&#9744; Outline is wrong</span></button>
+  <button class="prob" data-problem="unclear"><span>&#9744; Cannot read the image</span><span class="k">U</span></button>
   <details class="hint"><summary>Which one to use</summary><div>
     <b>Nothing is there</b> &mdash; bare ground, a demolished or cleared site. The
     survey is from 2021 and the outlines have not caught up. These get excluded
@@ -130,7 +131,16 @@
     structure.<br>
     <b>Outline is wrong</b> &mdash; a building IS there, but this outline is
     offset, or merges two buildings, or splits one. The roof is fine; the
-    footprint is not.<br><br>
+    footprint is not. If it is only slightly off, do not bother flagging it
+    &mdash; just mark the roof where it really is. That is the more useful
+    record, and the offset is measurable without you.<br>
+    <b>Cannot read the image</b> &mdash; too blurred, too dark, too deep in
+    shadow to see the folds. Flag it and move on. A guessed line is worse than
+    no line, because it becomes truth that the model is scored against.<br><br>
+    <b>A roof being complicated is NOT a reason to skip it.</b> Cut-up roofs are
+    the ones the model gets wrong, so they are the most valuable thing you can
+    mark. If you can see the shape, mark it &mdash; whether much solar fits is
+    for the model to work out, and it can only do that from the geometry.<br><br>
     Any of these marks the roof done, so it stops coming back. Do not draw lines
     on it &mdash; there is nothing to learn from geometry that is not a roof.
   </div></details>
@@ -1301,6 +1311,7 @@ addEventListener("keydown", e=>{
   else if(k==="c"){ document.getElementById("complete").click(); }
   else if(k==="x"){ document.querySelector('[data-problem="absent"]').click(); }
   else if(k==="z"){ document.querySelector('[data-problem="not_building"]').click(); }
+  else if(k==="u"&&e.shiftKey){ document.querySelector('[data-problem="unclear"]').click(); }
   else if(k==="u"){ document.getElementById("skipto").click(); }
   else if(k==="s"){ document.getElementById("download").click(); }
 });
