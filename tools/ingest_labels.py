@@ -120,9 +120,12 @@ def check_building(bid, rec, known):
     prob = rec.get("problem")
     if prob is not None and prob not in VALID_PROBLEMS:
         problems.append(f"unknown problem flag {prob!r}")
-    if prob and lines:
-        # not fatal, but worth saying: geometry drawn on something the labeller
-        # then said is not a roof is geometry nobody should train on
+    # Only flags that mean THERE IS NO ROOF HERE conflict with drawn geometry.
+    # bad_outline does not: the roof exists and is worth marking, it is the
+    # FOOTPRINT that is wrong -- and marking the roof accurately over an offset
+    # outline is exactly what a labeller should do. Treating that as suspect
+    # threw away 20 drawn lines on the first batch that used the flag.
+    if prob in ("absent", "not_building", "unclear") and lines:
         problems.append(f"flagged {prob} but also carries {len(lines)} drawn lines")
     if not prob and not (lines or rec.get("obstructions") or rec.get("nopanel")):
         problems.append("nothing marked on it")

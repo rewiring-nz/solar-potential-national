@@ -308,10 +308,16 @@ def main():
 
     for bid in ids:
         lab = labels[str(bid)]
-        # A roof the labeller says is not a roof -- bare ground, a slab, a
-        # wrong outline -- has no geometry worth scoring against. Including it
-        # would measure the segmenter against something nobody claims exists.
-        if lab.get("problem"):
+        # Skip only the flags that mean THERE IS NO ROOF HERE. Scoring the
+        # segmenter against bare ground measures a question with no answer.
+        #
+        # bad_outline is deliberately NOT skipped. The roof exists and was
+        # marked accurately; only the footprint is wrong. Those roofs belong in
+        # the baseline -- and they are the interesting ones, since outline
+        # quality tracks recall (58.9% in the worst tercile against 74.5% in
+        # the best), so dropping them would flatter the segmenter for a failure
+        # that is really the outline's.
+        if lab.get("problem") in ("absent", "not_building", "unclear"):
             continue
         area = lab.get("area")
         if area not in ctxs:
