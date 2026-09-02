@@ -3,7 +3,7 @@
 <title>Mark up roofs</title>
 <style>
   :root{--bg:#13161a;--panel:#1b2026;--ink:#e9eef2;--muted:#93a1ab;--rule:#2a323a;
-        --ridge:#ff4d4d;--hip:#ff9f1c;--valley:#4dabf7;--cliff:#c77dff;--edge:#2ecc71;--obs:#ffd400;--ok:#2ecc71}
+        --ridge:#1fff7a;--valley:#35b6ff;--cliff:#ff3b30;--edge:#2ecc71;--obs:#c06bff;--ok:#2ecc71}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -11,9 +11,13 @@
   #side{width:275px;flex:none;background:var(--panel);border-right:1px solid var(--rule);
         padding:14px;overflow-y:auto}
   #stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0f12}
-  canvas{cursor:crosshair;max-width:100%;max-height:100%;touch-action:none}
+  canvas{cursor:crosshair;display:block;width:100%;height:100%;touch-action:none}
+  canvas.pan{cursor:grab}
   h1{font-size:15px;margin:0 0 2px}
-  .addr{color:var(--muted);font-size:12.5px;margin-bottom:12px}
+  .addr{color:var(--muted);font-size:12.5px;margin-bottom:6px}
+  .links{display:flex;gap:10px;margin-bottom:12px;font-size:11.5px}
+  .links a{color:#8fb8d8;text-decoration:underline;text-underline-offset:3px}
+  .links a:hover{color:#b6d6ee}
   h2{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
      margin:14px 0 6px;font-weight:600}
   button{width:100%;text-align:left;background:#232a31;color:var(--ink);border:1px solid var(--rule);
@@ -28,12 +32,24 @@
   .note{background:#232a31;border-radius:3px;padding:8px 10px;font-size:12px;color:var(--muted);margin-top:10px}
   #status{position:absolute;left:12px;bottom:12px;background:rgba(0,0,0,.75);padding:5px 10px;
           border-radius:3px;font-size:12.5px}
+  #viewbar{position:absolute;right:12px;top:12px;display:flex;gap:4px;z-index:5}
+  #viewbar button{width:auto;margin:0;padding:5px 10px;background:rgba(12,15,18,.82);
+                  border-color:rgba(255,255,255,.22);font-size:13px}
+  #viewbar button.on{background:#2f3841;border-color:#fff}
   #prog{position:absolute;right:12px;bottom:12px;background:rgba(0,0,0,.75);padding:5px 10px;
         border-radius:3px;font-size:12.5px;color:var(--muted)}
   .dl{background:#1f6f4a;border-color:#2ecc71}
-  .desc{background:#232a31;border-left:2px solid var(--rule);border-radius:2px;
-        padding:8px 10px;margin-top:8px;font-size:12px;line-height:1.5;color:var(--muted)}
+  .desc{background:rgba(255,255,255,.035);border:1px solid var(--rule);
+        border-left:3px solid #5b6670;border-radius:3px;
+        padding:9px 11px;margin-top:9px;font-size:12px;line-height:1.5;color:var(--muted)}
   .desc b{color:var(--ink)}
+  .desc .lab{display:block;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+             color:#7d8894;margin-bottom:4px;font-weight:600}
+  /* an explainer, not a control: no button chrome, no fill, reads as a link */
+  .explain{background:none;border:none;padding:4px 0;margin:6px 0 0;width:auto;
+           color:#8fb8d8;font-size:12px;text-decoration:underline;
+           text-underline-offset:3px;justify-content:flex-start;gap:6px}
+  .explain:hover{background:none;color:#b6d6ee}
   #help{position:fixed;inset:0;background:rgba(8,10,12,.93);z-index:20;display:none;
         overflow-y:auto;padding:34px}
   #help.on{display:block}
@@ -50,19 +66,39 @@
 <div id="side">
   <h1 id="title">—</h1>
   <div class="addr" id="addr"></div>
+  <div id="links" class="links"></div>
+
+  <h2>View</h2>
+  <div class="hint"><b>Zoom:</b> scroll where the cursor is, or the <b>+ &minus;</b> buttons top-right.<br><b>Pan:</b> press <b>✋ Pan</b> and drag, or drag with the <b>right button</b>, or hold <b>Space</b> and drag, or use the <b>arrow keys</b> (hold Shift for bigger steps).<br><b>0</b> or <b>Fit</b> puts the whole roof back on screen.</div>
 
   <h2>Three lines &mdash; click, then click</h2>
   <button data-tool="ridge" class="on"><span><span class="sw" style="background:var(--ridge)"></span> Ridge line</span><span class="k">1</span></button>
   <button data-tool="valley"><span><span class="sw" style="background:var(--valley)"></span> Valley line</span><span class="k">2</span></button>
   <button data-tool="cliff"><span><span class="sw" style="background:var(--cliff)"></span> Cliff line</span><span class="k">3</span></button>
-  <div class="hint">Each line is its own segment &mdash; two clicks and it&rsquo;s done. <b>Esc</b> abandons a half-drawn one. Hold <b>Shift</b> to snap to 15&deg;.<br>No need to trace the outer edge of the roof &mdash; the yellow outline is already known.</div>
+  <div class="hint">Each line is its own segment &mdash; two clicks and it&rsquo;s done. <b>Esc</b> abandons a half-drawn one. Hold <b>Shift</b> to snap to 15&deg;.<br>Endpoints <b>snap</b> &mdash; a white <b>circle</b> means an exact corner, a white <b>diamond</b> means anywhere along an existing line or the outline. Use the diamond for a T-junction, and to land a line exactly on the roof edge.<br>When a shaded face is not really roof &mdash; a wall, a canopy &mdash; press <b>8</b> and click it.<br>No need to trace roof edges &mdash; the outline has them, and anything the outline overshoots onto at <b>ground level</b> is deleted automatically. Only draw an edge where the roof stops short and what is beyond is <b>still high</b> (an upper deck, a carport).</div>
   <div id="tooldesc" class="desc"></div>
-  <button id="helpbtn" style="margin-top:6px">What&rsquo;s the difference?<span class="k">?</span></button>
+  <button id="helpbtn" class="explain">&#9432;&nbsp; Read: what counts as each line<span class="k">?</span></button>
+
+  <h2>Faces that take no panels</h2>
+  <button data-tool="nopanel" style="border-color:rgba(255,138,0,.55)"><span><span class="sw" style="background:#ff8a00"></span> No panels here</span><span class="k">8</span></button>
+  <div class="hint">Your lines shade the roof into faces as you draw. Click any face that could <b>never</b> take a panel &mdash; a wall caught inside the outline, a canopy, glass. Click again to unmark.<br><b>This is the one that catches the worst failure we have:</b> panels placed down a wall. If a shaded face is not really roof, this is how you say so.</div>
+  <div id="facenudge" class="desc" style="display:none"></div>
 
   <h2>Obstructions &mdash; drag out a shape</h2>
-  <button data-tool="rect"><span><span class="sw" style="background:var(--obs)"></span> Box</span><span class="k">4</span></button>
-  <button data-tool="ellipse"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">5</span></button>
-  <div class="hint">Drag on the image to place one. Drag its middle to move, drag a corner to resize, <b>Delete</b> removes the selected shape.</div>
+  <button data-tool="poly"><span><span class="sw" style="background:var(--obs);clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%)"></span> Polygon</span><span class="k">4</span></button>
+  <button data-tool="pline"><span><span class="sw" style="background:var(--obs);clip-path:polygon(0 38%,100% 0,100% 24%,0 62%)"></span> Line / run</span><span class="k">5</span></button>
+  <button data-tool="tri"><span><span class="sw" style="background:var(--obs);clip-path:polygon(50% 0,100% 100%,0 100%)"></span> Triangle</span><span class="k">6</span></button>
+  <button data-tool="ellipse"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">7</span></button>
+  <div class="hint"><b>Polygon</b> and <b>Line / run</b>: click each point, then <b>Enter</b> (a polygon also closes if you click its first point again). <b>Triangle</b>: three clicks. <b>Circle</b>: drag one out.<br>A line / run records a centreline with a width &mdash; <b>[</b> and <b>]</b> make it thinner or wider. <b>Esc</b> abandons a part-drawn shape, <b>&#8984;Z</b> removes the last point.<br>Drag a shape&rsquo;s middle to move it, a corner to resize, <b>Delete</b> removes the selected one.</div>
+
+  <h2>Fix a mistake</h2>
+  <button data-tool="select"><span>&#9099; Select &amp; delete</span><span class="k">9</span></button>
+  <div class="hint">Click any line or shape you have already drawn to select it, then press <b>Delete</b> (or the button below). Undo only ever removes the most recent thing; this reaches the one you actually want.</div>
+  <button id="delsel" style="margin-top:4px">Delete selected<span class="k">⌫</span></button>
+
+  <h2>Is this roof finished?</h2>
+  <button id="complete"><span>&#9744; I marked EVERY line on this roof</span><span class="k">C</span></button>
+  <div class="hint">Only tick this if you drew <b>every</b> fold and break you can see, not just the main ones. It is what makes "the model drew a line that is not real" measurable &mdash; without it, a line you simply did not get to looks identical to one the model invented. Leaving it unticked is fine and costs nothing.</div>
 
   <h2>Actions</h2>
   <div class="row">
@@ -73,9 +109,12 @@
     <button id="prev">← Prev<span class="k">P</span></button>
     <button id="next">Next →<span class="k">N</span></button>
   </div>
+  <button id="skipto">Next unmarked<span class="k">U</span></button>
+  <button id="hidedone">Hide marked roofs<span class="k">H</span></button>
   <button id="download" class="dl" style="margin-top:8px">Download labels<span class="k">S</span></button>
-  <div class="hint">Saved in this browser as you go, so closing the tab is safe. Download when you&rsquo;re done and send me the file.</div>
-  <div class="note" id="note" style="display:none"></div>
+  <div class="hint" id="savehint">Saved in this browser as you go, so closing the tab is safe. Mark as few or as many as you like &mdash; Download only includes roofs you actually touched.</div>
+  <div id="sharebar" class="desc" style="display:none"></div>
+
 </div>
 
 
@@ -83,137 +122,741 @@
   <h3>Three kinds of line</h3>
   <div style="color:var(--muted);font-size:13px">Seen from above, which is how you&rsquo;ll be looking at them.</div>
 
-  <svg viewBox="0 0 700 260" style="width:100%;margin-top:20px;background:#161b21;border-radius:4px">
+  <svg viewBox="0 0 700 448" style="width:100%;margin-top:20px;background:#161b21;border-radius:4px">
     <!-- hipped roof, left -->
     <rect x="30" y="40" width="230" height="170" fill="#2a3138" stroke="#ffd400" stroke-width="2"/>
-    <line x1="90" y1="100" x2="200" y2="100" stroke="#ff4d4d" stroke-width="4"/>
-    <line x1="30" y1="40"  x2="90"  y2="100" stroke="#ff4d4d" stroke-width="3"/>
-    <line x1="260" y1="40" x2="200" y2="100" stroke="#ff4d4d" stroke-width="3"/>
-    <line x1="30" y1="210" x2="90"  y2="100" stroke="#ff4d4d" stroke-width="3"/>
-    <line x1="260" y1="210" x2="200" y2="100" stroke="#ff4d4d" stroke-width="3"/>
-    <text x="145" y="92" fill="#ff4d4d" font-size="13" text-anchor="middle">ridge</text>
-    <text x="46" y="78" fill="#ff4d4d" font-size="12">hip — same</text>
+    <line x1="90" y1="100" x2="200" y2="100" stroke="#1fff7a" stroke-width="4"/>
+    <line x1="30" y1="40"  x2="90"  y2="100" stroke="#1fff7a" stroke-width="3"/>
+    <line x1="260" y1="40" x2="200" y2="100" stroke="#1fff7a" stroke-width="3"/>
+    <line x1="30" y1="210" x2="90"  y2="100" stroke="#1fff7a" stroke-width="3"/>
+    <line x1="260" y1="210" x2="200" y2="100" stroke="#1fff7a" stroke-width="3"/>
+    <text x="145" y="92" fill="#1fff7a" font-size="13" text-anchor="middle">ridge</text>
+    <text x="46" y="78" fill="#1fff7a" font-size="12">hip — same</text>
     <text x="145" y="232" fill="#93a1ab" font-size="12" text-anchor="middle">hipped roof — slopes on all four sides</text>
 
     <!-- L-shaped roof with valley, right -->
     <path d="M330 40 L620 40 L620 210 L470 210 L470 140 L330 140 Z" fill="#2a3138" stroke="#ffd400" stroke-width="2"/>
-    <line x1="390" y1="90" x2="560" y2="90" stroke="#ff4d4d" stroke-width="4"/>
-    <line x1="560" y1="90" x2="560" y2="175" stroke="#ff4d4d" stroke-width="4"/>
-    <line x1="470" y1="140" x2="530" y2="120" stroke="#4dabf7" stroke-width="4"/>
-    <text x="470" y="82" fill="#ff4d4d" font-size="13" text-anchor="middle">ridge</text>
-    <text x="452" y="163" fill="#4dabf7" font-size="13" text-anchor="end">valley</text>
+    <line x1="390" y1="90" x2="560" y2="90" stroke="#1fff7a" stroke-width="4"/>
+    <line x1="560" y1="90" x2="560" y2="175" stroke="#1fff7a" stroke-width="4"/>
+    <line x1="470" y1="140" x2="530" y2="120" stroke="#35b6ff" stroke-width="4"/>
+    <text x="470" y="82" fill="#1fff7a" font-size="13" text-anchor="middle">ridge</text>
+    <text x="452" y="163" fill="#35b6ff" font-size="13" text-anchor="end">valley</text>
     <text x="475" y="232" fill="#93a1ab" font-size="12" text-anchor="middle">L-shaped roof — two sections meeting</text>
-    <rect x="398" y="46" width="52" height="34" fill="#3a444d" stroke="#c77dff" stroke-width="3"/>
-    <text x="424" y="38" fill="#c77dff" font-size="12" text-anchor="middle">cliff</text>
+    <rect x="398" y="46" width="52" height="34" fill="#3a444d" stroke="#ff3b30" stroke-width="3"/>
+    <text x="424" y="38" fill="#ff3b30" font-size="12" text-anchor="middle">cliff</text>
     <text x="424" y="68" fill="#93a1ab" font-size="10" text-anchor="middle">dormer</text>
+
+    <!-- Cross-sections. The plan views above cannot show a pitch change at all,
+         and that is the valley people miss: nothing drains there, so "where
+         water collects" reads it out of existence. Sliced side-on it is
+         obvious. -->
+    <line x1="30" y1="262" x2="670" y2="262" stroke="#2a3138" stroke-width="1"/>
+    <text x="30" y="285" fill="#93a1ab" font-size="12">Sliced side-on — what the fold actually looks like</text>
+
+    <path d="M40 390 L120 320 L200 390" fill="none" stroke="#5b6670" stroke-width="9" stroke-linejoin="round"/>
+    <circle cx="120" cy="320" r="7" fill="#1fff7a"/>
+    <text x="120" y="310" fill="#1fff7a" font-size="12" text-anchor="middle">ridge</text>
+    <text x="120" y="410" fill="#93a1ab" font-size="11" text-anchor="middle">turns over — falls both ways</text>
+
+    <path d="M255 310 L320 385 L440 400" fill="none" stroke="#5b6670" stroke-width="9" stroke-linejoin="round"/>
+    <circle cx="320" cy="385" r="7" fill="#35b6ff"/>
+    <text x="272" y="352" fill="#93a1ab" font-size="11">60°</text>
+    <text x="378" y="384" fill="#93a1ab" font-size="11">20°</text>
+    <text x="330" y="330" fill="#35b6ff" font-size="12">valley</text>
+    <text x="348" y="418" fill="#93a1ab" font-size="11" text-anchor="middle">pitch changes — still falls one way,</text>
+    <text x="348" y="432" fill="#93a1ab" font-size="11" text-anchor="middle">and nothing collects here</text>
+
+    <path d="M480 395 L560 392 L560 330 L660 327" fill="none" stroke="#5b6670" stroke-width="9" stroke-linejoin="round"/>
+    <line x1="560" y1="392" x2="560" y2="330" stroke="#ff3b30" stroke-width="9"/>
+    <text x="572" y="362" fill="#ff3b30" font-size="12">cliff</text>
+    <text x="570" y="410" fill="#93a1ab" font-size="11" text-anchor="middle">height jumps</text>
   </svg>
 
   <dl>
-    <dt><span class="sw" style="background:#ff4d4d"></span>Ridge line</dt>
+    <dt><span class="sw" style="background:#1fff7a"></span>Ridge line</dt>
     <dd>Any fold where the roof <b>falls away on both sides</b>. Flat along the top (a ridge) or running downhill to a corner (a hip) &mdash; <b>both go here</b>. They are the same thing to the model, so do not spend time deciding which. A roof shaped angle&ndash;flat&ndash;angle has several of these; mark them all.</dd>
 
-    <dt><span class="sw" style="background:#4dabf7"></span>Valley line</dt>
-    <dd>The opposite fold: the roof <b>rises away on both sides</b>, so rain would collect and run down it. You get one wherever two roof sections join, most often on an L or T shaped house.</dd>
+    <dt><span class="sw" style="background:#35b6ff"></span>Valley line</dt>
+    <dd><b>Any other fold</b> &mdash; the two faces meet at an angle, but the roof does <b>not</b> turn over the top. Two common shapes:
+    <br>&bull; an <b>internal corner</b>, where two roof sections join, most often on an L or T shaped house;
+    <br>&bull; a <b>change of pitch</b>, where a steep face runs into a shallow one &mdash; say 60&deg; into 20&deg; &mdash; and the roof keeps falling the same way, just less steeply.
+    <br><br><b>Ignore where water goes.</b> Plenty of valley lines are nowhere near a gutter and nothing would ever collect in them; the pitch-change case above is the obvious one. What the model needs is that the surface <i>folds</i> here, not that it drains here.</dd>
 
-    <dt><span class="sw" style="background:#c77dff"></span>Cliff line</dt>
-    <dd><b>Not a fold at all</b> &mdash; the surface stops and the height jumps. Covers both a stepped or split-level roof and the sides of something raised: a dormer, clerestory, plant box or lift overrun.
+    <dt><span class="sw" style="background:#ff3b30"></span>Cliff line</dt>
+    <dd><b>Not a fold at all</b> &mdash; the surface stops and the height jumps. Three cases, all the same thing:
+    <br>&bull; a <b>stepped or split-level</b> roof;
+    <br>&bull; the sides of something <b>raised</b> &mdash; a dormer, clerestory, plant box, lift overrun;
+    <br>&bull; <b>where the roof itself ends</b> short of the yellow outline &mdash; see below.
     <br><br><b>How to draw it:</b> put the line along the <b>top edge of the higher surface</b>, following the lip where it drops away. For a dormer, that means drawing round its sides &mdash; one line per side.</dd>
   </dl>
 
   <div style="margin-top:20px;font-size:13px;color:var(--muted);line-height:1.6">
-    <b style="color:var(--ink)">The quick test.</b> Does the line sit at the top with roof falling away both sides? <b style="color:#ff4d4d">Ridge</b>.
-    Does it run downhill to a corner, with roof falling away both sides? <b style="color:#ff9f1c">Hip</b>.
-    Does it run downhill with roof rising away both sides, so water would sit in it? <b style="color:#4dabf7">Valley</b>.
-    Does the surface simply <i>stop</i> and drop, like a little cliff? <b style="color:#c77dff">Cliff line</b>.
-    <br><br>There are only three because that is all the code actually uses: is this a <b style="color:var(--ink)">fold</b> (the surface carries on at a new angle) or a <b style="color:var(--ink)">break</b> (it stops and drops)? Ridge versus hip is architectural vocabulary the pipeline never consults, so it is not worth your time.
+    <b style="color:var(--ink)">The quick test</b>, in order:
+    <br>1. Does the surface <i>stop</i> and the height jump? <b style="color:#ff3b30">Cliff line</b>.
+    <br>2. Otherwise it is a fold. Does the roof <b>turn over</b> here &mdash; falling away on both sides, whether along the top or running down to a corner? <b style="color:#1fff7a">Ridge line</b>.
+    <br>3. It folds but does not turn over. <b style="color:#35b6ff">Valley line</b>.
+    <br><br>There are only three because that is all the code actually uses: does the surface <b style="color:var(--ink)">break</b> (stops and drops), or <b style="color:var(--ink)">fold</b> &mdash; and if it folds, does it turn over or not? Ridge versus hip, or which folds a builder would call valleys, is vocabulary the pipeline never consults, so it is not worth your time.
+    <br><br><b style="color:var(--ink)">Roof edges: mostly leave them alone.</b> Do <b>not</b> trace edges that sit on the yellow outline &mdash; those are already known. And do not trace an edge just because the outline overshoots onto a driveway, patio or deck at ground level: every panel already has to stand 2 m above the local ground, measured against LiDAR ground returns, so those are deleted without your help.
+    <br><br>There is <b>one</b> case worth your time: the roof stops short <b>and what is beyond is still high</b> &mdash; an upper-storey deck or balcony, a carport, a shade sail. Those clear 2 m and are flat, so the LiDAR reads them as roof and nothing downstream can tell the difference. Draw the real roof edge as a <b style="color:#ff3b30">Cliff line</b>, then switch to <b style="color:#ff8a00">No panels here</b> and click the strip outside it.
+    <br>If you are unsure whether the thing beyond is high or on the ground, skip it &mdash; the height test will handle it if it is low, and a wrong label is worse than a missing one.
     <br><br>If you cannot tell whether a line is a fold or a break at all, leave it out rather than guess &mdash; a wrong label is worse than a missing one.
   </div>
   <button class="close" id="helpclose">Got it<span class="k">Esc</span></button>
 </div></div>
 
-<div id="stage"><canvas id="c"></canvas><div id="status">…</div><div id="prog"></div></div>
+<div id="stage"><canvas id="c"></canvas>
+  <div id="viewbar">
+    <button id="zin"  title="Zoom in">+</button>
+    <button id="zout" title="Zoom out">&minus;</button>
+    <button id="zfit" title="Fit the roof">Fit</button>
+    <button id="hand" title="Drag to pan (or hold Space, or drag with the right button)">✋ Pan</button>
+  </div>
+  <div id="status">…</div><div id="prog"></div></div>
 
 <script>
 const ROOFS = /*__ROOFS__*/;
-const COL = {ridge:"#ff4d4d",hip:"#ff9f1c",valley:"#4dabf7",cliff:"#c77dff",edge:"#2ecc71"};
+const COL = {ridge:"#1fff7a",valley:"#35b6ff",cliff:"#ff3b30",edge:"#2ecc71"};
 const KEY = "roof_labels_v1";
 const LINE_TOOLS = new Set(["ridge","valley","cliff"]);
-const HANDLE = 7;
+const DRAG_SHAPES = new Set(["rect","ellipse"]);
+// Everything you build by clicking points. Triangle closes itself at three;
+// polygon and line run until you press Enter, so they take any number.
+const POLY_TOOLS = new Set(["tri","poly","pline"]);
+let triPts = [];        // corners placed so far, for whichever poly tool is active
+const PLINE_WIDTH_M = 0.4;   // a drawn run has no area until it is given one
+// Every width and size below is authored in CSS pixels. The canvas backing
+// store is devicePixelRatio-scaled, so they must be multiplied up or they draw
+// at HALF thickness on a retina screen -- which is how this shipped: a 2.6 px
+// line rendered as a 1.3 px hairline. lw() also grows things with zoom, because
+// a fixed hairline laid over a roof magnified 6x is hard to judge against.
+const dpr = () => (window.devicePixelRatio || 1);
+function lw(css){ return css * dpr() * (1 + Math.min(view.zoom - 1, 5) * 0.14); }
+const HANDLE = () => 8 * dpr();
+
+// SNAPPING. Roof lines meet: a ridge runs into two hips, valleys land on the
+// same junction. Eyeballed endpoints leave 10-20 cm gaps that turn a clean
+// junction into three near-misses, and the partition then cuts on three
+// slightly different lines. Snapping to an existing endpoint (or an outline
+// corner) makes the junction exact.
+const SNAP_PX = 14;
+let hoverSnap = null;
+let hideDone = false;
+let handMode = false;
+let selLine = null;      // index into rec().lines, for select-and-delete
+function finishPoly(){
+  const need = tool==="pline" ? 2 : 3;
+  if(triPts.length < need){
+    say(`needs at least ${need} points`); return;
+  }
+  // Three points in a line enclose nothing. It looks like a shape while you
+  // are drawing it, exports as a zero-area ring, and is then thrown out at
+  // ingest -- long after you could have fixed it. Catch it here.
+  if(tool!=="pline" && polyArea(triPts) < 0.05){
+    say("those points are in a straight line \u2014 that encloses no area");
+    return;
+  }
+  if(tool==="pline"){
+    let len=0;
+    for(let i=1;i<triPts.length;i++)
+      len+=Math.hypot(triPts[i][0]-triPts[i-1][0], triPts[i][1]-triPts[i-1][1]);
+    if(len < MIN_LINE_M){ say("that run has no length"); return; }
+  }
+  const o = tool==="pline"
+    ? {shape:"polyline", pts:triPts.slice(), width_m:PLINE_WIDTH_M}
+    : {shape: tool==="tri" ? "triangle" : "polygon", pts:triPts.slice()};
+  rec().obstructions.push(o);
+  sel=rec().obstructions.length-1; triPts=[]; save(); draw();
+  say(o.shape==="polyline"
+      ? `line placed \u2014 ${o.width_m.toFixed(2)} m wide, [ and ] change it`
+      : `${o.shape} placed`);
+}
+
+function snapTargets(){
+  const r=rec(), out=[];
+  r.lines.forEach(l=>{ out.push(l.a); out.push(l.b); });
+  (R().outline||[]).slice(0,-1).forEach(q=>out.push(q));
+  (R().holes||[]).forEach(h=>h.slice(0,-1).forEach(q=>out.push(q)));
+  return out;
+}
+
+// Every segment you can land ON rather than at the end of: existing lines, the
+// building outline, courtyard rings. A valley commonly meets the MIDDLE of a
+// ridge, and a line has to reach the outline to divide anything at all, so
+// both need to be snappable, not just their corners.
+function snapEdges(){
+  const segs=[];
+  rec().lines.forEach(l=>segs.push([l.a,l.b]));
+  const ring=r=>{ for(let i=0;i<r.length-1;i++) segs.push([r[i],r[i+1]]); };
+  if(R().outline) ring(R().outline);
+  (R().holes||[]).forEach(ring);
+  return segs;
+}
+
+function _projOnSeg(p,a,b){
+  const abx=b[0]-a[0], aby=b[1]-a[1], L2=abx*abx+aby*aby;
+  if(L2===0) return [a[0],a[1]];
+  let t=((p[0]-a[0])*abx + (p[1]-a[1])*aby)/L2;
+  t=Math.max(0, Math.min(1, t));
+  return [a[0]+abx*t, a[1]+aby*t];
+}
+
+// Corners win over edges. An endpoint is a stronger statement than "somewhere
+// along here", so if both are in range the corner should take it.
+function snapPoint(px,py){
+  const lim=SNAP_PX*dpr();
+  let best=null, bd=lim;
+  for(const w of snapTargets()){
+    const [x,y]=toPx(w[0],w[1]);
+    const d=Math.hypot(px-x, py-y);
+    if(d<bd){ bd=d; best=[w[0],w[1]]; }
+  }
+  if(best) return {p:best, kind:"point"};
+
+  const world=toW(px,py);
+  let bp=null, bpd=lim;
+  for(const [a,b] of snapEdges()){
+    const q=_projOnSeg(world,a,b);
+    const [x,y]=toPx(q[0],q[1]);
+    const d=Math.hypot(px-x, py-y);
+    if(d<bpd){ bpd=d; bp=[+q[0].toFixed(3), +q[1].toFixed(3)]; }
+  }
+  return bp ? {p:bp, kind:"edge"} : null;
+}
 
 let idx=0, tool="ridge", data=load(), img=new Image();
-let pending=null, drag=null, sel=null, shift=false;
+let pending=null, drag=null, sel=null, shift=false, space=false;
 const cv=document.getElementById("c"), ctx=cv.getContext("2d");
 const R = () => ROOFS[idx];
-const rec = () => (data[R().id] = data[R().id] || {lines:[], obstructions:[]});
+const rec = () => { const o = (data[R().id] = data[R().id] || {lines:[], obstructions:[]});
+  if(!o.nopanel) o.nopanel = [];   // added later; old saves lack it
+  if(o.complete === undefined) o.complete = false;
+  return o; };
 
 function load(){ try{ return JSON.parse(localStorage.getItem(KEY)||"{}"); }catch(e){ return {}; } }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(data)); }catch(e){} }
+
+// SHARED MODE. Opened as a published page, everyone marking sees the same
+// progress and nobody re-does a roof someone else already did. Opened as a
+// downloaded file there is no viewer to answer, claude.use resolves null, and
+// it falls back to this browser's own storage -- so the same file works both
+// ways and offline. Never assume the namespace exists: it arrives later, or
+// never (see the capability contract).
+let DB = null, remote = {}, ingested = {};
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(data)); }catch(e){}
+  if(DB && data[R().id]){
+    const d = data[R().id];
+    // One document per roof. 156 roofs is far inside the store's limits, and
+    // per-roof documents mean two people labelling different roofs never
+    // collide -- last-writer-wins only bites if two people edit the SAME roof.
+    DB.doc("labels/"+R().id).set({
+      lines: d.lines, obstructions: d.obstructions, nopanel: d.nopanel||[],
+      complete: !!d.complete,
+      area: R().area, address: R().address || "",
+      saved_utc: new Date().toISOString(),
+    }).catch(e=>{ say("could not sync: "+(e&&e.code||"error")+" — saved locally"); });
+  }
+}
+function marked(id){ const d=data[id];
+  return !!(remote[id] || ingested[id] ||
+    (d && ((d.lines||[]).length||(d.obstructions||[]).length||(d.nopanel||[]).length))); }
+let lastNudge = 0;
+function nudgeSave(){
+  if(DB) return;                       // the shared store already holds it
+  const done=ROOFS.filter(r=>marked(r.id)).length;
+  if(done>=lastNudge+15){
+    lastNudge=done;
+    say(`${done} roofs marked \u2014 worth pressing Download (S) to save a copy`);
+  }
+}
+
+function refreshShare(){
+  const bar=document.getElementById("sharebar");
+  const done=ROOFS.filter(r=>marked(r.id)).length;
+  if(DB){
+    bar.style.display="";
+    bar.innerHTML = `<b>${done} of ${ROOFS.length}</b> roofs marked, shared with everyone on this link. `
+      + (marked(R().id) ? "<b>This one is done.</b>" : "This one is not done yet.");
+  }
+  nudgeSave();
+  // Josh marked 58 roofs without once using the face tag, and said he simply
+  // did not notice it. A section heading is evidently not enough, so ask
+  // directly at the moment the faces appear -- and only then.
+  (function(){
+    const el=document.getElementById("facenudge");
+    if(!el) return;
+    const r=rec(), nf = r.lines.length ? faces().length : 0;
+    if(nf >= 2 && !r.nopanel.length && tool!=="nopanel"){
+      el.style.display="";
+      el.innerHTML = `<span class="lab">One more thing</span>`
+        + `${nf} faces shaded. Any of them <b>not really roof</b>? `
+        + `Press <b>8</b> and click it.`;
+    } else el.style.display="none";
+  })();
+  document.getElementById("prog").textContent =
+    `${rec().lines.length} lines · ${rec().obstructions.length} obstructions · `
+    + `${rec().lines.length?faces().length:0} faces · ${done}/${ROOFS.length} marked`;
+}
 const say = t => document.getElementById("status").textContent = t;
 
-// canvas <-> NZTM metres
-function toPx(x,y){ const[a,b,c,d]=R().bounds;
-  return [ (x-a)/(c-a)*cv.width, (1-(y-b)/(d-b))*cv.height ]; }
-function toW(px,py){ const[a,b,c,d]=R().bounds;
-  return [ +(a+px/cv.width*(c-a)).toFixed(3), +(b+(1-py/cv.height)*(d-b)).toFixed(3) ]; }
+// Every obstruction as a closed ring in metres, whatever it was drawn as.
+// This is the form the scorer measures overlap with.
+// A polyline is a run -- a pipe, a cable tray, a ridge vent. It has no area
+// until it is given a width, and area is what the obstruction scorer measures,
+// so it is stored as a centreline plus a width and expanded here.
+function polylineRing(pts, w){
+  const h=(w||PLINE_WIDTH_M)/2, left=[], right=[];
+  for(let i=0;i<pts.length;i++){
+    const p=pts[i];
+    const a=pts[Math.max(0,i-1)], b=pts[Math.min(pts.length-1,i+1)];
+    let dx=b[0]-a[0], dy=b[1]-a[1];
+    const L=Math.hypot(dx,dy)||1; dx/=L; dy/=L;
+    left.push([p[0]-dy*h, p[1]+dx*h]);
+    right.push([p[0]+dy*h, p[1]-dx*h]);
+  }
+  return left.concat(right.reverse()).map(q=>[+q[0].toFixed(3), +q[1].toFixed(3)]);
+}
+
+function obsRing(o){
+  if(o.shape==="polyline") return polylineRing(o.pts, o.width_m);
+  if(o.shape==="triangle" || o.shape==="polygon")
+    return o.pts.map(q=>[+q[0].toFixed(3), +q[1].toFixed(3)]);
+  const {x,y,w,h}=o;
+  if(o.shape==="ellipse"){
+    const cx=x+w/2, cy=y+h/2, out=[];
+    for(let i=0;i<28;i++){ const a=i/28*Math.PI*2;
+      out.push([+(cx+Math.cos(a)*w/2).toFixed(3), +(cy+Math.sin(a)*h/2).toFixed(3)]); }
+    return out;
+  }
+  return [[x,y],[x+w,y],[x+w,y+h],[x,y+h]].map(q=>[+q[0].toFixed(3), +q[1].toFixed(3)]);
+}
+
+// VIEW. The crop is only ~500-800 px, so pinning the canvas to that left a
+// house floating in the middle of a much larger stage -- too small to draw on.
+// The canvas now fills the stage and the image is fitted into it, with a user
+// zoom on top. Screen = image_px * (fit * zoom) + offset.
+const view = {zoom:1, panx:0, pany:0};
+const MIN_ZOOM = 1, MAX_ZOOM = 12;
+function fitScale(){
+  const [iw,ih] = R().px;
+  return Math.min(cv.width/iw, cv.height/ih) * 0.94;   // small breathing margin
+}
+function viewScale(){ return fitScale() * view.zoom; }
+function viewOffset(){
+  const [iw,ih] = R().px, s = viewScale();
+  return [ (cv.width - iw*s)/2 + view.panx, (cv.height - ih*s)/2 + view.pany ];
+}
+function resetView(){ view.zoom=1; view.panx=0; view.pany=0; }
+
+// canvas <-> NZTM metres, through the view
+function toPx(x,y){ const[a,b,c,d]=R().bounds, [iw,ih]=R().px;
+  const s=viewScale(), [ox,oy]=viewOffset();
+  return [ (x-a)/(c-a)*iw*s + ox, (1-(y-b)/(d-b))*ih*s + oy ]; }
+function toW(px,py){ const[a,b,c,d]=R().bounds, [iw,ih]=R().px;
+  const s=viewScale(), [ox,oy]=viewOffset();
+  const ix=(px-ox)/s, iy=(py-oy)/s;
+  return [ +(a+ix/iw*(c-a)).toFixed(3), +(b+(1-iy/ih)*(d-b)).toFixed(3) ]; }
+
+function zoomAt(px, py, factor){
+  // keep whatever is under the cursor pinned while the scale changes
+  const before = toW(px, py);
+  view.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, view.zoom*factor));
+  const after = toPx(before[0], before[1]);
+  view.panx += px - after[0];
+  view.pany += py - after[1];
+  draw();
+}
+
+function sizeCanvas(){
+  const st=document.getElementById("stage");
+  const dpr=window.devicePixelRatio||1;
+  const w=Math.max(1, Math.round(st.clientWidth*dpr));
+  const h=Math.max(1, Math.round(st.clientHeight*dpr));
+  if(cv.width!==w || cv.height!==h){ cv.width=w; cv.height=h; }
+}
 
 function ring(pts, stroke, dash, width){
-  ctx.strokeStyle=stroke; ctx.lineWidth=width||1.4; ctx.setLineDash(dash||[]);
+  ctx.strokeStyle=stroke; ctx.lineWidth=lw(width||1.4);
+  ctx.setLineDash((dash||[]).map(v=>v*dpr()));
   ctx.beginPath(); pts.forEach(([x,y],i)=>{const[p,q]=toPx(x,y); i?ctx.lineTo(p,q):ctx.moveTo(p,q);});
   ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
 }
 
+// ---------------------------------------------------------------- FACES
+// Drawing planes by hand would be four times the clicks for information the
+// lines already carry: the pipeline builds faces by cutting the footprint with
+// the lines it believes in, as infinite (angle, offset) cuts -- roof_partition.
+// So we do the SAME cut here. The shaded faces are therefore not a decoration,
+// they are a preview of what the code will construct from these lines, and a
+// face that comes out wrong is visible while you are still looking at the roof.
+//
+// The label is not the face. It is which faces carry no panels -- a wall the
+// footprint swallowed, a canopy, glass -- which is the one thing lines cannot
+// say and the failure that put panels down a wall at 9 Henry Street.
+const MIN_FACE_M2 = 1.0;            // below this a piece is a sliver, not a face
+// A zero-length line has no side: clipHalf keeps the whole polygon in BOTH
+// directions and every face silently doubles. Two clicks in the same spot is
+// an easy accident, so guard it at the cut as well as at creation.
+const MIN_LINE_M = 0.3;
+// Kept deliberately faint. A tint heavy enough to read at a glance also veils
+// the roof texture you are tracing against, and the imagery is already at its
+// resolution limit. The white boundary and the area caption carry the
+// partition; the fill only has to separate one face from the next.
+const FACEFILL = ["rgba(46,204,113,.10)","rgba(255,255,255,.07)",
+                  "rgba(93,173,226,.10)","rgba(241,196,15,.08)"];
+
+function polyArea(p){ let s=0;
+  for(let i=0,m=p.length;i<m;i++){ const [x1,y1]=p[i], [x2,y2]=p[(i+1)%m]; s+=x1*y2-x2*y1; }
+  return Math.abs(s)/2; }                       // NZTM is metres, so this is m2
+
+function inPoly(pt,p){ let c=false;
+  for(let i=0,j=p.length-1;i<p.length;j=i++){ const [xi,yi]=p[i], [xj,yj]=p[j];
+    if(((yi>pt[1])!==(yj>pt[1])) && (pt[0] < (xj-xi)*(pt[1]-yi)/(yj-yi)+xi)) c=!c; }
+  return c; }
+
+function clipHalf(poly,a,b,keep){
+  const side = q => (b[0]-a[0])*(q[1]-a[1]) - (b[1]-a[1])*(q[0]-a[0]);
+  const out=[];
+  for(let i=0;i<poly.length;i++){
+    const P=poly[i], Q=poly[(i+1)%poly.length], sp=side(P), sq=side(Q);
+    if(sp*keep>=0) out.push(P);
+    if((sp>0&&sq<0)||(sp<0&&sq>0)){ const u=sp/(sp-sq);
+      out.push([P[0]+(Q[0]-P[0])*u, P[1]+(Q[1]-P[1])*u]); }
+  }
+  // a cut landing exactly on a vertex emits it twice; strip repeats so the
+  // exported rings are clean for whatever consumes them
+  const ded=[];
+  for(const q of out){
+    const last=ded[ded.length-1];
+    if(!last || Math.hypot(q[0]-last[0], q[1]-last[1]) > 1e-6) ded.push(q);
+  }
+  if(ded.length>1){
+    const f=ded[0], l=ded[ded.length-1];
+    if(Math.hypot(f[0]-l[0], f[1]-l[1]) <= 1e-6) ded.pop();
+  }
+  return ded.length>=3 ? ded : null;
+}
+
+// A drawn line is a SEGMENT, and it only divides the piece it actually runs
+// across. Applying every line to every piece -- which is what this did first --
+// extends a short mark right across the roof: mark a small cut-off in one
+// corner and the big planes get sliced into slivers by its continuation.
+//
+// This is also what roof_partition really does. Its _cut() takes an infinite
+// line, but _partition() is RECURSIVE: it splits one polygon and then asks each
+// half independently, so a cut only ever reaches the piece being split. The
+// tool now matches that.
+// PLANAR SUBDIVISION. The first version cut the footprint with one line at a
+// time, which cannot express the commonest roof there is: a ridge meeting two
+// hips encloses a face even though NO single line spans the building. Josh's
+// first 20 roofs proved it -- 53 drawn lines produced one face, so the shading
+// was useless and no-panel tagging was unavailable.
+//
+// So build the arrangement properly: take the footprint edges and every drawn
+// line, cut them all at their mutual crossings, and walk the resulting graph to
+// recover its faces. Lines that stop short simply contribute no closed region,
+// rather than being discarded or extended across the roof.
+const NODE_TOL = 0.02;        // metres; endpoints closer than this are one node
+
+function _segIntersect(p1,p2,p3,p4){
+  const d1x=p2[0]-p1[0], d1y=p2[1]-p1[1], d2x=p4[0]-p3[0], d2y=p4[1]-p3[1];
+  const den=d1x*d2y - d1y*d2x;
+  // den scales with BOTH segment lengths, so an absolute epsilon is meaningless:
+  // two 30 m lines a hair off parallel pass a 1e-12 test and then produce a
+  // wildly inaccurate crossing, which is how faces ended up overlapping.
+  const scale=Math.hypot(d1x,d1y)*Math.hypot(d2x,d2y);
+  if(Math.abs(den) < 1e-9*scale) return null;        // parallel or collinear
+  const t=((p3[0]-p1[0])*d2y - (p3[1]-p1[1])*d2x)/den;
+  const u=((p3[0]-p1[0])*d1y - (p3[1]-p1[1])*d1x)/den;
+  if(t<-1e-9 || t>1+1e-9 || u<-1e-9 || u>1+1e-9) return null;
+  return t;
+}
+
+function _key(p){ return Math.round(p[0]/NODE_TOL)+"_"+Math.round(p[1]/NODE_TOL); }
+
+function facesFor(outline, lines){
+  const ring=outline.slice(0,-1);
+  if(ring.length<3) return [];
+
+  // 1. every segment in play: the footprint, and the lines drawn on it
+  const raw=[];
+  for(let i=0;i<ring.length;i++) raw.push([ring[i], ring[(i+1)%ring.length], true]);
+  (lines||[]).forEach(l=>{
+    if(Math.hypot(l.b[0]-l.a[0], l.b[1]-l.a[1]) >= MIN_LINE_M) raw.push([l.a, l.b, false]);
+  });
+
+  // 2. cut each at every crossing with every other
+  const pieces=[];
+  raw.forEach(([a,b,isEdge],i)=>{
+    const ts=[0,1];
+    raw.forEach(([c,d],j)=>{ if(i===j) return;
+      const t=_segIntersect(a,b,c,d);
+      if(t!==null) ts.push(t);
+    });
+    // _segIntersect is blind to COLLINEAR overlap (parallel -> no solution), so
+    // two lines drawn along each other never get split where one ends. That
+    // leaves parallel graph edges and the walk then traces overlapping faces.
+    // Splitting at any other endpoint that lands ON this segment covers it, and
+    // costs nothing on the T-junctions already handled above.
+    const L2=(b[0]-a[0])**2 + (b[1]-a[1])**2;
+    if(L2 > 0){
+      raw.forEach(([c,d],j)=>{ if(i===j) return;
+        [c,d].forEach(P=>{
+          let u=((P[0]-a[0])*(b[0]-a[0]) + (P[1]-a[1])*(b[1]-a[1]))/L2;
+          if(u<=1e-9 || u>=1-1e-9) return;
+          const foot=[a[0]+(b[0]-a[0])*u, a[1]+(b[1]-a[1])*u];
+          if(Math.hypot(P[0]-foot[0], P[1]-foot[1]) < NODE_TOL) ts.push(u);
+        });
+      });
+    }
+    ts.sort((x,y)=>x-y);
+    for(let k=1;k<ts.length;k++){
+      if(ts[k]-ts[k-1] < 1e-9) continue;
+      const P=[a[0]+(b[0]-a[0])*ts[k-1], a[1]+(b[1]-a[1])*ts[k-1]];
+      const Q=[a[0]+(b[0]-a[0])*ts[k],   a[1]+(b[1]-a[1])*ts[k]];
+      if(Math.hypot(Q[0]-P[0], Q[1]-P[1]) < NODE_TOL) continue;
+      // a drawn line can run outside the footprint; keep only what is inside
+      if(!isEdge){
+        const m=[(P[0]+Q[0])/2, (P[1]+Q[1])/2];
+        if(!inPoly(m, ring)) continue;
+      }
+      pieces.push([P,Q]);
+    }
+  });
+
+  // 3. graph
+  const nodes=new Map();        // key -> {p, out:[{to, ang}]}
+  const node=p=>{ const k=_key(p);
+    if(!nodes.has(k)) nodes.set(k, {p, out:[]});
+    return k; };
+  pieces.forEach(([P,Q])=>{
+    const a=node(P), b=node(Q);
+    if(a===b) return;
+    const pa=nodes.get(a).p, pb=nodes.get(b).p;
+    if(!nodes.get(a).out.some(e=>e.to===b))
+      nodes.get(a).out.push({to:b, ang:Math.atan2(pb[1]-pa[1], pb[0]-pa[0])});
+    if(!nodes.get(b).out.some(e=>e.to===a))
+      nodes.get(b).out.push({to:a, ang:Math.atan2(pa[1]-pb[1], pa[0]-pb[0])});
+  });
+  nodes.forEach(nd=>nd.out.sort((x,y)=>x.ang-y.ang));
+
+  // 4. walk half-edges. At each node take the next edge clockwise from the one
+  //    we arrived on, which traces every face of the arrangement exactly once.
+  const seen=new Set(), out=[];
+  nodes.forEach((nd,k)=>{
+    nd.out.forEach(e=>{
+      let cur=k, nxt=e.to;
+      if(seen.has(cur+">"+nxt)) return;
+      const poly=[]; let guard=0;
+      while(guard++ < 4000){
+        seen.add(cur+">"+nxt);
+        poly.push(nodes.get(cur).p);
+        const at=nodes.get(nxt);
+        const back=Math.atan2(nodes.get(cur).p[1]-at.p[1], nodes.get(cur).p[0]-at.p[0]);
+        let best=null, bd=Infinity;
+        at.out.forEach(o=>{
+          let d=back - o.ang;                       // clockwise turn, smallest first
+          while(d<=1e-9) d+=Math.PI*2;
+          if(d<bd){ bd=d; best=o.to; }
+        });
+        if(best===null) break;
+        cur=nxt; nxt=best;
+        if(cur===k && nxt===e.to) break;            // closed
+      }
+      if(poly.length>=3){
+        let s=0;
+        for(let i=0;i<poly.length;i++){
+          const q=poly[(i+1)%poly.length];
+          s += poly[i][0]*q[1] - q[0]*poly[i][1];
+        }
+        // interior faces come out counter-clockwise; the outer boundary is the
+        // one traced the other way, and is discarded
+        if(s/2 >= MIN_FACE_M2) out.push(poly);
+      }
+    });
+  });
+  return out;
+}
+const faces = () => facesFor(R().outline, rec().lines);
+
+// Centroid is outside its own polygon on any L or U shaped face, so the area
+// caption would float over a neighbour. Fall back to scanning for a point that
+// is genuinely inside.
+function labelPoint(f){
+  const c=[f.reduce((s,q)=>s+q[0],0)/f.length, f.reduce((s,q)=>s+q[1],0)/f.length];
+  if(inPoly(c,f)) return c;
+  const xs=f.map(q=>q[0]), ys=f.map(q=>q[1]);
+  const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+  for(let i=1;i<12;i++) for(let k=1;k<12;k++){
+    const q=[x0+(x1-x0)*i/12, y0+(y1-y0)*k/12];
+    if(inPoly(q,f)) return q;
+  }
+  return c;
+}
+
+function drawFaces(){
+  const r=rec();
+  if(!r.lines.length && !r.nopanel.length) return;
+  faces().forEach((f,i)=>{
+    const bad = r.nopanel.some(pt=>inPoly(pt,f));
+    ctx.beginPath();
+    f.forEach((q,k)=>{ const[x,y]=toPx(q[0],q[1]); k?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.closePath();
+    ctx.fillStyle = bad ? "rgba(255,138,0,.30)" : FACEFILL[i%FACEFILL.length];
+    ctx.fill();
+    ctx.strokeStyle = bad ? "#ff8a00" : "rgba(255,255,255,.55)";
+    ctx.lineWidth = lw(bad ? 2.6 : 1.5); ctx.setLineDash([]); ctx.stroke();
+    // the area is what decides the panel count, so it is worth reading off the
+    // face rather than trusting that the partition looked about right
+    const [lx,ly]=toPx(...labelPoint(f));
+    const txt = bad ? "no panels" : polyArea(f).toFixed(0)+" m\u00b2";
+    ctx.font=`600 ${Math.round(12*dpr())}px -apple-system,BlinkMacSystemFont,sans-serif`;
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    const w=ctx.measureText(txt).width, pad=5*dpr(), hh=9*dpr();
+    ctx.fillStyle="rgba(0,0,0,.62)";
+    ctx.fillRect(lx-w/2-pad, ly-hh, w+pad*2, hh*2);
+    ctx.fillStyle = bad ? "#ff8f8f" : "#fff";
+    ctx.fillText(txt, lx, ly);
+  });
+}
+
 function draw(){
   ctx.clearRect(0,0,cv.width,cv.height);
-  if(img.complete && img.naturalWidth) ctx.drawImage(img,0,0,cv.width,cv.height);
+  if(img.complete && img.naturalWidth){
+    const [iw,ih]=R().px, s=viewScale(), [ox,oy]=viewOffset();
+    // Always smooth. Source imagery is 0.1 m/px and every view is an upscale,
+    // so nearest-neighbour just shows hard pixel blocks -- which reads as lower
+    // resolution than it is, rather than as detail.
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, ox, oy, iw*s, ih*s);
+  }
+  // clip overlays to the photo: neighbour outlines run past the crop, and the
+  // part beyond has no imagery under it to mean anything
+  const [ciw,cih]=R().px, cs=viewScale(), [cox,coy]=viewOffset();
+  ctx.save();
+  ctx.beginPath(); ctx.rect(cox, coy, ciw*cs, cih*cs); ctx.clip();
+  drawFaces();
   // neighbours first, dimmed -- so a busy block reads correctly
-  (R().neighbours||[]).forEach(n => ring(n,"rgba(255,255,255,.30)",[4,4],1));
-  ring(R().outline,"#ffd400",[],2.2);            // THIS building, solid
+  (R().neighbours||[]).forEach(n => ring(n,"rgba(255,255,255,.45)",[5,5],1.8));
+  ring(R().outline,"#ffd400",[],3.2);            // THIS building, solid
+  (R().holes||[]).forEach(h=>{                   // courtyard -- open air, not roof
+    ctx.fillStyle="rgba(0,0,0,.45)";
+    ctx.beginPath(); h.forEach((q,k)=>{const[x,y]=toPx(q[0],q[1]); k?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+    ctx.closePath(); ctx.fill();
+    ring(h,"#ffd400",[7,5],2.2);
+  });
   const r = rec();
   r.lines.forEach((l,i)=>{
-    ctx.strokeStyle=COL[l.kind]; ctx.lineWidth=2.6; ctx.setLineDash([]);
     const[x1,y1]=toPx(l.a[0],l.a[1]), [x2,y2]=toPx(l.b[0],l.b[1]);
+    ctx.setLineDash([]); ctx.lineCap="round";
+    // dark casing under the colour, so a red line stays readable over a red
+    // roof and a purple one over shadow
+    ctx.strokeStyle="#000"; ctx.lineWidth=lw(9.0);
     ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
-    [[x1,y1],[x2,y2]].forEach(([px,py])=>{ctx.fillStyle=COL[l.kind];
-      ctx.beginPath();ctx.arc(px,py,3,0,7);ctx.fill();});
+    ctx.strokeStyle=COL[l.kind]; ctx.lineWidth=lw(5.4);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    if(selLine===i){
+      ctx.strokeStyle="#fff"; ctx.lineWidth=lw(2.0); ctx.setLineDash([6*dpr(),5*dpr()]);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.lineCap="butt";
+    [[x1,y1],[x2,y2]].forEach(([px,py])=>{
+      ctx.fillStyle="#000"; ctx.beginPath();ctx.arc(px,py,lw(7.4),0,7);ctx.fill();
+      ctx.fillStyle=COL[l.kind]; ctx.beginPath();ctx.arc(px,py,lw(5.0),0,7);ctx.fill();});
   });
   r.obstructions.forEach((o,i)=>{
-    const[x1,y1]=toPx(o.x,o.y+o.h), [x2,y2]=toPx(o.x+o.w,o.y);
-    const w=x2-x1, h=y2-y1;
-    ctx.strokeStyle="#ffd400"; ctx.fillStyle="rgba(255,212,0,.18)"; ctx.lineWidth=2;
+    let corners;
     ctx.beginPath();
-    if(o.shape==="ellipse") ctx.ellipse(x1+w/2,y1+h/2,Math.abs(w)/2,Math.abs(h)/2,0,0,7);
-    else ctx.rect(x1,y1,w,h);
-    ctx.fill(); ctx.stroke();
-    if(sel===i){ ctx.fillStyle="#fff";
-      [[x1,y1],[x2,y1],[x1,y2],[x2,y2]].forEach(([px,py])=>ctx.fillRect(px-HANDLE/2,py-HANDLE/2,HANDLE,HANDLE)); }
+    if(o.shape==="triangle" || o.shape==="polygon" || o.shape==="polyline"){
+      // draw the RING, so a run's recorded width is what you actually see
+      const ring=obsRing(o).map(q=>toPx(q[0],q[1]));
+      ring.forEach(([x,y],k)=>k?ctx.lineTo(x,y):ctx.moveTo(x,y));
+      ctx.closePath();
+      corners=o.pts.map(q=>toPx(q[0],q[1]));   // handles sit on the real points
+    } else {
+      const[x1,y1]=toPx(o.x,o.y+o.h), [x2,y2]=toPx(o.x+o.w,o.y);
+      const w=x2-x1, h=y2-y1;
+      if(o.shape==="ellipse") ctx.ellipse(x1+w/2,y1+h/2,Math.abs(w)/2,Math.abs(h)/2,0,0,7);
+      else ctx.rect(x1,y1,w,h);
+      corners=[[x1,y1],[x2,y1],[x1,y2],[x2,y2]];
+    }
+    ctx.fillStyle="rgba(192,107,255,.22)"; ctx.fill();
+    ctx.strokeStyle="#000"; ctx.lineWidth=lw(6.4); ctx.stroke();
+    ctx.strokeStyle="#c06bff"; ctx.lineWidth=lw(3.4); ctx.stroke();
+    if(sel===i){ ctx.fillStyle="#fff"; const H=HANDLE();
+      corners.forEach(([px,py])=>ctx.fillRect(px-H/2,py-H/2,H,H)); }
   });
   if(pending){
-    ctx.strokeStyle=COL[tool]||"#fff"; ctx.lineWidth=2; ctx.setLineDash([6,4]);
     const[x1,y1]=toPx(pending.a[0],pending.a[1]);
-    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(pending.px,pending.py); ctx.stroke(); ctx.setLineDash([]);
+    ctx.lineCap="round";
+    ctx.strokeStyle="#000"; ctx.lineWidth=lw(8.0); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(pending.px,pending.py); ctx.stroke();
+    ctx.strokeStyle=COL[tool]||"#fff"; ctx.lineWidth=lw(4.6);
+    ctx.setLineDash([7*dpr(),5*dpr()]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(pending.px,pending.py); ctx.stroke();
+    ctx.setLineDash([]); ctx.lineCap="butt";
+  }
+  if(triPts.length){
+    ctx.setLineDash([]); ctx.lineCap="round";
+    const trace=()=>{ ctx.beginPath();
+      triPts.forEach((q,k)=>{const[x,y]=toPx(q[0],q[1]); k?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+      // show the closing edge while a polygon is still open, so its final shape
+      // is obvious before you commit to it
+      if(tool!=="pline" && triPts.length>=3){ const[fx,fy]=toPx(triPts[0][0],triPts[0][1]); ctx.lineTo(fx,fy); }
+    };
+    ctx.strokeStyle="#000"; ctx.lineWidth=lw(6.4); trace(); ctx.stroke();
+    ctx.strokeStyle="#c06bff"; ctx.lineWidth=lw(3.4); trace(); ctx.stroke();
+    triPts.forEach(q=>{ const[x,y]=toPx(q[0],q[1]);
+      ctx.fillStyle="#000"; ctx.beginPath();ctx.arc(x,y,lw(6.4),0,7);ctx.fill();
+      ctx.fillStyle="#c06bff"; ctx.beginPath();ctx.arc(x,y,lw(4.2),0,7);ctx.fill(); });
+    ctx.lineCap="butt";
+  }
+  if(hoverSnap && (LINE_TOOLS.has(tool) || tool==="tri")){
+    const [hx,hy]=toPx(hoverSnap.p[0],hoverSnap.p[1]), r=lw(9);
+    const path=()=>{ ctx.beginPath();
+      if(hoverSnap.kind==="edge"){                 // diamond = anywhere along a line
+        ctx.moveTo(hx,hy-r); ctx.lineTo(hx+r,hy); ctx.lineTo(hx,hy+r); ctx.lineTo(hx-r,hy);
+        ctx.closePath();
+      } else ctx.arc(hx,hy,r,0,7);                 // circle = an exact corner
+    };
+    ctx.setLineDash([]);
+    ctx.strokeStyle="#000"; ctx.lineWidth=lw(5.0); path(); ctx.stroke();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=lw(2.6); path(); ctx.stroke();
   }
   if(drag && drag.mode==="new"){
-    ctx.strokeStyle="#ffd400"; ctx.setLineDash([5,4]); ctx.lineWidth=1.6;
+    ctx.strokeStyle="#c06bff"; ctx.setLineDash([5*dpr(),4*dpr()]); ctx.lineWidth=lw(1.8);
     const x=Math.min(drag.x0,drag.x1), y=Math.min(drag.y0,drag.y1);
     const w=Math.abs(drag.x1-drag.x0), h=Math.abs(drag.y1-drag.y0);
     ctx.beginPath();
     if(tool==="ellipse") ctx.ellipse(x+w/2,y+h/2,w/2,h/2,0,0,7); else ctx.rect(x,y,w,h);
     ctx.stroke(); ctx.setLineDash([]);
   }
-  const r2=rec();
-  document.getElementById("prog").textContent =
-    `${r2.lines.length} lines · ${r2.obstructions.length} obstructions · ${Object.keys(data).length}/${ROOFS.length} roofs touched`;
+  ctx.restore();
+  refreshShare();
 }
 
 function show(i){
-  idx=(i+ROOFS.length)%ROOFS.length; pending=null; drag=null; sel=null;
+  idx=(i+ROOFS.length)%ROOFS.length; pending=null; drag=null; sel=null; selLine=null;
+  hoverSnap=null; triPts=[];
   const r=R();
   document.getElementById("title").textContent = `#${r.id} · ${r.m2} m²`;
   document.getElementById("addr").textContent = r.address || r.area;
-  const n=document.getElementById("note");
-  n.textContent = r.note||""; n.style.display = r.note ? "" : "none";
-  cv.width=r.px[0]; cv.height=r.px[1];
+  const lk=document.getElementById("links");
+  if(r.ll){
+    const [lat,lon]=r.ll;
+    // Google MAPS rather than Earth: same 3D imagery, but Earth web loads a
+    // whole globe client and Josh found it slow and unreliable. The data=!3m1!1e3
+    // suffix is satellite, and 80a/35y/45t tilts it enough to read a roof.
+    // Apple Maps opens the Maps app on a Mac, where Flyover gives a genuinely
+    // better 3D model of a roof than anything in a browser.
+    // Both open in a new tab so a half-drawn roof is never lost.
+    lk.innerHTML =
+      `<a target="_blank" rel="noopener" href="https://www.google.com/maps/@${lat},${lon},80a,35y,45t/data=!3m1!1e3">3D satellite</a>`
+    + `<a target="_blank" rel="noopener" href="https://maps.apple.com/?ll=${lat},${lon}&z=19&t=k">Apple Maps</a>`;
+  } else lk.innerHTML="";
+  resetView(); sizeCanvas();
   img=new Image(); img.onload=draw; img.src="data:image/jpeg;base64,"+r.jpg;
+  refreshComplete();
   say(`#${r.id} — ${idx+1} of ${ROOFS.length}`); draw();
 }
 
@@ -225,14 +868,54 @@ function snap(a,px,py){
   return [ax+Math.cos(s)*d, ay+Math.sin(s)*d];
 }
 
+// Nearest drawn LINE under the cursor, in screen space so the tolerance feels
+// the same at every zoom.
+function hitLine(px,py){
+  const r=rec(); let best=null, bd=12*dpr();
+  r.lines.forEach((l,i)=>{
+    const [x1,y1]=toPx(l.a[0],l.a[1]), [x2,y2]=toPx(l.b[0],l.b[1]);
+    const dx=x2-x1, dy=y2-y1, L2=dx*dx+dy*dy;
+    let t = L2 ? ((px-x1)*dx + (py-y1)*dy)/L2 : 0;
+    t=Math.max(0,Math.min(1,t));
+    const d=Math.hypot(px-(x1+dx*t), py-(y1+dy*t));
+    if(d<bd){ bd=d; best=i; }
+  });
+  return best;
+}
+
+function deleteSelected(){
+  const r=rec();
+  if(selLine!==null && r.lines[selLine]!==undefined){
+    const k=r.lines[selLine].kind;
+    r.lines.splice(selLine,1); selLine=null; save(); draw();
+    say(`deleted a ${k} line`); return;
+  }
+  if(sel!==null && r.obstructions[sel]!==undefined){
+    const s=r.obstructions[sel].shape;
+    r.obstructions.splice(sel,1); sel=null; save(); draw();
+    say(`deleted a ${s}`); return;
+  }
+  say("nothing selected \u2014 click a line or shape first");
+}
+
 function hit(px,py){
   const r=rec();
   for(let i=r.obstructions.length-1;i>=0;i--){
     const o=r.obstructions[i];
+    if(o.shape==="triangle" || o.shape==="polygon" || o.shape==="polyline"){
+      const P=o.pts.map(q=>toPx(q[0],q[1]));
+      for(let v=0;v<P.length;v++)
+        if(Math.abs(px-P[v][0])<=HANDLE() && Math.abs(py-P[v][1])<=HANDLE())
+          return {i,mode:"vertex",vi:v};
+      // a run is only as wide as its width, so test against the ring rather
+      // than the bare centreline
+      if(inPoly(toW(px,py), obsRing(o))) return {i,mode:"move"};
+      continue;
+    }
     const[x1,y1]=toPx(o.x,o.y+o.h), [x2,y2]=toPx(o.x+o.w,o.y);
     const corners=[[x1,y1,"nw"],[x2,y1,"ne"],[x1,y2,"sw"],[x2,y2,"se"]];
     for(const[cx,cy,which] of corners)
-      if(Math.abs(px-cx)<=HANDLE && Math.abs(py-cy)<=HANDLE) return {i,mode:"resize",which};
+      if(Math.abs(px-cx)<=HANDLE() && Math.abs(py-cy)<=HANDLE()) return {i,mode:"resize",which};
     if(px>=Math.min(x1,x2)&&px<=Math.max(x1,x2)&&py>=Math.min(y1,y2)&&py<=Math.max(y1,y2))
       return {i,mode:"move"};
   }
@@ -242,28 +925,117 @@ function hit(px,py){
 function evPx(e){ const r=cv.getBoundingClientRect();
   return [ (e.clientX-r.left)*cv.width/r.width, (e.clientY-r.top)*cv.height/r.height ]; }
 
+cv.addEventListener("contextmenu", e=>e.preventDefault());   // right-drag pans
+cv.addEventListener("wheel", e=>{
+  e.preventDefault();
+  const [px,py]=evPx(e);
+  // trackpad pinch arrives as ctrl+wheel; plain wheel zooms too, which is what
+  // people expect of a single-image markup view
+  if(e.shiftKey || (Math.abs(e.deltaX) > Math.abs(e.deltaY) && !e.ctrlKey)){
+    view.panx -= e.deltaX * dpr(); view.pany -= e.deltaY * dpr(); draw(); return;
+  }
+  zoomAt(px, py, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0022)));
+}, {passive:false});
+
+let panning=null;
 cv.addEventListener("pointerdown", e=>{
   const [px,py]=evPx(e);
+  if(e.button===2 || e.button===1 || space || handMode){   // right, middle, space, or hand mode
+    e.preventDefault();
+    panning={px,py,ox:view.panx,oy:view.pany};
+    cv.setPointerCapture(e.pointerId); return;
+  }
+  if(tool==="nopanel"){
+    const w=toW(px,py), r=rec(), fs=faces();
+    const f=fs.find(g=>inPoly(w,g));
+    if(!f){ say("click inside the building"); return; }
+    const at=r.nopanel.findIndex(pt=>inPoly(pt,f));
+    if(at>=0) r.nopanel.splice(at,1); else r.nopanel.push(w);
+    save(); draw();
+    say(r.nopanel.length ? `${r.nopanel.length} face(s) marked as taking no panels`
+                         : "no faces marked");
+    return;
+  }
+  if(tool==="select"){
+    const h=hit(px,py);
+    if(h){ sel=h.i; selLine=null; say(`${rec().obstructions[h.i].shape} selected \u2014 Delete removes it`); }
+    else {
+      const li=hitLine(px,py);
+      if(li!==null){ selLine=li; sel=null; say(`${rec().lines[li].kind} line selected \u2014 Delete removes it`); }
+      else { sel=null; selLine=null; say("nothing there \u2014 click directly on a line or shape"); }
+    }
+    draw(); return;
+  }
+  if(POLY_TOOLS.has(tool)){
+    const s=snapPoint(px,py);
+    const w=s ? s.p : toW(px,py);
+    // clicking back on the first point closes a polygon, the way drawing tools
+    // normally behave
+    if(tool==="poly" && triPts.length>=3){
+      const f=toPx(triPts[0][0], triPts[0][1]);
+      if(Math.hypot(px-f[0], py-f[1]) <= SNAP_PX*dpr()){ finishPoly(); return; }
+    }
+    triPts.push(w);
+    if(tool==="tri" && triPts.length===3){ finishPoly(); return; }
+    say(tool==="tri" ? `corner ${triPts.length} of 3`
+        : `${triPts.length} point${triPts.length===1?"":"s"} \u2014 Enter to finish, Esc to cancel`
+          + (tool==="poly" && triPts.length>=3 ? ", or click the first point" : ""));
+    draw(); return;
+  }
   if(LINE_TOOLS.has(tool)){
-    if(!pending){ pending={a:toW(px,py),px,py}; }
-    else { const [sx,sy]=snap(pending.a,px,py);
-      rec().lines.push({kind:tool,a:pending.a,b:toW(sx,sy)}); pending=null; save(); }
+    const hit=snapPoint(px,py);
+    if(!pending){
+      const a = hit ? hit.p : toW(px,py);
+      const at = hit ? toPx(a[0],a[1]) : [px,py];
+      pending={a, px:at[0], py:at[1]};
+      if(hit) say(hit.kind==="edge" ? "snapped onto the line" : "snapped to an existing point");
+    }
+    else {
+      let b;
+      if(hit) b=hit.p;                                // a real junction wins
+      else { const [sx,sy]=snap(pending.a,px,py); b=toW(sx,sy); }
+      if(Math.hypot(b[0]-pending.a[0], b[1]-pending.a[1]) < MIN_LINE_M){
+        pending=null; say("too short \u2014 click two separate points"); draw(); return; }
+      rec().lines.push({kind:tool,a:pending.a,b}); pending=null; save();
+      if(hit) say(hit.kind==="edge" ? "joined onto the line" : "joined to an existing point");
+    }
     draw(); return;
   }
   const h=hit(px,py);
-  if(h){ sel=h.i; drag={mode:h.mode,which:h.which,i:h.i,px,py,orig:{...rec().obstructions[h.i]}}; }
-  else { sel=null; drag={mode:"new",x0:px,y0:py,x1:px,y1:py}; }
+  if(h){ sel=h.i; const src=rec().obstructions[h.i];
+    drag={mode:h.mode,which:h.which,vi:h.vi,i:h.i,px,py,
+          orig: src.pts ? {shape:src.shape, pts:src.pts.map(q=>q.slice())} : {...src}}; }
+  else if(DRAG_SHAPES.has(tool)){ sel=null; drag={mode:"new",x0:px,y0:py,x1:px,y1:py}; }
+  else { sel=null; }
   cv.setPointerCapture(e.pointerId); draw();
 });
 
 cv.addEventListener("pointermove", e=>{
   const [px,py]=evPx(e);
+  if(panning){ view.panx=panning.ox+(px-panning.px);
+               view.pany=panning.oy+(py-panning.py); draw(); return; }
+  if(LINE_TOOLS.has(tool) || tool==="tri"){
+    const h=snapPoint(px,py);
+    const changed = JSON.stringify(h)!==JSON.stringify(hoverSnap);
+    hoverSnap=h;
+    if(pending){
+      if(h){ const [hx,hy]=toPx(h.p[0],h.p[1]); pending.px=hx; pending.py=hy; }
+      else { const[sx,sy]=snap(pending.a,px,py); pending.px=sx; pending.py=sy; }
+      draw(); return;
+    }
+    if(changed) draw();
+  }
   if(pending){ const[sx,sy]=snap(pending.a,px,py); pending.px=sx; pending.py=sy; draw(); return; }
   if(!drag) return;
   if(drag.mode==="new"){ drag.x1=px; drag.y1=py; }
   else {
     const o=rec().obstructions[drag.i], g=drag.orig;
     const [wx,wy]=toW(px,py), [ox,oy]=toW(drag.px,drag.py);
+    if(o.pts){
+      if(drag.mode==="vertex") o.pts[drag.vi]=[+wx.toFixed(3), +wy.toFixed(3)];
+      else o.pts=g.pts.map(q=>[+(q[0]+wx-ox).toFixed(3), +(q[1]+wy-oy).toFixed(3)]);
+      draw(); return;
+    }
     if(drag.mode==="move"){ o.x=+(g.x+wx-ox).toFixed(3); o.y=+(g.y+wy-oy).toFixed(3); }
     else {
       let x0=g.x, y0=g.y, x1=g.x+g.w, y1=g.y+g.h;
@@ -277,6 +1049,7 @@ cv.addEventListener("pointermove", e=>{
 });
 
 cv.addEventListener("pointerup", e=>{
+  if(panning){ panning=null; return; }
   if(drag && drag.mode==="new"){
     const [ax,ay]=toW(Math.min(drag.x0,drag.x1), Math.max(drag.y0,drag.y1));
     const [bx,by]=toW(Math.max(drag.x0,drag.x1), Math.min(drag.y0,drag.y1));
@@ -293,12 +1066,22 @@ cv.addEventListener("pointerup", e=>{
 
 const DESC = {
   ridge:"Any fold where roof falls AWAY on both sides — flat along the top or running down to a corner, both count.",
-  valley:"A fold where roof RISES away on both sides. Water would collect in it.",
-  cliff:"A height BREAK, not a fold. Draw along the TOP edge, on the higher side.",
-  rect:"Drag out a box over a skylight, vent or existing panel.",
-  ellipse:"Drag out a circle over a round vent or flue."};
-function setTool(t){ tool=t; pending=null;
-  document.getElementById("tooldesc").innerHTML = DESC[t] ? "<b>"+t[0].toUpperCase()+t.slice(1)+".</b> "+DESC[t] : "";
+  valley:"Any fold that is NOT a ridge: faces meet at an angle but the roof does not turn over. Internal corners, and pitch changes (60\u00b0 into 20\u00b0). Ignore where water goes.",
+  cliff:"A height BREAK, not a fold: dormer sides, split levels, and the real roof edge where the roof stops short of the yellow outline. Draw along the TOP edge, on the higher side.",
+  ellipse:"Drag out a circle over a round vent or flue.",
+  tri:"Three clicks, one per corner. Use it for anything not square or round \u2014 a dormer face, a clipped corner.",
+  poly:"Click each corner, then Enter (or click the first point again) to close. For an awkward shape no box or triangle fits.",
+  pline:"Click along a run \u2014 a pipe, a cable tray, a ridge vent \u2014 then Enter. Stored as a centreline with a width; [ and ] make it thinner or wider.",
+  select:"Click a line or shape you have already drawn, then press Delete. Unlike Undo, this reaches any of them, not just the last.",
+  nopanel:"Click a shaded face that could never take panels \u2014 a wall inside the outline, a canopy, glass. The shading is what the code will build from your lines."};
+const NAMES = {ridge:"Ridge line", valley:"Valley line", cliff:"Cliff line",
+               rect:"Box", ellipse:"Circle", tri:"Triangle", poly:"Polygon",
+               pline:"Line / run", nopanel:"No panels here",
+               select:"Select & delete"};
+function setTool(t){ tool=t; pending=null; hoverSnap=null; triPts=[];
+  if(t!=="select"){ selLine=null; }
+  document.getElementById("tooldesc").innerHTML =
+    DESC[t] ? '<span class="lab">About this tool</span><b>'+(NAMES[t] || t)+".</b> "+DESC[t] : "";
   document.querySelectorAll("[data-tool]").forEach(b=>b.classList.toggle("on", b.dataset.tool===t));
   draw(); }
 document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
@@ -309,47 +1092,195 @@ help.onclick=e=>{ if(e.target===help) help.classList.remove("on"); };
 
 function undo(){
   const r=rec();
-  if(pending){ pending=null; }
+  if(triPts.length){ triPts.pop(); }
+  else if(pending){ pending=null; }
+  else if(tool==="nopanel" && r.nopanel.length){ r.nopanel.pop(); }
   else if(r.obstructions.length && sel!==null){ r.obstructions.splice(sel,1); sel=null; }
   else if(r.lines.length){ r.lines.pop(); }
   else if(r.obstructions.length){ r.obstructions.pop(); }
   save(); draw();
 }
+function refreshComplete(){
+  const b=document.getElementById("complete");
+  const on=!!rec().complete;
+  b.classList.toggle("on", on);
+  b.firstChild.innerHTML = (on ? "&#9745;" : "&#9744;")
+    + " I marked EVERY line on this roof";
+}
+document.getElementById("complete").onclick=()=>{
+  const r=rec();
+  r.complete=!r.complete; save(); refreshComplete(); draw();
+  say(r.complete ? "marked complete \u2014 undrawn model lines now count against it"
+                 : "no longer marked complete");
+};
 document.getElementById("undo").onclick=undo;
-document.getElementById("clear").onclick=()=>{ data[R().id]={lines:[],obstructions:[]};
+document.getElementById("delsel").onclick=deleteSelected;
+document.getElementById("clear").onclick=()=>{ data[R().id]={lines:[],obstructions:[],nopanel:[],complete:false};
   pending=null; sel=null; save(); draw(); };
-document.getElementById("next").onclick=()=>show(idx+1);
-document.getElementById("prev").onclick=()=>show(idx-1);
+// step through the roofs still worth looking at, but never refuse to SHOW a
+// hidden one -- you may have arrived at it deliberately
+function step(dir){
+  for(let k=1;k<=ROOFS.length;k++){
+    const j=(idx + dir*k + ROOFS.length*ROOFS.length) % ROOFS.length;
+    if(!hideDone || !marked(ROOFS[j].id)) return show(j);
+  }
+  say("every roof is marked \u2014 turn off Hide to revisit them");
+}
+document.getElementById("hidedone").onclick=()=>{
+  hideDone=!hideDone;
+  const b=document.getElementById("hidedone");
+  b.classList.toggle("on", hideDone);
+  b.firstChild.textContent = hideDone ? "Showing unmarked only" : "Hide marked roofs";
+  const left=ROOFS.filter(r=>!marked(r.id)).length;
+  say(hideDone ? `${left} roofs left to mark` : "showing all roofs");
+  draw();
+};
+document.getElementById("zin").onclick =()=>zoomAt(cv.width/2,cv.height/2,1.3);
+document.getElementById("zout").onclick=()=>zoomAt(cv.width/2,cv.height/2,1/1.3);
+document.getElementById("zfit").onclick=()=>{ resetView(); draw(); say("view reset"); };
+document.getElementById("hand").onclick=()=>{
+  handMode=!handMode;
+  document.getElementById("hand").classList.toggle("on", handMode);
+  cv.classList.toggle("pan", handMode);
+  say(handMode ? "pan mode \u2014 drag to move the image" : "back to drawing");
+};
+document.getElementById("next").onclick=()=>step(1);
+document.getElementById("skipto").onclick=()=>{
+  for(let i=1;i<=ROOFS.length;i++){ const j=(idx+i)%ROOFS.length;
+    if(!marked(ROOFS[j].id)) return show(j); }
+  say("every roof is marked");
+};
+document.getElementById("prev").onclick=()=>step(-1);
 document.getElementById("download").onclick=()=>{
   const out={ tool:"label_template", saved_utc:new Date().toISOString(),
     crs:"EPSG:2193", buildings:{} };
-  ROOFS.forEach(r=>{ const d=data[r.id];
-    if(d && (d.lines.length||d.obstructions.length))
-      out.buildings[r.id]={area:r.area,address:r.address,lines:d.lines,obstructions:d.obstructions}; });
-  const blob=new Blob([JSON.stringify(out,null,1)],{type:"application/json"});
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(blob); a.download="roof_labels.json";
-  document.body.appendChild(a); a.click(); a.remove();
-  say(`downloaded ${Object.keys(out.buildings).length} labelled roofs`);
+  ROOFS.forEach(r=>{ const d=data[r.id] || remote[r.id];
+    if(d && ((d.lines||[]).length||(d.obstructions||[]).length))
+      out.buildings[r.id]={area:r.area,address:r.address,
+        lines:(d.lines||[]).map(l=>({...l, points:[l.a, l.b]})),
+        obstructions:(d.obstructions||[]).map(o=>({...o, ring:obsRing(o)})),
+        nopanel:d.nopanel||[], complete:!!d.complete,
+        // the faces those lines imply, exported so scoring compares against
+        // the same construction rather than re-deriving it slightly differently
+        faces: facesFor(r.outline, d.lines||[]).map(f=>({
+          ring: f.map(q=>[+q[0].toFixed(3), +q[1].toFixed(3)]),
+          m2: +polyArea(f).toFixed(1),
+          usable: !(d.nopanel||[]).some(pt=>inPoly(pt,f)) }))}; });
+  const text=JSON.stringify(out,null,1);
+  const n=Object.keys(out.buildings).length;
+  // Two paths on purpose. Opened as a published link the viewer blocks
+  // page-initiated downloads, so the file has to go through the downloads
+  // capability; opened as a local file there is no viewer and a blob link is
+  // the only way. Try the capability first, fall back to the link.
+  (async () => {
+    let dl=null;
+    try { dl = window.claude && claude.use ? await claude.use("downloads") : null; } catch(e) {}
+    if(dl){
+      try { await dl.save({filename:"roof_labels.json", data:text});
+            say(`saved ${n} labelled roofs`); return; }
+      catch(e){ say("download declined or unavailable"); return; }
+    }
+    const blob=new Blob([text],{type:"application/json"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download="roof_labels.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    say(`downloaded ${n} labelled roofs`);
+  })();
 };
 
 addEventListener("keydown", e=>{
   if(e.key==="Shift"){ shift=true; return; }
+  if(e.code==="Space"){ e.preventDefault(); space=true; cv.classList.add("pan"); return; }
+  if(e.key==="+"||e.key==="="){ zoomAt(cv.width/2,cv.height/2,1.25); return; }
+  if(e.key==="-"||e.key==="_"){ zoomAt(cv.width/2,cv.height/2,0.8); return; }
+  if(e.key==="0"){ resetView(); draw(); say("view reset"); return; }
+  if(e.key.startsWith("Arrow")){
+    e.preventDefault();
+    const s=(e.shiftKey?200:70)*dpr();
+    if(e.key==="ArrowLeft")  view.panx+=s;
+    if(e.key==="ArrowRight") view.panx-=s;
+    if(e.key==="ArrowUp")    view.pany+=s;
+    if(e.key==="ArrowDown")  view.pany-=s;
+    draw(); return;
+  }
   if((e.metaKey||e.ctrlKey) && (e.key==="z"||e.key==="Z")){ e.preventDefault(); undo(); return; }
-  const t={"1":"ridge","2":"valley","3":"cliff","4":"rect","5":"ellipse"}[e.key];
+  const t={"1":"ridge","2":"valley","3":"cliff",
+         "4":"poly","5":"pline","6":"tri","7":"ellipse",
+         "8":"nopanel","9":"select"}[e.key];
   if(t){ setTool(t); return; }
   if(e.key==="?"){ document.getElementById("help").classList.toggle("on"); return; }
+  if(e.key==="Enter"){ if(triPts.length){ e.preventDefault(); finishPoly(); } return; }
+  if(e.key==="["||e.key==="]"){
+    const o=sel!==null ? rec().obstructions[sel] : null;
+    if(o && o.shape==="polyline"){
+      o.width_m=Math.max(0.1, Math.min(3, (o.width_m||PLINE_WIDTH_M)+(e.key==="]"?0.1:-0.1)));
+      save(); draw(); say(`${o.width_m.toFixed(2)} m wide`);
+    }
+    return;
+  }
   if(e.key==="Escape"){ document.getElementById("help").classList.remove("on");
-    pending=null; sel=null; draw(); return; }
+    pending=null; sel=null; triPts=[]; draw(); return; }
   if(e.key==="Delete"||e.key==="Backspace"){
-    if(sel!==null){ e.preventDefault(); rec().obstructions.splice(sel,1); sel=null; save(); draw(); } return; }
+    if(sel!==null || selLine!==null){ e.preventDefault(); deleteSelected(); } return; }
   const k=e.key.toLowerCase();
-  if(k==="n"){ show(idx+1); } else if(k==="p"){ show(idx-1); }
+  if(k==="n"){ step(1); } else if(k==="p"){ step(-1); }
+  else if(k==="h"){ document.getElementById("hidedone").click(); }
+  else if(k==="c"){ document.getElementById("complete").click(); }
+  else if(k==="u"){ document.getElementById("skipto").click(); }
   else if(k==="s"){ document.getElementById("download").click(); }
 });
-addEventListener("keyup", e=>{ if(e.key==="Shift"){ shift=false; draw(); } });
+addEventListener("keyup", e=>{
+  if(e.key==="Shift"){ shift=false; draw(); }
+  if(e.code==="Space"){ space=false; cv.classList.remove("pan"); }
+});
+addEventListener("resize", ()=>{ sizeCanvas(); draw(); });
 
 setTool("ridge");
 show(0);
+
+// PUBLISHED ON GITHUB PAGES there is no db to write to -- Pages is static. But
+// the roofs already collected can still be shown, by reading a progress file
+// published beside this one and refreshed whenever a batch of labels comes in.
+// Not live, so two people marking the same evening can still collide; it does
+// stop the likelier case of re-doing a roof that was finished last week. A
+// downloaded copy has no server, the fetch fails, and nothing here runs.
+(async () => {
+  try {
+    const res = await fetch("label_progress.json", {cache:"no-store"});
+    if(!res.ok) return;
+    const d = await res.json();
+    (d.done||[]).forEach(id => { ingested[id] = true; });
+    if(!Object.keys(ingested).length) return;
+    const bar=document.getElementById("sharebar");
+    bar.style.display="";
+    bar.innerHTML = `<b>${(d.done||[]).length} of ${ROOFS.length}</b> roofs already collected`
+      + (d.updated ? ` (as of ${d.updated})` : "")
+      + `. Press <b>U</b> to jump to one nobody has done.`;
+    draw();
+  } catch(e) {}
+})();
+
+// Light shared mode up only once the viewer answers. Nothing above depends on
+// it, so a downloaded copy behaves exactly as before.
+(async () => {
+  let db = null;
+  try { db = window.claude && claude.use ? await claude.use("db") : null; } catch(e) { db = null; }
+  if(!db) return;
+  DB = db;
+  document.getElementById("savehint").textContent =
+    "Shared with everyone on this link — your marks appear for them and theirs for you. Mark as few or as many as you like.";
+  db.collection("labels").onSnapshot(snap => {
+    remote = {};
+    snap.docs.forEach(d => { remote[d.id] = d.data(); });
+    // adopt anything we do not have locally, so a roof someone else did shows
+    // as done and opens with their lines rather than blank
+    Object.keys(remote).forEach(id => {
+      if(!data[id] || (!data[id].lines.length && !data[id].obstructions.length))
+        data[id] = {lines: remote[id].lines||[], obstructions: remote[id].obstructions||[],
+                    nopanel: remote[id].nopanel||[], complete: !!remote[id].complete};
+    });
+    draw();
+  }, e => say("shared sync stopped: "+(e&&e.code||"error")+" — still saving locally"));
+})();
 </script>
 </body></html>
