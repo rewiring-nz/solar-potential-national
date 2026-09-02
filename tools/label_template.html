@@ -29,6 +29,25 @@
   .sw{width:11px;height:11px;border-radius:2px;flex:none}
   .row{display:flex;gap:5px}.row button{margin-bottom:0}
   .hint{color:var(--muted);font-size:11.5px;margin-top:5px;line-height:1.45}
+  /* Josh: "make all the explainer text drop down rather than always showing.
+     I have to scroll a lot to get to different tools." Every hint is now a
+     details, shut by default -- the palette is the thing you navigate, so the
+     prose must not sit between the buttons. */
+  details.hint{margin-top:6px}
+  details.hint > summary{cursor:pointer;list-style:none;color:#7d8894;font-size:10.5px;
+    letter-spacing:.06em;text-transform:uppercase;font-weight:600;padding:3px 0;
+    display:flex;align-items:center;gap:5px}
+  details.hint > summary::-webkit-details-marker{display:none}
+  details.hint > summary::before{content:"\25B8";font-size:9px;transition:transform .12s}
+  details.hint[open] > summary::before{transform:rotate(90deg)}
+  details.hint > summary:hover{color:var(--ink)}
+  details.hint > div{padding:5px 0 2px 12px;border-left:1px solid var(--rule);margin-top:3px}
+  /* Colour each tool by what it draws, so the palette reads at a glance and a
+     mis-click is visible before it is drawn. */
+  button[data-tool]{border-left:3px solid var(--tc,var(--rule))}
+  button[data-tool].on{border-color:var(--tc,#fff);
+    background:color-mix(in srgb, var(--tc,#fff) 22%, #2f3841)}
+  button[data-tool]:hover{background:color-mix(in srgb, var(--tc,#fff) 12%, #2b333a)}
   .note{background:#232a31;border-radius:3px;padding:8px 10px;font-size:12px;color:var(--muted);margin-top:10px}
   #status{position:absolute;left:12px;bottom:12px;background:rgba(0,0,0,.75);padding:5px 10px;
           border-radius:3px;font-size:12.5px}
@@ -69,36 +88,36 @@
   <div id="links" class="links"></div>
 
   <h2>View</h2>
-  <div class="hint"><b>Zoom:</b> scroll where the cursor is, or the <b>+ &minus;</b> buttons top-right.<br><b>Pan:</b> press <b>✋ Pan</b> and drag, or drag with the <b>right button</b>, or hold <b>Space</b> and drag, or use the <b>arrow keys</b> (hold Shift for bigger steps).<br><b>0</b> or <b>Fit</b> puts the whole roof back on screen.</div>
+  <details class="hint"><summary>Zoom, pan and fit</summary><div><b>Zoom:</b> scroll where the cursor is, or the <b>+ &minus;</b> buttons top-right.<br><b>Pan:</b> press <b>✋ Pan</b> and drag, or drag with the <b>right button</b>, or hold <b>Space</b> and drag, or use the <b>arrow keys</b> (hold Shift for bigger steps).<br><b>0</b> or <b>Fit</b> puts the whole roof back on screen.</div></details>
 
   <h2>Three lines &mdash; click, then click</h2>
-  <button data-tool="ridge" class="on"><span><span class="sw" style="background:var(--ridge)"></span> Ridge line</span><span class="k">1</span></button>
-  <button data-tool="valley"><span><span class="sw" style="background:var(--valley)"></span> Valley line</span><span class="k">2</span></button>
-  <button data-tool="cliff"><span><span class="sw" style="background:var(--cliff)"></span> Cliff line</span><span class="k">3</span></button>
-  <div class="hint">Each line is its own segment &mdash; two clicks and it&rsquo;s done. <b>Esc</b> abandons a half-drawn one. Hold <b>Shift</b> to snap to 15&deg;.<br>Endpoints <b>snap</b> &mdash; a white <b>circle</b> means an exact corner, a white <b>diamond</b> means anywhere along an existing line or the outline. Use the diamond for a T-junction, and to land a line exactly on the roof edge.<br>When a shaded face is not really roof &mdash; a wall, a canopy &mdash; press <b>8</b> and click it.<br>No need to trace roof edges &mdash; the outline has them, and anything the outline overshoots onto at <b>ground level</b> is deleted automatically. Only draw an edge where the roof stops short and what is beyond is <b>still high</b> (an upper deck, a carport).</div>
-  <div id="tooldesc" class="desc"></div>
+  <button data-tool="ridge" class="on" style="--tc:var(--ridge)"><span><span class="sw" style="background:var(--ridge)"></span> Ridge line</span><span class="k">1</span></button>
+  <button data-tool="valley" style="--tc:var(--valley)"><span><span class="sw" style="background:var(--valley)"></span> Valley line</span><span class="k">2</span></button>
+  <button data-tool="cliff" style="--tc:var(--cliff)"><span><span class="sw" style="background:var(--cliff)"></span> Cliff line</span><span class="k">3</span></button>
+  <details class="hint"><summary>How to draw lines</summary><div>Each line is its own segment &mdash; two clicks and it&rsquo;s done. <b>Esc</b> abandons a half-drawn one. Hold <b>Shift</b> to snap to 15&deg;.<br>Endpoints <b>snap</b> &mdash; a white <b>circle</b> means an exact corner, a white <b>diamond</b> means anywhere along an existing line or the outline. Use the diamond for a T-junction, and to land a line exactly on the roof edge.<br>When a shaded face is not really roof &mdash; a wall, a canopy &mdash; press <b>8</b> and click it.<br>No need to trace roof edges &mdash; the outline has them, and anything the outline overshoots onto at <b>ground level</b> is deleted automatically. Only draw an edge where the roof stops short and what is beyond is <b>still high</b> (an upper deck, a carport).</div></details>
+  <details class="hint" id="tooldesc-wrap"><summary id="tooldesc-sum">About this tool</summary><div id="tooldesc"></div></details>
   <button id="helpbtn" class="explain">&#9432;&nbsp; Read: what counts as each line<span class="k">?</span></button>
 
   <h2>Faces that take no panels</h2>
-  <button data-tool="nopanel" style="border-color:rgba(255,138,0,.55)"><span><span class="sw" style="background:#ff8a00"></span> No panels here</span><span class="k">8</span></button>
-  <div class="hint">Your lines shade the roof into faces as you draw. Click any face that could <b>never</b> take a panel &mdash; a wall caught inside the outline, a canopy, glass. Click again to unmark.<br><b>This is the one that catches the worst failure we have:</b> panels placed down a wall. If a shaded face is not really roof, this is how you say so.</div>
+  <button data-tool="nopanel" style="--tc:#ff8a00"><span><span class="sw" style="background:#ff8a00"></span> No panels here</span><span class="k">8</span></button>
+  <details class="hint"><summary>What counts as no-panel</summary><div>Your lines shade the roof into faces as you draw. Click any face that could <b>never</b> take a panel &mdash; a wall caught inside the outline, a canopy, glass. Click again to unmark.<br><b>This is the one that catches the worst failure we have:</b> panels placed down a wall. If a shaded face is not really roof, this is how you say so.</div></details>
   <div id="facenudge" class="desc" style="display:none"></div>
 
   <h2>Obstructions &mdash; drag out a shape</h2>
-  <button data-tool="poly"><span><span class="sw" style="background:var(--obs);clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%)"></span> Polygon</span><span class="k">4</span></button>
-  <button data-tool="pline"><span><span class="sw" style="background:var(--obs);clip-path:polygon(0 38%,100% 0,100% 24%,0 62%)"></span> Line / run</span><span class="k">5</span></button>
-  <button data-tool="tri"><span><span class="sw" style="background:var(--obs);clip-path:polygon(50% 0,100% 100%,0 100%)"></span> Triangle</span><span class="k">6</span></button>
-  <button data-tool="ellipse"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">7</span></button>
-  <div class="hint"><b>Polygon</b> and <b>Line / run</b>: click each point, then <b>Enter</b> (a polygon also closes if you click its first point again). <b>Triangle</b>: three clicks. <b>Circle</b>: drag one out.<br>A line / run records a centreline with a width &mdash; <b>[</b> and <b>]</b> make it thinner or wider. <b>Esc</b> abandons a part-drawn shape, <b>&#8984;Z</b> removes the last point.<br>Drag a shape&rsquo;s middle to move it, a corner to resize, <b>Delete</b> removes the selected one.</div>
+  <button data-tool="poly" style="--tc:var(--obs)"><span><span class="sw" style="background:var(--obs);clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%)"></span> Polygon</span><span class="k">4</span></button>
+  <button data-tool="pline" style="--tc:var(--obs)"><span><span class="sw" style="background:var(--obs);clip-path:polygon(0 38%,100% 0,100% 24%,0 62%)"></span> Line / run</span><span class="k">5</span></button>
+  <button data-tool="tri" style="--tc:var(--obs)"><span><span class="sw" style="background:var(--obs);clip-path:polygon(50% 0,100% 100%,0 100%)"></span> Triangle</span><span class="k">6</span></button>
+  <button data-tool="ellipse" style="--tc:var(--obs)"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">7</span></button>
+  <details class="hint"><summary>How to draw obstructions</summary><div><b>Polygon</b> and <b>Line / run</b>: click each point, then <b>Enter</b> (a polygon also closes if you click its first point again). <b>Triangle</b>: three clicks. <b>Circle</b>: drag one out.<br>A line / run records a centreline with a width &mdash; <b>[</b> and <b>]</b> make it thinner or wider. <b>Esc</b> abandons a part-drawn shape, <b>&#8984;Z</b> removes the last point.<br>Drag a shape&rsquo;s middle to move it, a corner to resize, <b>Delete</b> removes the selected one.</div></details>
 
   <h2>Fix a mistake</h2>
-  <button data-tool="select"><span>&#9099; Select &amp; delete</span><span class="k">9</span></button>
-  <div class="hint">Click any line or shape you have already drawn to select it, then press <b>Delete</b> (or the button below). Undo only ever removes the most recent thing; this reaches the one you actually want.</div>
+  <button data-tool="select" style="--tc:#8fb8d8"><span>&#9099; Select &amp; delete</span><span class="k">9</span></button>
+  <details class="hint"><summary>How selecting works</summary><div>Click any line or shape you have already drawn to select it, then press <b>Delete</b> (or the button below). Undo only ever removes the most recent thing; this reaches the one you actually want.</div></details>
   <button id="delsel" style="margin-top:4px">Delete selected<span class="k">⌫</span></button>
 
   <h2>Is this roof finished?</h2>
   <button id="complete"><span>&#9744; I marked EVERY line on this roof</span><span class="k">C</span></button>
-  <div class="hint">Only tick this if you drew <b>every</b> fold and break you can see, not just the main ones. It is what makes "the model drew a line that is not real" measurable &mdash; without it, a line you simply did not get to looks identical to one the model invented. Leaving it unticked is fine and costs nothing.</div>
+  <details class="hint"><summary>Why this matters</summary><div>Only tick this if you drew <b>every</b> fold and break you can see, not just the main ones. It is what makes "the model drew a line that is not real" measurable &mdash; without it, a line you simply did not get to looks identical to one the model invented. Leaving it unticked is fine and costs nothing.</div></details>
 
   <h2>Actions</h2>
   <div class="row">
@@ -112,7 +131,7 @@
   <button id="skipto">Next unmarked<span class="k">U</span></button>
   <button id="hidedone">Hide marked roofs<span class="k">H</span></button>
   <button id="download" class="dl" style="margin-top:8px">Download labels<span class="k">S</span></button>
-  <div class="hint" id="savehint">Saved in this browser as you go, so closing the tab is safe. Mark as few or as many as you like &mdash; Download only includes roofs you actually touched.</div>
+  <details class="hint"><summary>Where your marks go</summary><div id="savehint">Saved in this browser as you go, so closing the tab is safe. Mark as few or as many as you like &mdash; Download only includes roofs you actually touched.</div></details>
   <div id="sharebar" class="desc" style="display:none"></div>
 
 </div>
@@ -1080,8 +1099,15 @@ const NAMES = {ridge:"Ridge line", valley:"Valley line", cliff:"Cliff line",
                select:"Select & delete"};
 function setTool(t){ tool=t; pending=null; hoverSnap=null; triPts=[];
   if(t!=="select"){ selLine=null; }
-  document.getElementById("tooldesc").innerHTML =
-    DESC[t] ? '<span class="lab">About this tool</span><b>'+(NAMES[t] || t)+".</b> "+DESC[t] : "";
+  const td=document.getElementById("tooldesc"), tw=document.getElementById("tooldesc-wrap");
+  const ts=document.getElementById("tooldesc-sum");
+  if(DESC[t]){
+    td.innerHTML = DESC[t];
+    // the summary names the tool, so the collapsed row still says what is
+    // selected -- folding it away must not cost that
+    ts.textContent = "About " + (NAMES[t] || t).toLowerCase();
+    tw.style.display = "";
+  } else tw.style.display = "none";
   document.querySelectorAll("[data-tool]").forEach(b=>b.classList.toggle("on", b.dataset.tool===t));
   draw(); }
 document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
