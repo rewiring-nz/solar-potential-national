@@ -39,6 +39,10 @@ PROGRESS = ROOT / "label_progress.json"          # served beside mark_roofs.html
 BUNDLE = DATA_DIR / "label_set" / "mark_roofs.html"
 
 VALID_KINDS = {"ridge", "valley", "cliff"}
+# A roof can be wrong in ways geometry cannot express. "absent" feeds
+# config.DEMOLISHED_BUILDING_IDS, which the build already honours; the other two
+# are outline-quality findings that need LINZ to catch up, not a code change.
+VALID_PROBLEMS = {"absent", "not_building", "bad_outline"}
 # A crop is the footprint plus a 4 m pad, so anything outside it by more than a
 # little cannot be a mark on that roof -- most likely the wrong CRS or the wrong
 # building.
@@ -113,7 +117,14 @@ def check_building(bid, rec, known):
         if outside(p):
             problems.append(f"no-panel tag {i}: outside this roof's crop")
 
-    if not (lines or rec.get("obstructions") or rec.get("nopanel")):
+    prob = rec.get("problem")
+    if prob is not None and prob not in VALID_PROBLEMS:
+        problems.append(f"unknown problem flag {prob!r}")
+    if prob and lines:
+        # not fatal, but worth saying: geometry drawn on something the labeller
+        # then said is not a roof is geometry nobody should train on
+        problems.append(f"flagged {prob} but also carries {len(lines)} drawn lines")
+    if not prob and not (lines or rec.get("obstructions") or rec.get("nopanel")):
         problems.append("nothing marked on it")
     return problems
 
@@ -178,6 +189,22 @@ def main():
             else:
                 merged[bid] = rec
                 added += 1
+
+    flagged = {}
+    for bid, b in merged.items():
+        if b.get("problem"):
+            flagged.setdefault(b["problem"], []).append(bid)
+    if flagged:
+        print("\nROOFS FLAGGED AS NOT REALLY ROOFS:")
+        for prob in sorted(flagged):
+            ids = sorted(flagged[prob])
+            print(f"  {prob:<14} {len(ids)}")
+            print(f"      {', '.join(ids[:10])}" + (" ..." if len(ids) > 10 else ""))
+        absent = sorted(flagged.get("absent", []))
+        if absent:
+            print("\n  'absent' means nothing is there. config.py already excludes")
+            print("  such buildings from every build -- add them:")
+            print(f"    DEMOLISHED_BUILDING_IDS = {{{', '.join(absent)}}}")
 
     total_lines = sum(len(b.get("lines") or []) for b in merged.values())
     total_obs = sum(len(b.get("obstructions") or []) for b in merged.values())

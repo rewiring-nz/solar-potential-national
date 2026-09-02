@@ -308,6 +308,11 @@ def main():
 
     for bid in ids:
         lab = labels[str(bid)]
+        # A roof the labeller says is not a roof -- bare ground, a slab, a
+        # wrong outline -- has no geometry worth scoring against. Including it
+        # would measure the segmenter against something nobody claims exists.
+        if lab.get("problem"):
+            continue
         area = lab.get("area")
         if area not in ctxs:
             p = area_paths(area)
