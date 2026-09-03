@@ -91,7 +91,13 @@ def _facet_fit(f, pc_source):
 # turned out to be PointCloudSource caching all 441 LiDAR tiles unbounded --
 # fixed with an LRU there -- but the cap was never put back. Measured startup is
 # 0.4s per worker and steady RSS is well under a gigabyte each.
-DEFAULT_MAX_JOBS = 10          # hard ceiling; the real limit is memory, below
+# Hard ceiling; the real limit is memory, below. Raised 10 -> 14 after measuring
+# the VM mid-build: 16 vCPUs, 58 of 62 GB free, workers at 0.69 GB rather than
+# the 1.75 GB budgeted. The memory bound allowed 21 and the CPU bound 15, so
+# this constant -- not the machine -- was what held the stage to ten workers.
+# Left at a ceiling rather than removed because the parent process merges every
+# feature single-threaded, and past ~14 producers that merge is the bottleneck.
+DEFAULT_MAX_JOBS = 14
 PER_WORKER_GB = 1.75           # decoded LiDAR tile cache per worker process
 USABLE_RAM_FRACTION = 0.6      # headroom for the parent process and the OS
 
@@ -353,7 +359,22 @@ def _build_one_at(building_id, nudge_m):
     # MIN_ROOF_CONFIDENCE. Facets are still emitted so the roof draws on the
     # map; only the layout is withheld.
     confidence = _area_weighted_inlier(facets, pc_source) if facets else 0.0
-    modelled = confidence >= MIN_ROOF_CONFIDENCE
+    # A ROOF JOSH DREW IS NOT WITHHELD FOR LOW CONFIDENCE.
+    #
+    # _area_weighted_inlier asks how well the points fit the planes we FITTED.
+    # On a roof whose faces came from his markup that question does not apply:
+    # the faces are his, and small ones with too little survey under them
+    # deliberately borrow a neighbour's plane, which by construction does not
+    # fit their own points and drags the average down.
+    #
+    # Left unguarded this withheld 23 buildings that had panels before, 892
+    # panels, five of them roofs he had labelled -- including 32 Frankton Road
+    # (#4725584), which built 33 facets from his drawing at sensible flat-roof
+    # slopes of 1-11 degrees and then shipped ZERO panels. He would have found
+    # that on the map in seconds, and the cause would have been a confidence
+    # score about planes nobody fitted.
+    from_labels = bool(facets) and any(f.get("from_labels") for f in facets)
+    modelled = from_labels or confidence >= MIN_ROOF_CONFIDENCE
 
     # Josh, on large commercial roofs: "it might be best to try find clear areas
     # of flat space that are very large, to place panels on. Rather than trying
