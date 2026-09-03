@@ -42,6 +42,14 @@ ALLOWED = {
     "src/patch_buildings.py":
         "Wellington is a single-region deploy -- the region IS the district, so "
         "it rebuilds the merged file instead of patching a standing one",
+    "src/gate_panels.py":
+        "worker count is calibrated per SURVEY, not per machine. Queenstown "
+        "runs 12 gate workers because a worker there measures 0.70 GB RES; "
+        "Wellington's survey is denser, its decoded tiles are fatter, and "
+        "eight workers once crashed a 64 GB machine on it -- which is the "
+        "very incident the flat cap of 4 was introduced for. Raising it there "
+        "needs a measurement on Wellington data, not a copy of a Queenstown "
+        "number",
     "site-config.js":
         "per-deployment FRONTEND settings: which town the map opens on, and the "
         "areas in the search box. Added 1 Sep because preview.html is shared "
