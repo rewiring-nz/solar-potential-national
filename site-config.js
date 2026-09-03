@@ -10,6 +10,10 @@
 // Loaded synchronously before the map is constructed, so there is no visible
 // jump from a wrong starting view to the right one.
 window.SITE = {
+  // Bumped on every DEPLOY of this site's data: the ?v= param is the only
+  // thing that makes a browser re-fetch solar_potential.geojson and the
+  // pmtiles, whose URLs are otherwise identical across builds.
+  dataVersion: "33",
   name: "National",
   defaultView: { center: [174.7745, -41.3380], zoom: 15.0 },
   // Areas offered in the search box. Island Bay is the only region with data

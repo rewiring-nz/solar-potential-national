@@ -1494,11 +1494,11 @@ function wireTuningControls(popupEl, buildingId) {
   });
 }
 
-// Bumped whenever the data/*.geojson or heatmap_raster.* files get
-// regenerated -- without this, browsers happily keep serving a cached
-// response after a reload even though the file on disk changed (bit us
-// during development: a fix looked like it hadn't taken effect at all).
-const DATA_VERSION = "33";
+// PER-DEPLOYMENT, so it lives in site-config.js beside defaultView.
+// The two sites version their data independently -- Queenstown shipped 34
+// on 3 Sep while Wellington was still on 33 -- and preview.html is meant
+// to be byte-identical between them, which this line was quietly breaking.
+const DATA_VERSION = (window.SITE && window.SITE.dataVersion) || "1";
 let coveragePct = 100;
 const COVERAGE_OPTIONS = [5, 10, 15, 25, 50, 75, 100];
 
