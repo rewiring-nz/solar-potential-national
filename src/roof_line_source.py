@@ -7,10 +7,17 @@ testable BEFORE the model exists.
 The partition does not need to know who proposed a line. It needs (angle,
 offset) in the footprint's own frame.
 
-"THE MODEL PROPOSES, THE LIDAR DISPOSES" was the design, and it does not
-survive measurement. `_line_is_real` keeps 86.1% of model lines that match
-Josh's drawings and 83.7% of those that do not -- 2.4 points of separation.
-The LiDAR is not disposing of anything; it is flipping a coin.
+"THE MODEL PROPOSES, THE LIDAR DISPOSES" was the design, and it survives only
+in a much weaker form than it claims. Line by line, `_line_is_real` keeps 86.1%
+of model lines that match Josh's drawings and 83.7% of those that do not --
+2.4 points of separation, near enough to a coin flip.
+
+End to end it is still worth keeping, which is not the same thing and was
+worth measuring rather than assuming from the line-level number. Turned off,
+invented edges rise 22.4% -> 25.0% and clutter 119 m -> 128 m for 0.3 points
+more real creases found. A weak filter applied to hundreds of candidates still
+removes more bad cuts than good ones. It stays -- as a mild net positive, not
+as "the whole fusion story".
 
 Nor can it do better. The survey is 1.7 returns per m2, roughly 0.77 m
 spacing, and a hip crease is decimetre-scale geometry that falls between
