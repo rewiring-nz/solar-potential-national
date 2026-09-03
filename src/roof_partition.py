@@ -1141,10 +1141,6 @@ DRAWN_COVER_MIN = 0.50
 # boundary. 2.5 m (label_geometry's default) leaves most faces unclosed.
 LINE_SEAL_M = 6.0
 
-# How much of the footprint faces built from Josh's lines must account for
-# before they are trusted instead of the LiDAR partition. A complete markup
-# tiles the roof; a partial one leaves most of it in one undivided face.
-DRAWN_COVER_MIN = 0.70
 
 
 def _seal_network(segs, boundary, max_ext=None):
