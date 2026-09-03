@@ -95,12 +95,20 @@ def main():
                                          always_xy=True).transform
 
     ids = a.ids
+    why = {}
     if ids is None:
         q = OUT_DIR / "queue.json"
         if not q.exists():
-            print("no queue.json -- run tools/sample_roofs_to_label.py first")
+            print("no queue.json -- run tools/triage_roofs.py --bundle 40 "
+                  "(or tools/sample_roofs_to_label.py) first")
             return 2
-        ids = json.loads(q.read_text())["ids"]
+        qd = json.loads(q.read_text())
+        ids = qd["ids"]
+        # A triage-built queue knows why each roof is here. Showing that while
+        # marking is worth real accuracy: "10 panels cross a predicted line"
+        # tells the labeller where to look, rather than leaving them to rediscover
+        # the fault on a roof that may look fine at first glance.
+        why = {int(k): v for k, v in (qd.get("reasons") or {}).items()}
     if a.max:
         ids = ids[:a.max]
 
@@ -163,6 +171,7 @@ def main():
                 "holes": [[[round(x, 2), round(y, 2)] for x, y in r.coords]
                           for r in g.interiors],
                 "neighbours": nb,
+                "why": why.get(bid, []),
                 "jpg": jpg,
             })
             placed = True
