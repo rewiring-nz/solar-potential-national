@@ -42,6 +42,12 @@ ALLOWED = {
     "src/patch_buildings.py":
         "Wellington is a single-region deploy -- the region IS the district, so "
         "it rebuilds the merged file instead of patching a standing one",
+    "src/build_layout_geojson.py":
+        "same reason as gate_panels: DEFAULT_MAX_JOBS is a worker ceiling "
+        "raised to 14 on a Queenstown measurement (workers at 0.69 GB against "
+        "the 1.75 GB budgeted). Wellington's denser survey decodes fatter "
+        "tiles, so the ceiling there stays at 10 until measured on its own "
+        "data",
     "src/gate_panels.py":
         "worker count is calibrated per SURVEY, not per machine. Queenstown "
         "runs 12 gate workers because a worker there measures 0.70 GB RES; "
