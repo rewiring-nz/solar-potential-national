@@ -136,10 +136,39 @@ def audit_region(name, verbose=False):
         cov = _bbox_overlap_frac(tuple(ds.bounds), gb)
         out[f"{key}_coverage"] = cov
         if cov < MIN_COVERAGE:
-            out["problems"].append(
-                f"{label} covers {100 * cov:.0f}% of the buildings "
-                f"(raster {[round(v) for v in ds.bounds]} vs "
-                f"buildings {[round(v) for v in gb]})")
+            # A GAP IS NOT AUTOMATICALLY A FAULT, and this check cried wolf on
+            # every build until it learned the difference. arrowtown_hills has
+            # 0% DSM coverage and is handled correctly: the survey does not
+            # reach it, so every roof there is marked no_lidar -- "Not enough
+            # laser survey data over this roof" -- which is the designed
+            # behaviour, not a failure. Flagging it as a PROBLEM on every run
+            # trains everyone to skim past the section.
+            #
+            # The gap only matters when the POINT CLOUD disagrees with it:
+            # points where the raster has none means an export came back short
+            # while the data exists. Same rule preflight uses.
+            has_points = False
+            try:
+                from src.pointcloud_source import PointCloudSource
+                pcs = PointCloudSource(max_cached_tiles=1)
+                for g in sample[:20]:
+                    pts = pcs.points_in_bbox(*g.buffer(2).bounds)
+                    if pts is not None and len(pts) > 50:
+                        has_points = True
+                        break
+            except Exception:
+                has_points = True          # cannot tell: report it
+            if has_points:
+                out["problems"].append(
+                    f"{label} covers {100 * cov:.0f}% of the buildings but the "
+                    f"point cloud HAS data there "
+                    f"(raster {[round(v) for v in ds.bounds]} vs "
+                    f"buildings {[round(v) for v in gb]})")
+            else:
+                out["notes"].append(
+                    f"{label} covers {100 * cov:.0f}% and there is no point "
+                    f"cloud either -- the survey does not reach this region, "
+                    f"every roof will be marked no_lidar")
             ds.close()
             continue
         if cov < WARN_COVERAGE:
