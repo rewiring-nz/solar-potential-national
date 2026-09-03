@@ -2027,6 +2027,23 @@ def _partition_facets(pc_source, building_geom, building_id, imagery_ds=None):
             return []
         faces = partition_roof(building_id, building_geom.buffer(0), pts, imagery_ds=imagery_ds)
         score = explained_fraction(faces, pts) if faces else 0.0
+
+        # GEOMETRY JOSH DREW IS NOT A CANDIDATE. If partition_roof returned
+        # faces built from his markup, they are the answer -- the competitors
+        # below are all fitted approximations of the thing he already told us.
+        #
+        # Without this the markup was produced and then thrown away: checked
+        # against pilot, only 7 of 27 labelled roofs came out with the facet
+        # count he drew, because a low explained_fraction handed the roof to
+        # the skeleton or the arrangement instead. #4725546 is the clearest
+        # case -- he drew 2 faces and the build shipped 9.
+        #
+        # explained_fraction is the wrong judge here anyway. It rewards hugging
+        # the point cloud, and at 1.7 returns/m2 a wedge partition can hug a
+        # hip network it has misread while the correct geometry scores lower.
+        if faces and any(f.get("from_labels") for f in faces):
+            return faces
+
         if score >= PARTITION_GOOD_ENOUGH:
             return faces
         # The cut partition failed to read this roof. Two competitors get a

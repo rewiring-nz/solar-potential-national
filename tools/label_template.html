@@ -51,6 +51,11 @@
     background:color-mix(in srgb, var(--tc,#fff) 22%, #2f3841)}
   button[data-tool]:hover{background:color-mix(in srgb, var(--tc,#fff) 12%, #2b333a)}
   .note{background:#232a31;border-radius:3px;padding:8px 10px;font-size:12px;color:var(--muted);margin-top:10px}
+  /* Why the triage flagged this roof -- amber so it reads as "look here",
+     distinct from the tool buttons which are coloured by feature. */
+  .why{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+  .why-chip{background:rgba(240,180,60,.14);border:1px solid rgba(240,180,60,.42);
+            color:#f0c45a;border-radius:3px;padding:3px 7px;font-size:11px}
   #status{position:absolute;left:12px;bottom:12px;background:rgba(0,0,0,.75);padding:5px 10px;
           border-radius:3px;font-size:12.5px}
   #viewbar{position:absolute;right:12px;top:12px;display:flex;gap:4px;z-index:5}
@@ -87,6 +92,9 @@
 <div id="side">
   <h1 id="title">—</h1>
   <div class="addr" id="addr"></div>
+  <!-- Why the triage put this roof in the queue. Present only for queues built
+       by tools/triage_roofs.py; a hand-picked list has nothing to say here. -->
+  <div class="why" id="why" style="display:none"></div>
   <div id="links" class="links"></div>
 
   <h2>View</h2>
@@ -623,8 +631,57 @@ function _segIntersect(p1,p2,p3,p4){
 
 function _key(p){ return Math.round(p[0]/NODE_TOL)+"_"+Math.round(p[1]/NODE_TOL); }
 
-function facesFor(outline, lines){
+// The surveyed outline is not always the roof, and where it is wrong Josh's
+// lines are the better description. Measured across his 85 completed roofs,
+// 2.7% of drawn length falls outside the outline overall -- but 12 roofs are
+// over 5% and #5373469 is at 36%, both of the worst being ones he flagged
+// bad_outline himself. Clipping a face to an outline that is in the wrong
+// place ships a face in the wrong place.
+//
+// So when the outline clearly disagrees with the drawing, the boundary grows
+// to a hull that contains both. Only then, and the threshold matters: growing
+// replaces the outline with a CONVEX hull, which throws away courtyards,
+// L-shapes and notches. At 5% it fired on 7 Anderson Heights -- a roof whose
+// outline is fine -- turning a 4-point outline into a 6-point hull for a 1%
+// change in area. At 12% it fires on the eight roofs where the outline really
+// is wrong (#5373469 at 36%, #5370829 at 26%, both flagged bad_outline by
+// hand) and leaves the rest alone.
+const OUTLINE_CLIPS_FRAC = 0.12;
+function convexHull(pts){
+  const p=pts.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+  if(p.length<3) return p;
+  const cross=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const lo=[]; for(const q of p){ while(lo.length>=2 && cross(lo[lo.length-2],lo[lo.length-1],q)<=0) lo.pop(); lo.push(q); }
+  const up=[]; for(let i=p.length-1;i>=0;i--){ const q=p[i];
+    while(up.length>=2 && cross(up[up.length-2],up[up.length-1],q)<=0) up.pop(); up.push(q); }
+  lo.pop(); up.pop(); return lo.concat(up);
+}
+function boundaryFor(outline, lines){
   const ring=outline.slice(0,-1);
+  if(!lines || !lines.length) return ring;
+  let tot=0, out=0;
+  lines.forEach(l=>{
+    const d=Math.hypot(l.b[0]-l.a[0], l.b[1]-l.a[1]);
+    if(d < MIN_LINE_M) return;
+    tot+=d;
+    // sampled rather than clipped: enough to tell "this line is off the
+    // outline" without pulling in a geometry library
+    let off=0, N=8;
+    for(let i=0;i<=N;i++){
+      const t=i/N, x=l.a[0]+(l.b[0]-l.a[0])*t, y=l.a[1]+(l.b[1]-l.a[1])*t;
+      if(!inPoly([x,y], ring)) off++;
+    }
+    out += d*off/(N+1);
+  });
+  if(tot<=0 || out/tot <= OUTLINE_CLIPS_FRAC) return ring;
+  const pts=ring.slice();
+  lines.forEach(l=>{ pts.push(l.a); pts.push(l.b); });
+  const hull=convexHull(pts);
+  return hull.length>=3 ? hull : ring;
+}
+
+function facesFor(outline, lines){
+  const ring=boundaryFor(outline, lines);
   if(ring.length<3) return [];
 
   // 1. every segment in play: the footprint, and the lines drawn on it
@@ -891,6 +948,11 @@ function show(i){
   const r=R();
   document.getElementById("title").textContent = `#${r.id} · ${r.m2} m²`;
   document.getElementById("addr").textContent = r.address || r.area;
+  const wy=document.getElementById("why");
+  if(r.why && r.why.length){
+    wy.innerHTML = r.why.map(t=>`<span class="why-chip">${t}</span>`).join("");
+    wy.style.display="";
+  } else { wy.style.display="none"; }
   const lk=document.getElementById("links");
   if(r.ll){
     const [lat,lon]=r.ll;
