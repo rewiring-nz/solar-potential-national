@@ -1123,6 +1123,17 @@ MIN_POINTS_PER_FACE = 12
 # will place nothing on it -- and losing it changes the shape of the roof.
 DRAWN_MIN_FACET_M2 = 1.5
 
+# A markup has to describe most of the roof before it is allowed to BE the
+# roof. #4735242 is a 1,054 m2 building whose drawn faces came to a single
+# 15.3 m2 piece -- 1% of it -- and because label geometry wins outright, that
+# one face replaced the whole partition and the building shipped 0 panels
+# instead of 156.
+#
+# Measured across the 92 labelled roofs, coverage is a median 100% and only
+# that one sits below 70%, so this is a guard against a partial markup rather
+# than a threshold anything normal has to clear.
+DRAWN_COVER_MIN = 0.50
+
 # How far a drawn or predicted line may be pushed along its own direction to
 # reach the roof edge. Measured on Josh's markups: endpoints sit a median 1.4 m
 # from the eave on 7 Anderson and 3.9 m on 1 Memorial, with a 10.7 m worst
@@ -1239,6 +1250,12 @@ def facets_from_drawn_faces(building_id, footprint, pts):
     faces = drawn_faces(building_id)
     if not faces:
         return []
+    try:
+        cover = sum(f.get("m2") or 0.0 for f in faces) / max(footprint.area, 1e-9)
+    except Exception:
+        cover = 1.0
+    if cover < DRAWN_COVER_MIN:
+        return []          # a partial markup: let the partition do the roof
 
     inside = _points_in(footprint, pts)
     if len(inside) < MIN_POINTS:
