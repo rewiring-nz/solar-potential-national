@@ -1134,6 +1134,10 @@ DRAWN_MIN_FACET_M2 = 1.5
 # than a threshold anything normal has to clear.
 DRAWN_COVER_MIN = 0.50
 
+# A drawn face at or above this share of the outline, when other faces exist
+# alongside it, is the arrangement's enclosing face rather than a roof plane.
+OUTER_FACE_FRAC = 0.90
+
 # How far a drawn or predicted line may be pushed along its own direction to
 # reach the roof edge. Measured on Josh's markups: endpoints sit a median 1.4 m
 # from the eave on 7 Anderson and 3.9 m on 1 Memorial, with a 10.7 m worst
@@ -1246,6 +1250,32 @@ def facets_from_drawn_faces(building_id, footprint, pts):
     faces = drawn_faces(building_id)
     if not faces:
         return []
+    # DROP THE ARRANGEMENT'S OUTER FACE. facesFor() walks a planar subdivision
+    # and can return the enclosing face alongside the real ones -- on #4725584
+    # that is a 4,962 m2 ring on a 4,032 m2 building, larger than the building,
+    # sitting beside 37 genuine faces of 84 m2 and below.
+    #
+    # Kept as a facet it becomes the whole roof: it spans several real planes,
+    # so its on-plane fit is 0.16, it is rejected by BIG_ROOF_FACET_MIN_FIT,
+    # and the building shipped 18 panels against 465 live.
+    #
+    # Only when there are OTHER faces. A roof Josh marked as a single plane
+    # legitimately has one face covering 100% of the outline, and eleven of his
+    # roofs are exactly that -- dropping those would delete the markup instead
+    # of cleaning it.
+    #
+    # DONE BEFORE THE COVERAGE CHECK, which is the whole point. Dropping the
+    # enclosing face leaves #4725584 with 200 m2 of detail faces on a 4,032 m2
+    # building -- 5% -- and #4734685 with 1%. That is not markup describing a
+    # roof, and the coverage guard below then correctly hands both to the LiDAR
+    # partition. Drop it afterwards instead and coverage is computed at 131%,
+    # the guard passes, and the building ships 31 tiny facets and 18 panels.
+    if len(faces) >= 2:
+        keep = [f for f in faces
+                if (f.get("m2") or 0.0) < OUTER_FACE_FRAC * footprint.area]
+        if keep:
+            faces = keep
+
     try:
         cover = sum(f.get("m2") or 0.0 for f in faces) / max(footprint.area, 1e-9)
     except Exception:
