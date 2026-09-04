@@ -418,13 +418,29 @@ def _build_one_at(building_id, nudge_m):
         obstructions = detect_obstructions_combined(imagery_ds, pc_source, f["geometry"], plane,
                                                     roof_geom=f.get("building_geometry"))
         siblings = [other for other in facets if other is not f]
-        if big_roof and _facet_fit(f, pc_source) < BIG_ROOF_FACET_MIN_FIT:
+        # A FACE JOSH DREW IS NOT JUDGED ON ITS PLANE FIT, for the same reason
+        # it is not withheld for low confidence: _facet_fit asks how well the
+        # points sit on a plane WE fitted, and on a face he drew that question
+        # is upside down. A 713 m2 flat roof has camber and ponding well beyond
+        # the 15 cm tolerance, so it scores badly while being exactly one roof
+        # plane.
+        #
+        # This is the same filter that took 32 Frankton Road to 18 panels. It
+        # is measured to be at risk on 11 of his labelled roofs, all of them
+        # over 1,000 m2 and all of them the big commercial buildings that
+        # carry the most capacity: #5372239 (7,568 m2), #5372232 (5,526),
+        # #4725584 (4,032), and 1 Memorial Street, one of the two roofs he
+        # first showed me as wrong.
+        drawn = f.get("from_labels")
+        if big_roof and not drawn and _facet_fit(f, pc_source) < BIG_ROOF_FACET_MIN_FIT:
             per_facet.append({"facet": f, "panels": [], "obstructions": obstructions,
                               "poa": facet_poa * shading_factor,
                               "shading_factor": shading_factor})
             continue
         panels = fit_panels_on_facet(f, obstructions=obstructions, sibling_facets=siblings)
-        if big_roof and len(panels) < BIG_ROOF_MIN_PANELS:
+        # Same exemption: "this face is too small to bother racking" is a
+        # judgement about a face the pipeline guessed at. He drew this one.
+        if big_roof and not drawn and len(panels) < BIG_ROOF_MIN_PANELS:
             panels = []
         kept_panels = []
         for pnl in panels:
