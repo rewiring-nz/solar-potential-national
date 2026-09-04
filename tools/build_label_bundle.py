@@ -119,6 +119,45 @@ def main():
             if r.get("building_id"):
                 truth[int(r["building_id"])] = r
 
+    # WHAT THE PIPELINE CURRENTLY THINKS THE ROOF IS.
+    #
+    # Josh: "showing how you interpret rooftops and how I have drawn them, and
+    # ones where you need help". Until now the tool showed him the imagery and
+    # his own lines; it never showed what the build had made of the roof. So
+    # the one person who can say "that is wrong" could not see what to correct,
+    # and the disagreement only surfaced days later on the live map.
+    #
+    # Read straight from the built panel_layouts, reprojected to the tool's
+    # frame. If a region has not been built the roof simply carries none and
+    # the tool behaves as before.
+    def _built_facets(region):
+        import rasterio  # noqa: F401  (pyproj already imported above)
+        pth = area_paths(region)["dir"] / "panel_layouts.geojson"
+        if not pth.exists():
+            return {}
+        to_nztm = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2193",
+                                              always_xy=True).transform
+        out = {}
+        try:
+            doc = json.loads(pth.read_text())
+        except Exception:
+            return {}
+        for f in doc.get("features", []):
+            pr = f.get("properties") or {}
+            if pr.get("kind") != "facet":
+                continue
+            b = pr.get("building_id")
+            if b is None:
+                continue
+            try:
+                ring = f["geometry"]["coordinates"][0]
+                out.setdefault(int(b), []).append(
+                    [[round(v, 2) for v in to_nztm(x, y)] for x, y in ring])
+            except Exception:
+                continue
+        return out
+
+    built_cache = {}
     ctxs = {}
     roofs = []
     print(f"building a bundle of {len(ids)} roofs...")
@@ -172,6 +211,8 @@ def main():
                           for r in g.interiors],
                 "neighbours": nb,
                 "why": why.get(bid, []),
+                "built": built_cache.setdefault(
+                    name, _built_facets(name)).get(bid, []),
                 "jpg": jpg,
             })
             placed = True

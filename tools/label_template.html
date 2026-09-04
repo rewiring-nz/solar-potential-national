@@ -118,6 +118,7 @@
   <button data-tool="pline" style="--tc:var(--obs)"><span><span class="sw" style="background:var(--obs);clip-path:polygon(0 38%,100% 0,100% 24%,0 62%)"></span> Line / run</span><span class="k">5</span></button>
   <button data-tool="tri" style="--tc:var(--obs)"><span><span class="sw" style="background:var(--obs);clip-path:polygon(50% 0,100% 100%,0 100%)"></span> Triangle</span><span class="k">6</span></button>
   <button data-tool="ellipse" style="--tc:var(--obs)"><span><span class="sw" style="background:var(--obs);border-radius:50%"></span> Circle</span><span class="k">7</span></button>
+  <details class="hint"><summary>See what the build currently makes of this roof</summary><div>Press <b>B</b> to show the facets the pipeline produced for this roof, dashed in blue underneath your lines. It is a <b>reference, not a tracing guide</b> &mdash; where it disagrees with the roof, draw what you see, not what it drew. A labeller who traces the pipeline's mistakes teaches the model its own errors.<br>If nothing appears, this roof has not been built yet.</div></details>
   <details class="hint"><summary>How to draw obstructions</summary><div><b>Polygon</b> and <b>Line / run</b>: click each point, then <b>Enter</b> (a polygon also closes if you click its first point again). <b>Triangle</b>: three clicks. <b>Circle</b>: drag one out.<br>A line / run records a centreline with a width &mdash; <b>[</b> and <b>]</b> make it thinner or wider. <b>Esc</b> abandons a part-drawn shape, <b>&#8984;Z</b> removes the last point.<br>Drag a shape&rsquo;s middle to move it, a corner to resize, <b>Delete</b> removes the selected one.</div></details>
 
   <h2>Fix a mistake</h2>
@@ -298,6 +299,9 @@ const HANDLE = () => 8 * dpr();
 const SNAP_PX = 14;
 let hoverSnap = null;
 let hideDone = false;
+// The pipeline's own facets, toggled with B. Default OFF on purpose: see the
+// note where they are drawn.
+let showBuilt = false;
 let handMode = false;
 let selLine = null;      // index into rec().lines, for select-and-delete
 function finishPoly(){
@@ -843,6 +847,16 @@ function draw(){
   ctx.save();
   ctx.beginPath(); ctx.rect(cox, coy, ciw*cs, cih*cs); ctx.clip();
   drawFaces();
+  // WHAT THE BUILD CURRENTLY MAKES OF THIS ROOF, under everything else.
+  //
+  // Josh asked to see "how you interpret rooftops and how I have drawn them".
+  // Without it he was correcting a result he could not see, and disagreements
+  // only surfaced days later on the live map. Drawn dim and dashed so it reads
+  // as background: his own lines must stay the loudest thing on the canvas.
+  //
+  // Off by default -- it is a reference, not a tracing guide, and a labeller
+  // who traces the pipeline's mistakes teaches the model its own errors.
+  if (showBuilt) (R().built||[]).forEach(f => ring(f,"rgba(120,190,255,.55)",[4,4],1.6));
   // neighbours first, dimmed -- so a busy block reads correctly
   (R().neighbours||[]).forEach(n => ring(n,"rgba(255,255,255,.45)",[5,5],1.8));
   ring(R().outline,"#ffd400",[],3.2);            // THIS building, solid
@@ -1352,6 +1366,15 @@ addEventListener("keydown", e=>{
   const t={"1":"ridge","2":"valley","3":"cliff",
          "4":"poly","5":"pline","6":"tri","7":"ellipse",
          "8":"nopanel","9":"select"}[e.key];
+  if(e.key==="b" || e.key==="B"){
+    showBuilt=!showBuilt; draw();
+    const n=(R().built||[]).length;
+    say(showBuilt
+        ? (n ? `showing what the build made of this roof: ${n} facets`
+             : "this roof has not been built yet")
+        : "hiding the build's facets");
+    return;
+  }
   if(t){ setTool(t); return; }
   if(e.key==="?"){ document.getElementById("help").classList.toggle("on"); return; }
   if(e.key==="Enter"){ if(triPts.length){ e.preventDefault(); finishPoly(); } return; }
