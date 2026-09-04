@@ -188,7 +188,12 @@ def model_lines(building_id, footprint=None):
                         float(sc), list(s)))
             continue
         ang, off, ln = _to_angle_offset(*s, footprint)
-        out.append((ang, off, ln, float(sc)))
+        # The SEGMENT travels with the line. roof_partition needs it to clip a
+        # cut to the stretch the crease actually covers, and pairing the two
+        # calls by index silently failed the moment the length bar above made
+        # the filtered and unfiltered lists different lengths -- so clipping
+        # was skipped on every building while appearing to work.
+        out.append((ang, off, ln, float(sc), list(s)))
     return out
 
 

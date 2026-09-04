@@ -1725,6 +1725,58 @@ LINE_MIN_STEP_M = 0.20        # ...or the two sides sit at different heights
 LINE_MIN_SIDE_POINTS = 30
 
 
+
+# How much of the chord a cut would make across a cell must actually be covered
+# by the detected line, before that cell is cut.
+#
+# THIS IS THE THING THE FILE HAS SAID WAS MISSING SINCE AUGUST: "what is missing
+# is a way to cut only the stretch a crease actually covers". _cut takes an
+# (angle, offset) and slices the WHOLE cell with the infinite line, so a 1.8 m
+# detection divides an 11 m roof -- which is what Josh found on 107 Beach
+# Street, a 127 m2 roof sliced by lines of 1.8, 2.0, 2.1, 3.1 and 5.5 m.
+#
+# The length bar in roof_line_source is a blunt version of the same idea: it
+# judges a line against the whole BUILDING. This judges it against the CELL it
+# is about to divide, which is the question that actually matters -- a 3 m
+# crease is ample to split a 3 m dormer and absurd for a 20 m warehouse bay.
+CUT_COVER_MIN = 0.55
+
+
+def _covers_cell(cell, seg, ang, off):
+    """Does the detected segment actually span the cut it is proposing?
+
+    The chord is where the infinite line crosses this cell. The segment is what
+    was observed. Cutting is justified when the observation covers enough of
+    the chord; where it does not, this cell is simply left alone and the cut
+    still applies to whichever cells the crease does run through.
+    """
+    from shapely.geometry import LineString
+    try:
+        a = math.radians(float(ang))
+        nx, ny = -math.sin(a), math.cos(a)
+        c = cell.centroid
+        px, py = c.x + nx * float(off), c.y + ny * float(off)
+        dx, dy = math.cos(a), math.sin(a)
+        span = max(cell.bounds[2] - cell.bounds[0],
+                   cell.bounds[3] - cell.bounds[1]) * 2.0 + 10.0
+        chord = LineString([(px - dx * span, py - dy * span),
+                            (px + dx * span, py + dy * span)]).intersection(cell)
+    except Exception:
+        return True                      # cannot tell: behave as before
+    if chord.is_empty:
+        return False
+    clen = sum(g.length for g in getattr(chord, "geoms", [chord]))
+    if clen <= 1e-6:
+        return False
+    try:
+        observed = LineString([(seg[0], seg[1]), (seg[2], seg[3])])
+        # a hand's width either side, so a crease drawn or detected slightly
+        # off the fitted line still counts as covering it
+        cov = chord.intersection(observed.buffer(0.6)).length
+    except Exception:
+        return True
+    return (cov / clen) >= CUT_COVER_MIN
+
 def _line_is_real(poly, pts, ang, off):
     """Does the roof change across this line, or is it only visible in the image?"""
     parts = _cut(poly, ang, off)
@@ -2093,15 +2145,25 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
             # whole build. A roof does not have hundreds of primary creases --
             # keep the longest, most confident ones, which are the ones worth
             # cutting on anyway.
+            # each entry carries its own segment, so the two can never fall out
+            # of step -- pairing them by index across two calls did exactly that
             proposed.sort(key=lambda t: -(t[2] * t[3]))     # length x score
             proposed = proposed[:MAX_MODEL_CUTS]
-            for ang, off, _ln, _sc in proposed:
+            for t in proposed:
+                ang, off, _ln, _sc = t[0], t[1], t[2], t[3]
+                seg = t[4] if len(t) > 4 else None
                 if len(cells) >= MAX_CELLS_FROM_MODEL:
                     break        # already finely divided; stop before it runs away
                 nxt = []
                 for c in cells:
-                    parts = (_cut(c, ang, off)
-                             if _line_is_real(c, _points_in(c, inside), ang, off) else [])
+                    ok = _line_is_real(c, _points_in(c, inside), ang, off)
+                    # ...and the observation has to actually span this cell.
+                    # Without this a crease seen on one bay of a roof cuts
+                    # every bay, which is the fragmentation the note above the
+                    # imagery-cut block has described since August.
+                    if ok and seg is not None and not _covers_cell(c, seg, ang, off):
+                        ok = False
+                    parts = _cut(c, ang, off) if ok else []
                     nxt.extend(parts if len(parts) >= 2 else [c])
                 cells = nxt
         except (ImportError, ValueError, AttributeError) as exc:
