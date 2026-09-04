@@ -98,6 +98,34 @@ VISION_DIR = DATA_DIR / "vision_lines"
 # missed cut just leaves the LiDAR partition to do what it already does.
 MIN_SCORE = 0.90
 
+# A predicted line shorter than this fraction of sqrt(roof area) is not cut on.
+#
+# CONFIDENCE WAS THE WRONG AXIS ON ITS OWN. Raising MIN_SCORE made cuts more
+# likely to be REAL; it did nothing about them being SHORT, and _cut extends
+# whatever it is given into an infinite line across the whole cell. Josh found
+# it on 107 Beach Street (#4725721): a 127 m2 roof, about 11 m across, sliced
+# by five model lines of 1.8, 2.0, 2.1, 3.1 and 5.5 m. A 1.8 m observation
+# became an 11 m assertion.
+#
+# Across ~4,000 currently-cutting lines the median is 0.25 of sqrt(roof area),
+# so HALF the cuts come from stubs under a quarter of the roof's own scale.
+#
+# Swept on Josh's 85 labelled roofs, model path only:
+#
+#   bar     lines found   edges he did NOT draw   clutter   facets
+#   none       82.5%             22.4%              119      8.0
+#   0.25       82.5%             21.4%              115      7.7
+#   0.35       82.7%             20.5%              112      7.5
+#   0.50       82.7%             20.8%              114      7.4
+#
+# 0.35 improves BOTH directions -- marginally more real creases found, 8.5%
+# fewer invented ones -- which is rare enough to be worth trusting. Past 0.50
+# it starts discarding real short creases faster than noise.
+#
+# This is the first change that helps roofs he has NOT labelled. Everything
+# else fixed today only reaches the 114 he drew.
+MIN_LEN_FRAC = 0.35
+
 
 def _to_angle_offset(x1, y1, x2, y2, footprint):
     """Segment endpoints -> the (angle_deg, offset) form roof_partition._cut takes.
@@ -141,9 +169,19 @@ def model_lines(building_id, footprint=None):
         return None
     segs = d.get("lines") or []
     scores = d.get("scores") or [1.0] * len(segs)
+    # A stub cannot justify a cut across the whole roof. Scale is the roof's
+    # own, so the bar means the same thing on a garage and a warehouse.
+    min_len = 0.0
+    if footprint is not None:
+        try:
+            min_len = MIN_LEN_FRAC * math.sqrt(max(footprint.area, 1.0))
+        except Exception:
+            min_len = 0.0
     out = []
     for s, sc in zip(segs, scores):
         if len(s) != 4 or sc < MIN_SCORE:
+            continue
+        if min_len and math.hypot(s[2] - s[0], s[3] - s[1]) < min_len:
             continue
         if footprint is None:
             out.append((None, None, math.hypot(s[2] - s[0], s[3] - s[1]),
