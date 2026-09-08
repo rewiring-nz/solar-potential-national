@@ -2073,6 +2073,7 @@ map.on("load", async () => {
     const input = document.getElementById("addr-input");
     const results = document.getElementById("addr-results");
     const openResult = (item) => {
+      if (item.coords) { openCoords(item.coords); return; }
       if (item.town) {
         results.style.display = "none";
         input.value = item.addr;
@@ -2088,10 +2089,59 @@ map.on("load", async () => {
       selectBuilding(item.f.properties.building_id);
       showBuildingPanel(item.f.properties, { lng, lat }, item.f.geometry);
     };
+    // Coordinates paste straight from a bug report or Google Maps:
+    // "-44.95041,168.83692" (lat,lon) or lon-first. |value|>90 must be the
+    // longitude; otherwise trust lat,lon order, the common paste format.
+    const parseCoords = (q) => {
+      const m = q.match(/^\s*(-?\d{1,3}(?:\.\d+)?)\s*[,;\s]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);
+      if (!m) return null;
+      let a = parseFloat(m[1]), b = parseFloat(m[2]);
+      let lat, lng;
+      if (Math.abs(a) > 90 && Math.abs(b) <= 90) { lng = a; lat = b; }
+      else if (Math.abs(b) > 90 && Math.abs(a) <= 90) { lat = a; lng = b; }
+      else if (Math.abs(a) <= 90 && Math.abs(b) <= 90) { lat = a; lng = b; }
+      else return null;
+      if (Math.abs(lng) > 180) return null;
+      return { lat, lng };
+    };
+    let coordMarker = null;
+    const openCoords = ({ lat, lng }) => {
+      results.style.display = "none";
+      input.value = lat.toFixed(5) + ", " + lng.toFixed(5);
+      if (coordMarker) coordMarker.remove();
+      coordMarker = new maplibregl.Marker({ color: "#e5484d" })
+        .setLngLat([lng, lat]).addTo(map);
+      map.flyTo({ center: [lng, lat], zoom: 18, duration: 1400 });
+      // If the point lands on (or within ~25 m of) a building we know,
+      // open its panel too -- coordinate reports are usually about one.
+      let best = null, bestD = Infinity;
+      const mPerDegLat = 111320, mPerDegLng = mPerDegLat * Math.cos(lat * Math.PI / 180);
+      for (const f of data.features) {
+        const ring = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates[0][0];
+        const cx = ring.reduce((a2, c) => a2 + c[0], 0) / ring.length;
+        const cy = ring.reduce((a2, c) => a2 + c[1], 0) / ring.length;
+        const d = Math.hypot((cx - lng) * mPerDegLng, (cy - lat) * mPerDegLat);
+        if (d < bestD) { bestD = d; best = f; }
+      }
+      if (best && bestD < 25) {
+        const ring = best.geometry.type === "Polygon" ? best.geometry.coordinates[0] : best.geometry.coordinates[0][0];
+        const cx = ring.reduce((a2, c) => a2 + c[0], 0) / ring.length;
+        const cy = ring.reduce((a2, c) => a2 + c[1], 0) / ring.length;
+        selectBuilding(best.properties.building_id);
+        showBuildingPanel(best.properties, { lng: cx, lat: cy }, best.geometry);
+      }
+    };
     let matches = [];
     input.addEventListener("input", () => {
       const q = input.value.trim().toLowerCase();
       if (q.length < 2) { results.style.display = "none"; return; }
+      const co = parseCoords(q);
+      if (co) {
+        matches = [{ addr: "Go to " + co.lat.toFixed(5) + ", " + co.lng.toFixed(5), coords: co }];
+        results.innerHTML = `<div data-i="0">${matches[0].addr}</div>`;
+        results.style.display = "block";
+        return;
+      }
       const starts = searchable.filter(x => x.lower.startsWith(q));
       const contains = searchable.filter(x => !x.lower.startsWith(q) && x.lower.includes(q));
       matches = starts.concat(contains).slice(0, 8);
