@@ -42,12 +42,12 @@ from pathlib import Path
 warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "training"
-KINDS = ["ridge", "valley", "cliff"]
+KINDS = ["ridge", "valley", "cliff", "hip"]
 
 
 def load_split(manifest, split, keep_buildings=None):
     import numpy as np
-    xs, ys, ws = [], [], []
+    xs, ys, ws, cws = [], [], [], []
     for p in manifest["patches"]:
         if p["split"] != split:
             continue
@@ -57,16 +57,45 @@ def load_split(manifest, split, keep_buildings=None):
         xs.append(z["image"])
         ys.append(z["lines"])
         ws.append(z["weight"])
+        cws.append(z["cw"] if "cw" in z else np.ones(z["lines"].shape[-1],
+                                                     dtype=np.float32))
     if not xs:
         return None
     import torch
     x = torch.from_numpy(np.stack(xs)).float().permute(0, 3, 1, 2) / 255.0
     y = torch.from_numpy(np.stack(ys)).float().permute(0, 3, 1, 2) / 255.0
     w = torch.from_numpy(np.stack(ws)).float().unsqueeze(1) / 255.0
-    return x, y, w
+    cw = torch.from_numpy(np.stack(cws)).float()
+    return x, y, w, cw
 
 
-def build_unet(pretrained=False):
+def load_dir(path):
+    """Extra patch directory (e.g. the RID2 pretraining corpus): every .npz
+    joins training with its own per-patch channel weights -- RID has no
+    heights, so its cliff channel is unsupervised (cw[2]=0) while Josh's
+    patches keep all four channels."""
+    import numpy as np
+    from pathlib import Path as _P
+    files = sorted(_P(path).glob("*.npz"))
+    xs, ys, ws, cws = [], [], [], []
+    for f in files:
+        z = np.load(f)
+        xs.append(z["image"])
+        ys.append(z["lines"])
+        ws.append(z["weight"])
+        cws.append(z["cw"] if "cw" in z else np.ones(z["lines"].shape[-1],
+                                                     dtype=np.float32))
+    if not xs:
+        return None
+    import torch
+    x = torch.from_numpy(np.stack(xs)).float().permute(0, 3, 1, 2) / 255.0
+    y = torch.from_numpy(np.stack(ys)).float().permute(0, 3, 1, 2) / 255.0
+    w = torch.from_numpy(np.stack(ws)).float().unsqueeze(1) / 255.0
+    cw = torch.from_numpy(np.stack(cws)).float()
+    return x, y, w, cw
+
+
+def build_unet(pretrained=False, out_channels=4):
     """A U-Net, optionally on a pretrained ImageNet encoder.
 
     From scratch, 74 roofs is not enough: training loss halves between epochs 50
@@ -100,7 +129,7 @@ def build_unet(pretrained=False):
                 self.c1 = block(128, 64)
                 self.u0 = nn.ConvTranspose2d(64, 32, 2, 2)
                 self.c0 = block(32, 32)
-                self.out = nn.Conv2d(32, 3, 1)
+                self.out = nn.Conv2d(32, out_channels, 1)
 
             def forward(self, x):
                 s = self.stem(x)            # /2
@@ -115,10 +144,10 @@ def build_unet(pretrained=False):
                 return self.out(x)
 
         return ResUNet()
-    return _build_scratch_unet()
+    return _build_scratch_unet(out_channels)
 
 
-def _build_scratch_unet():
+def _build_scratch_unet(out_channels=4):
     import torch.nn as nn
 
     def block(i, o):
@@ -138,7 +167,7 @@ def _build_scratch_unet():
             self.c2 = block(base * 4, base * 2)
             self.u1 = nn.ConvTranspose2d(base * 2, base, 2, 2)
             self.c1 = block(base * 2, base)
-            self.out = nn.Conv2d(base, 3, 1)
+            self.out = nn.Conv2d(base, out_channels, 1)
 
         def forward(self, x):
             import torch
@@ -152,7 +181,7 @@ def _build_scratch_unet():
     return UNet()
 
 
-def loss_fn(logits, y, w, pos_weight):
+def loss_fn(logits, y, w, pos_weight, cw=None):
     """Dice plus roof-weighted BCE.
 
     BCE alone collapses to all-background at 3.4% positives; Dice alone is
@@ -161,9 +190,12 @@ def loss_fn(logits, y, w, pos_weight):
     import torch.nn.functional as F
     bce = F.binary_cross_entropy_with_logits(
         logits, y, reduction="none", pos_weight=pos_weight)
+    if cw is not None:
+        bce = bce * cw
     bce = (bce * w).mean()
-    p = torch.sigmoid(logits) * w
-    t = y * w
+    m = w if cw is None else w * cw
+    p = torch.sigmoid(logits) * m
+    t = y * m
     num = 2 * (p * t).sum((0, 2, 3)) + 1.0
     den = p.sum((0, 2, 3)) + t.sum((0, 2, 3)) + 1.0
     return bce + (1 - num / den).mean()
@@ -171,7 +203,7 @@ def loss_fn(logits, y, w, pos_weight):
 
 def evaluate(model, val, device, thr=0.5):
     import torch
-    x, y, w = val
+    x, y, w = val[:3]
     model.eval()
     f1s = []
     with torch.no_grad():
@@ -179,7 +211,7 @@ def evaluate(model, val, device, thr=0.5):
         for i in range(0, len(x), 32):
             preds.append(torch.sigmoid(model(x[i:i + 32].to(device))).cpu())
         p = torch.cat(preds)
-    for k in range(3):
+    for k in range(p.shape[1]):
         pk = ((p[:, k] > thr).float() * w[:, 0])
         tk = (y[:, k] * w[:, 0])
         tp = (pk * tk).sum()
@@ -188,16 +220,31 @@ def evaluate(model, val, device, thr=0.5):
     return f1s
 
 
-def train_once(train, val, device, epochs, seed=0, quiet=False, pretrained=False):
+def train_once(train, val, device, epochs, seed=0, quiet=False,
+               pretrained=False, init_state=None, lr=2e-3):
     import torch
     torch.manual_seed(seed)
     model = build_unet(pretrained).to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-4)
-    x, y, w = train
-    pos = torch.tensor([8.0, 8.0, 8.0], device=device).view(1, 3, 1, 1)
+    if init_state is not None:
+        model.load_state_dict(init_state)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    if len(train) == 4:
+        x, y, w, cwall = train
+    else:
+        x, y, w = train
+        cwall = torch.ones(len(x), y.shape[1])
+    # per-channel positive weight by pixel scarcity: uniform 8.0 let the
+    # scarce channels starve (valley F1 0.048 with 558 drawn lines) --
+    # the optimiser buys ridge accuracy with valley neglect at equal prices
+    with torch.no_grad():
+        freq = y.mean((0, 2, 3)).clamp_min(1e-5)
+    # anchor: the historical 8.0 was right for ridge at ~1.5%% positive
+    # pixels, so c = 8 * 0.015; scarcer channels scale up from there
+    pos = (0.12 / freq).clamp(6.0, 40.0).to(device).view(1, -1, 1, 1)
+    print(f"    pos_weight per channel: {[round(float(v),1) for v in pos.flatten()]}")
     n = len(x)
     sched = torch.optim.lr_scheduler.OneCycleLR(
-        opt, max_lr=2e-3, total_steps=max(1, epochs * ((n + 15) // 16)))
+        opt, max_lr=lr, total_steps=max(1, epochs * ((n + 15) // 16)))
     for ep in range(epochs):
         model.train()
         perm = torch.randperm(n)
@@ -205,6 +252,31 @@ def train_once(train, val, device, epochs, seed=0, quiet=False, pretrained=False
         for i in range(0, n, 16):
             idx = perm[i:i + 16]
             xb, yb, wb = x[idx].to(device), y[idx].to(device), w[idx].to(device)
+            cwb = cwall[idx].to(device).view(len(idx), -1, 1, 1)
+            # SCALE AND COLOUR JITTER, for the country beyond Queenstown.
+            # Josh: "Make sure when we are building this training, it's
+            # scaleable to many other households. Our goal is to scale to all
+            # of NZ." Every label so far is one district at one survey's
+            # 0.1 m/px and one summer's colour balance; national imagery runs
+            # 0.075-0.3 m/px across surveys and seasons. A detector that has
+            # only ever seen one look will fail quietly on the next region, so
+            # every batch is randomly rescaled (0.7-1.4x) and colour-jittered
+            # before the dihedral flips.
+            if True:
+                import torch.nn.functional as F
+                sc = float(torch.empty(1).uniform_(0.7, 1.4))
+                hw = xb.shape[-1]
+                nh = max(32, int(round(hw * sc / 16)) * 16)
+                if nh != hw:
+                    xb = F.interpolate(xb, size=(nh, nh), mode="bilinear",
+                                       align_corners=False)
+                    yb = F.interpolate(yb, size=(nh, nh), mode="bilinear",
+                                       align_corners=False)
+                    wb = F.interpolate(wb, size=(nh, nh), mode="bilinear",
+                                       align_corners=False)
+                xb = xb * float(torch.empty(1).uniform_(0.8, 1.2))
+                xb = xb + float(torch.empty(1).uniform_(-0.08, 0.08))
+                xb = xb.clamp(0, 1)
             # dihedral augmentation, free and the only thing standing between
             # 150 roofs and immediate overfitting
             if torch.rand(1).item() < 0.5:
@@ -218,7 +290,7 @@ def train_once(train, val, device, epochs, seed=0, quiet=False, pretrained=False
             # pass needs them laid out contiguously
             xb, yb, wb = xb.contiguous(), yb.contiguous(), wb.contiguous()
             opt.zero_grad()
-            l = loss_fn(model(xb), yb, wb, pos)
+            l = loss_fn(model(xb), yb, wb * 1.0, pos, cwb)
             l.backward()
             opt.step()
             sched.step()
@@ -240,7 +312,21 @@ def main():
                     help="ImageNet-pretrained ResNet18 encoder")
     ap.add_argument("--save", type=str, default=None,
                     help="train on EVERY labelled roof and save the weights")
+    ap.add_argument("--extra-dir", type=str, default=None,
+                    help="extra patch dir (e.g. RID2) joined to training "
+                         "with its own per-patch channel weights")
+    ap.add_argument("--init", type=str, default=None,
+                    help="initialise from this checkpoint (pretrain -> "
+                         "fine-tune)")
+    ap.add_argument("--lr", type=float, default=2e-3)
     a = ap.parse_args()
+
+    init_state = None
+    if a.init:
+        import torch as _ti
+        _ck = _ti.load(a.init, map_location="cpu", weights_only=False)
+        init_state = _ck["state_dict"]
+        print(f"initialised from {a.init}")
 
     if not (DATA / "manifest.json").exists():
         print("no training data -- run tools/export_training_data.py first")
@@ -267,12 +353,18 @@ def main():
         import torch
         tr = load_split(manifest, "train")
         va = load_split(manifest, "val")
-        allx = (torch.cat([tr[0], va[0]]), torch.cat([tr[1], va[1]]),
-                torch.cat([tr[2], va[2]]))
+        parts = [tr, va]
+        if a.extra_dir:
+            ex = load_dir(a.extra_dir)
+            if ex is not None:
+                print(f"  + {len(ex[0])} extra patches from {a.extra_dir}")
+                parts.append(ex)
+        allx = tuple(torch.cat([q[i] for q in parts]) for i in range(4))
         print(f"training on ALL {len(allx[0])} patches for inference "
               f"(no holdout -- see the scores above for what it is worth)")
         model, _ = train_once(allx, val, device, a.epochs, quiet=True,
-                              pretrained=a.pretrained)
+                              pretrained=a.pretrained,
+                              init_state=init_state, lr=a.lr)
         out = Path(a.save)
         out.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"state_dict": model.state_dict(),
@@ -284,7 +376,15 @@ def main():
     if not a.curve:
         train = load_split(manifest, "train")
         t0 = time.time()
-        _, f1 = train_once(train, val, device, a.epochs, pretrained=a.pretrained)
+        if a.extra_dir:
+            import torch as _te
+            ex = load_dir(a.extra_dir)
+            if ex is not None:
+                print(f"  + {len(ex[0])} extra patches from {a.extra_dir}")
+                train = tuple(_te.cat([train[i], ex[i]]) for i in range(4))
+        _, f1 = train_once(train, val, device, a.epochs,
+                           pretrained=a.pretrained,
+                           init_state=init_state, lr=a.lr)
         print(f"\nfinal val F1: " +
               "  ".join(f"{k} {v:.3f}" for k, v in zip(KINDS, f1)) +
               f"   mean {sum(f1)/3:.3f}   ({time.time()-t0:.0f}s)")

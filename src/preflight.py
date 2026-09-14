@@ -77,7 +77,15 @@ class PreflightError(SystemExit):
 REQUIRED = {
     "build_layout_geojson": {
         "region": ["outlines", "dsm"],
-        "root": ["dem_wide_mosaic.tif"],
+        # selected_faces and roof_labels CHANGE THE GEOMETRY this stage
+        # builds. Neither was declared, so on 10 Sep a district run skipped
+        # every layout stage on Sep-3 markers and shipped old geometry with
+        # fresh mtimes (gate/rerank rewrite the file in place) -- 664,050
+        # panels, bit-identical totals to the previous build, no error.
+        # A directory's mtime updates when entries are added, which is
+        # exactly the precompute-finished signal.
+        "root": ["dem_wide_mosaic.tif", "selected_faces",
+                 "roof_labels.json"],
         "optional_region": ["imagery"],
     },
     "gate_panels": {

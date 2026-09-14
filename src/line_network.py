@@ -167,3 +167,82 @@ def connect(segs):
     pairs = _snap(pairs)
     pairs = _bridge(pairs)
     return [[a[0], a[1], b[0], b[1]] for a, b in pairs]
+
+
+# --------------------------------------------------------------- repetition
+
+# ROOF FOLDS REPEAT, AND THE DETECTOR DOES NOT KNOW IT.
+#
+# A sawtooth roof is a set of parallel ridges. The model finds the building's
+# long axes confidently and the folds only as short weak stubs -- on 7 Anderson
+# Heights the two sawtooth lines score 0.880 and 0.850 and are 1.5 m and 1.7 m
+# against the 4.7-7.0 m Josh drew. Raising or lowering the confidence cutoff
+# cannot help: the geometry is a stub either way.
+#
+# But a stub that shares a bearing with other lines on the same roof is
+# probably one of a repeated set, and a repeated set of folds spans the roof.
+# So extend it along ITS OWN bearing to the roof edge -- direction is never
+# invented, only length.
+#
+# MEASURED AND REJECTED. The sibling count was expected to be the whole design;
+# it turned out not to matter, because the idea is wrong in both settings:
+#
+#   model path            found   undrawn
+#   unchanged             82.5%    22.4%
+#   extend >=2 siblings   81.1%    23.5%
+#   extend >=1 sibling    81.2%    23.3%
+#
+# Fewer real creases found AND more invented ones, either way. Obvious in
+# hindsight: extending a stub across the roof produces precisely the
+# full-width cut that fragments a simple roof -- on 107 Beach Street a 1.8 m
+# stub already slices an 11 m building. This amplifies the bug it was meant to
+# route around.
+#
+# Kept, unwired, because the reasoning is sound and the failure is specific:
+# it would be worth revisiting only alongside a cutter that clips a cut to the
+# extent of the line that justified it.
+PARALLEL_TOL_DEG = 12.0
+PARALLEL_MIN_LEN_M = 0.8      # below this a stub is not evidence of anything
+PARALLEL_MAX_LEN_M = 6.0      # a line already this long IS the fold; leave it
+
+
+def extend_parallel_sets(segs, boundary_poly, min_siblings=2,
+                         tol_deg=PARALLEL_TOL_DEG):
+    """Stubs that belong to a parallel set, extended across the roof."""
+    from shapely.geometry import LineString
+
+    rows = []
+    for s in segs:
+        if len(s) != 4:
+            continue
+        L = math.hypot(s[2] - s[0], s[3] - s[1])
+        if L < PARALLEL_MIN_LEN_M:
+            continue
+        a = math.degrees(math.atan2(s[3] - s[1], s[2] - s[0])) % 180.0
+        rows.append([list(s), L, a])
+    out = []
+    for i, (s, L, a) in enumerate(rows):
+        if L > PARALLEL_MAX_LEN_M:
+            out.append(s)
+            continue
+        sibs = sum(1 for j, (_, _, b) in enumerate(rows)
+                   if j != i and min(abs(b - a), 180 - abs(b - a)) <= tol_deg)
+        if sibs < min_siblings:
+            out.append(s)
+            continue
+        cx, cy = (s[0] + s[2]) / 2.0, (s[1] + s[3]) / 2.0
+        ux, uy = math.cos(math.radians(a)), math.sin(math.radians(a))
+        try:
+            far = LineString([(cx - ux * 300, cy - uy * 300),
+                              (cx + ux * 300, cy + uy * 300)])
+            clip = far.intersection(boundary_poly)
+        except Exception:
+            out.append(s)
+            continue
+        if clip.is_empty:
+            out.append(s)
+            continue
+        g = max(getattr(clip, "geoms", [clip]), key=lambda x: x.length)
+        c = list(g.coords)
+        out.append([c[0][0], c[0][1], c[-1][0], c[-1][1]])
+    return out

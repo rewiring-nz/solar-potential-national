@@ -99,6 +99,13 @@ def _one(bid):
                 _CTX["img"], _CTX["pc"], f["geometry"],
                 (f["plane_a"], f["plane_b"], f["plane_c"]),
                 roof_geom=f.get("building_geometry")) or []
+            try:
+                from src.roof_line_source import drawn_obstruction_polys
+                _dobs = drawn_obstruction_polys(bid)
+                if _dobs:
+                    obs = [o for o in _dobs if o.intersects(f["geometry"])]
+            except Exception:
+                pass
         except Exception:
             obs = []
         sib = [o for o in facets if o is not f]
@@ -138,6 +145,7 @@ def _one(bid):
         "facets": [{"ring": ring(f["geometry"]),
                     "slope": round(f.get("slope_deg", 0), 1),
                     "labels": bool(f.get("from_labels")),
+                    "selected": bool(f.get("from_selected")),
                     "m2": round(f.get("area_m2", 0), 1)} for f in facets],
         "panels": [ring(p) for p in panels],
         "drawn": [list(s) for s in (drawn_segments(bid) or [])],
@@ -175,8 +183,12 @@ const g = document.getElementById('g');
 for (const r of ROOFS) {
   const d = document.createElement('div'); d.className = 'card';
   const nlab = (r.facets||[]).filter(f=>f.labels).length;
+  const nsel = (r.facets||[]).filter(f=>f.selected).length;
   d.innerHTML = `<h2>#${r.id}</h2><div class="meta">${(r.facets||[]).length} facets`
-    + (nlab? ` (${nlab} from markup)`:'') + ` &middot; ${(r.panels||[]).length} panels`
+    + (nlab? ` (${nlab} from markup)`:'')
+    + (nsel? ` (${nsel} selected)`:'')
+    + (!nlab && !nsel ? ` (old path)`:'')
+    + ` &middot; ${(r.panels||[]).length} panels`
     + (r.error? ` &middot; <span style="color:#ff8080">${r.error}</span>`:'') + `</div>`;
   const c = document.createElement('canvas'); c.width = c.height = 520;
   d.appendChild(c); g.appendChild(d);
@@ -285,7 +297,9 @@ def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     dest = OUT_DIR / a.out
     sub = (f"{len(out)} roofs from {region} &middot; built with the current "
-           f"working tree, not the deployed build")
+           f"working tree, not the deployed build &middot; panels shown are ALL "
+           f"fittable, before yield ranking (the live map ranks and hides poor "
+           f"performers)")
     dest.write_text(PAGE.replace("__ROOFS__", json.dumps(out, separators=(",", ":")))
                         .replace("__SUB__", sub))
     mb = dest.stat().st_size / 1024 / 1024

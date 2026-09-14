@@ -32,6 +32,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import sys
 import warnings
@@ -44,7 +45,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 LABELS = ROOT / "data" / "roof_labels.json"
 OUT = ROOT / "data" / "training"
-KINDS = ["ridge", "valley", "cliff"]
+KINDS = ["ridge", "valley", "cliff", "hip"]
 SKIP_FLAGS = {"absent", "not_building", "unclear"}
 LINE_WIDTH_PX = 3          # targets are widened; a 1px line is nearly unlearnable
 PAD_M = 4.0
@@ -72,6 +73,9 @@ def main():
     ap.add_argument("--patch", type=int, default=128)
     ap.add_argument("--stride", type=int, default=64)
     ap.add_argument("--val-frac", type=float, default=0.2)
+    ap.add_argument("--val-ids", default=None,
+                    help="file of building ids to pin as validation -- the "
+                         "benchmark set, which must never train the model")
     ap.add_argument("--min-line-px", type=int, default=40,
                     help="drop patches with almost no line in them")
     a = ap.parse_args()
@@ -93,12 +97,32 @@ def main():
         print("no usable labelled roofs")
         return 1
 
-    # Split by ROOF, deterministically, so re-running does not quietly reshuffle
-    # what the model has already seen.
-    rng = np.random.default_rng(20260902)
-    order = rng.permutation(len(ids))
-    n_val = max(1, int(len(ids) * a.val_frac))
-    val_ids = {ids[i] for i in order[:n_val]}
+    # Split by ROOF, and by a hash of the roof's OWN id.
+    #
+    # The previous version seeded an RNG and permuted range(len(ids)), which is
+    # stable when re-run on the same labels and reshuffles completely the moment
+    # a label is added: len(ids) changes, so does the permutation, and roofs
+    # swap between train and validation. That is fine for a one-off "does more
+    # data help" curve and wrong for the loop Josh actually wants -- mark up
+    # more roofs, retrain, re-score -- where the validation set moving is
+    # indistinguishable from the model changing.
+    #
+    # Hashing each id independently means a roof's side is fixed forever the
+    # first time it is labelled, and adding the 200th roof cannot move the
+    # first 199.
+    def _is_val(bid):
+        h = hashlib.sha1(str(bid).encode()).digest()
+        return (int.from_bytes(h[:4], "big") / 2**32) < a.val_frac
+
+    if a.val_ids:
+        pinned = {line.strip() for line in Path(a.val_ids).read_text().split()
+                  if line.strip()}
+        val_ids = {k for k in ids if k in pinned}
+        if not val_ids:
+            print(f"--val-ids {a.val_ids} matched none of the labelled roofs")
+            return 1
+    else:
+        val_ids = {k for k in ids if _is_val(k)}
 
     OUT.mkdir(parents=True, exist_ok=True)
     for split in ("train", "val"):
@@ -136,11 +160,26 @@ def main():
             continue
         shape = rgb.shape[:2]
 
-        # one channel per kind, so the model can be asked which it found
+        # one channel per kind, so the model can be asked which it found.
+        # HIP is derived, not drawn: the tool offers ridge/valley/cliff, so
+        # his hips live inside "ridge" as the minority pattern (subtle
+        # diagonal creases vs high-contrast axis ridges) -- that is why the
+        # detector "can't see hips". A ridge-kind line with an endpoint at
+        # a footprint corner IS a hip on NZ vernacular roofs.
+        corners = list(geom.exterior.coords)
+        def _near_corner(pt, tol=2.0):
+            return any((pt[0] - c[0]) ** 2 + (pt[1] - c[1]) ** 2 < tol * tol
+                       for c in corners)
+        def _kind_of(l):
+            k = l.get("kind")
+            if (k == "ridge" and l.get("a") and l.get("b")
+                    and (_near_corner(l["a"]) or _near_corner(l["b"]))):
+                return "hip"
+            return k
         masks = []
         for kind in KINDS:
             segs = [(l["a"], l["b"]) for l in lab["lines"]
-                    if l.get("kind") == kind and l.get("a") and l.get("b")]
+                    if _kind_of(l) == kind and l.get("a") and l.get("b")]
             masks.append(rasterise(shape, segs, bounds, LINE_WIDTH_PX))
         mask = np.stack(masks, axis=-1)
 

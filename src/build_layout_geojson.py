@@ -133,7 +133,13 @@ BUILDING_TIME_BUDGET_S = 600  # the partition alone may now spend 240s on a
 # on top of that. Still bounded: a stall is cut off, just later.
 
 
-class _BuildingTimeout(Exception):
+class _BuildingTimeout(BaseException):
+    # BaseException DELIBERATELY: the segmentation fallback machinery
+    # catches Exception to try its next method, and on #4722059 it caught
+    # the whole-building alarm as if RANSAC had merely failed -- the alarm
+    # fires once, so the building then ran unbounded and stalled the
+    # district build for 4.5 hours. A time budget must not be negotiable
+    # by any except-Exception between here and the stall.
     pass
 
 
@@ -174,11 +180,22 @@ def _init_worker(area, model):
 def _build_one(building_id):
     """Everything for one building. Returns its GeoJSON features."""
     signal.signal(signal.SIGALRM, _on_timeout)
-    signal.alarm(BUILDING_TIME_BUDGET_S)
+    # the budget scales with the roof: a flat 600s cap zeroed the
+    # district's biggest building (#4722059, 3,704 live panels) while
+    # every neighbour got its estimate. One 30-minute outlier on one
+    # worker is cheap; a dark landmark is not.
+    try:
+        _area = _CTX["gdf"].loc[building_id].geometry.area
+    except Exception:
+        _area = 0.0
+    _cap = int(os.environ.get("SOLAR_BUILDING_BUDGET_CAP_S", "1800"))
+    budget = int(min(_cap, max(BUILDING_TIME_BUDGET_S,
+                               BUILDING_TIME_BUDGET_S + (_area - 1500) * 0.6)))
+    signal.alarm(budget)
     try:
         return _build_one_inner(building_id)
     except _BuildingTimeout:
-        print(f"  building {building_id} DROPPED: over {BUILDING_TIME_BUDGET_S}s budget",
+        print(f"  building {building_id} DROPPED: over {budget}s budget",
               file=sys.stderr, flush=True)
         return _no_estimate_only(building_id, "timed_out")
     except Exception as exc:
@@ -417,6 +434,19 @@ def _build_one_at(building_id, nudge_m):
         plane = (f["plane_a"], f["plane_b"], f["plane_c"])
         obstructions = detect_obstructions_combined(imagery_ds, pc_source, f["geometry"], plane,
                                                     roof_geom=f.get("building_geometry"))
+        try:
+            from src.roof_line_source import drawn_obstruction_polys
+            _drawn_obs = drawn_obstruction_polys(f.get("building_id"))
+            if _drawn_obs:
+                # Josh marked this roof's obstructions in detail; the auto
+                # detector was hallucinating 140 m2 of phantom blockage on a
+                # bright membrane where his careful markup totals 17 m2
+                # (#5372565, "Clear empty space you are not filling"). Where
+                # he has spoken, only he speaks.
+                obstructions = [o for o in _drawn_obs
+                                if o.intersects(f["geometry"])]
+        except Exception:
+            pass
         siblings = [other for other in facets if other is not f]
         # A FACE JOSH DREW IS NOT JUDGED ON ITS PLANE FIT, for the same reason
         # it is not withheld for low confidence: _facet_fit asks how well the
@@ -432,16 +462,25 @@ def _build_one_at(building_id, nudge_m):
         # #4725584 (4,032), and 1 Memorial Street, one of the two roofs he
         # first showed me as wrong.
         drawn = f.get("from_labels")
-        if big_roof and not drawn and _facet_fit(f, pc_source) < BIG_ROOF_FACET_MIN_FIT:
-            per_facet.append({"facet": f, "panels": [], "obstructions": obstructions,
-                              "poa": facet_poa * shading_factor,
-                              "shading_factor": shading_factor})
-            continue
+        # A low plane-fit big-roof facet used to get NO panels at all. Josh:
+        # "fill in every area possible when doing 100% panel density" -- and
+        # #4735613 shipped its 372 and 337 m2 facets EMPTY through this skip
+        # (382 panels refit vs 107 shipped). The facet still fits, but its
+        # panels are DEMOTED to the straggler band: hidden at default density,
+        # present at 100%. Deleting is a verdict; demotion is a ranking.
+        low_fit = (big_roof and not drawn
+                   and _facet_fit(f, pc_source) < BIG_ROOF_FACET_MIN_FIT)
         panels = fit_panels_on_facet(f, obstructions=obstructions, sibling_facets=siblings)
+        if low_fit:
+            for pnl in panels:
+                pnl["straggler"] = True
+                pnl["low_conf_fit"] = True
         # Same exemption: "this face is too small to bother racking" is a
         # judgement about a face the pipeline guessed at. He drew this one.
         if big_roof and not drawn and len(panels) < BIG_ROOF_MIN_PANELS:
-            panels = []
+            for pnl in panels:
+                pnl["straggler"] = True
+                pnl["low_conf_fit"] = True
         kept_panels = []
         for pnl in panels:
             cpt = pnl["geometry"].centroid
@@ -475,6 +514,11 @@ def _build_one_at(building_id, nudge_m):
             "properties": {
                 "kind": "facet",
                 "building_id": int(building_id),
+                # provenance, so a shipped file can PROVE which geometry
+                # chain produced it (the 10 Sep no-op build was only
+                # detectable by bit-identical totals)
+                **({"from_selected": 1} if f.get("from_selected") else {}),
+                **({"from_labels": 1} if f.get("from_labels") else {}),
                 "slope_deg": round(f["slope_deg"], 1),
                 "aspect_deg": round(f["aspect_deg"], 1),
                 "poa_kwh_m2_yr": round(pf["poa"], 0),
@@ -501,6 +545,7 @@ def _build_one_at(building_id, nudge_m):
                     "fill_order": pnl["fill_order"],
                     "array_id": pnl["array_id"],
                     "array_size": pnl["array_size"],
+                    **({"low_conf_fit": 1} if pnl.get("low_conf_fit") else {}),
                 },
             })
     return features

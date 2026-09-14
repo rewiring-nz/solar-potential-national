@@ -787,6 +787,12 @@ def assign_fill_ranks(panels, poa_key="poa_kwh_m2_yr"):
             if sizes[q.get("array_id", 0)] < MIN_CLUSTER_PANELS:
                 q["confetti"] = True
     _tag_fragment_arrays(panels)
+    # low_conf_fit panels (poor plane-fit big-roof facets) stay demoted even
+    # when they form a large array -- the tagger above rewrites "straggler"
+    # from array size alone and was promoting them back to default density.
+    for p in panels:
+        if p.get("low_conf_fit"):
+            p["straggler"] = True
     main = _order_by_array(([p for p in panels if not p.get("straggler")]), poa_key)
     extras = sorted((p for p in panels if p.get("straggler")),
                     key=lambda p: (-p[poa_key], p["facet_key"], p["order"]))

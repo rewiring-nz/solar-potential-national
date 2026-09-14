@@ -25,6 +25,13 @@
 set -u
 cd "$(dirname "$0")/.."
 PY=.venv/bin/python
+
+# The selected-faces chain LEADS district builds (Josh, 9 Sep: "deploy this
+# fix to all of the Queenstown regions"). Without this export the build
+# silently ignores every data/selected_faces/*.json the precompute wrote --
+# there is no error, the old path just answers instead. Set
+# SOLAR_SELECTED_FACES=0 explicitly to build old-path only.
+export SOLAR_SELECTED_FACES="${SOLAR_SELECTED_FACES:-1}"
 LOGDIR=data/build_logs
 mkdir -p "$LOGDIR"
 
@@ -50,6 +57,44 @@ STAGES="build_layout_geojson gate_panels rerank_layouts derive_solar_potential
 
 echo "=== district build $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
 echo "regions: $(echo $REGIONS | wc -w | tr -d ' ')   resume: ${SKIP:-off}"
+
+# SNAPSHOT THE BUILD WE ARE ABOUT TO REPLACE. The fan-in overwrites
+# data/solar_potential.geojson, and once that is gone there is nothing left to
+# compare the new build against -- every "did this help?" question becomes
+# unanswerable. This was missing on 2 Sep: the only snapshot on the box predated
+# the build that was actually deployed, so a comparison would have measured
+# against the wrong baseline entirely, and it had to be taken by hand from the
+# committed live file before the merge reached it.
+#
+# Deliberately non-fatal. A missing baseline is bad; losing eight hours of
+# compute because the snapshot step tripped would be worse.
+if [ -f data/solar_potential.geojson ]; then
+  $PY src/compare_builds.py --snapshot \
+    || echo "  WARN: could not snapshot the previous build -- comparison will be unavailable"
+else
+  echo "  no existing build to snapshot (first run in this checkout)"
+fi
+
+# AUDIT THE INPUTS BEFORE SPENDING HOURS ON THEM. The 3 Sep run built 14
+# regions LiDAR-only because their imagery mosaics were gone, and built
+# arrowtown_hills as 50 buildings of zeros because its DSM described ground
+# 340 m west of every building in it. Neither raised an error; both produced
+# output indistinguishable from a real result, and both were found afterwards
+# by hand. Ninety seconds of checking beforehand is the cheapest possible way
+# to not repeat that.
+#
+# Non-fatal for the same reason as the snapshot above: a region with degraded
+# inputs still builds, and refusing to start the district because one region is
+# short of imagery would be a worse failure than the one being prevented. The
+# point is that it is stated loudly at the top of the log rather than
+# discovered days later.
+if [ -f tools/audit_region_inputs.py ]; then
+  echo "--- input audit ---"
+  $PY tools/audit_region_inputs.py 2>/dev/null \
+    | grep -E "PROBLEM|-> |only|regions with problems" \
+    || echo "  (audit produced no findings)"
+  echo "--- end input audit ---"
+fi
 
 fail=0
 for r in $REGIONS; do
@@ -87,5 +132,21 @@ tippecanoe -o data/panel_layouts.pmtiles --force -l layout \
   -y kind -y building_id -y fill_rank -y fill_order -y array_id -y array_size \
   -y ac_kwh_year -y slope_deg -y aspect_deg -y roof_confidence \
   -y poa_kwh_m2_yr -y panel_count data/panel_layouts.geojson || exit 1
+
+# DID THE BUILD ACTUALLY USE ITS INPUTS? On 10 Sep a resumed district run
+# skipped every layout stage on stale markers and shipped the previous
+# geometry with fresh mtimes -- zero errors, bit-identical totals. A green
+# build that ignored its inputs must FAIL here, not deploy quietly.
+if [ "${SOLAR_SELECTED_FACES}" = "1" ] && [ "$(ls data/selected_faces 2>/dev/null | wc -l)" -gt 100 ]; then
+  # grep -c counts LINES and a geojson is one line: -aco reported "1"
+  # against 41,589 real occurrences and failed two good builds. Count
+  # occurrences.
+  n_sel=$(grep -ao '"from_selected"' data/panel_layouts.geojson | wc -l | tr -d " ")
+  if [ "${n_sel:-0}" -lt 50 ]; then
+    echo "FAILED: selected-faces enabled but only ${n_sel} from_selected facets in merged layouts -- the build did not use its inputs"
+    exit 1
+  fi
+  echo "guard: ${n_sel} from_selected facets in merged layouts"
+fi
 
 echo "=== complete $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="

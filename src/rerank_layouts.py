@@ -76,15 +76,28 @@ def rerank_area(name):
             for g in groups.values():
                 if 0 < len(g) < cutoff:
                     straggler_ids.update(id(pf) for pf in g)
+        # Panels fitted on a low plane-fit big-roof facet ship demoted, not
+        # deleted (build_layout_geojson tags them low_conf_fit). This pass
+        # recomputes bands from array sizes alone, so without this line a
+        # 90-panel low-confidence array would climb back to default density.
+        straggler_ids.update(id(pf) for pf in b["panels"]
+                             if pf["properties"].get("low_conf_fit"))
 
         # Whole arrays in order of total yield, and within an array the
         # existing rank, which preserves the compact reverse-erosion order the
         # original fit produced. Ordering by facet sunniness -- what this did
         # before -- is what made the density slider strip a whole dim SIDE
         # before it touched the lone panels on the sunny side.
+        # MEAN yield per panel, not total -- same fix as
+        # panel_fitting._order_by_array (Josh, #4740662: total let 40 shaded
+        # panels outrank 18 sunny ones, so the slider showed the shady side
+        # first). This file runs after the fitter and overwrites its ranks,
+        # so the fix must live here too or it silently un-happens: #4751009
+        # shipped with its 598 kWh/panel array ranked BELOW its 355 one.
         yield_of = {}
         for aid, g in groups.items():
-            yield_of[aid] = sum(pf["properties"].get("ac_kwh_year") or 0 for pf in g)
+            yield_of[aid] = (sum(pf["properties"].get("ac_kwh_year") or 0
+                                 for pf in g) / len(g))
         key = lambda pf: (-yield_of.get(pf["properties"].get("array_id", 0), 0),
                           pf["properties"].get("array_id", 0),
                           pf["properties"].get("fill_rank", 100))

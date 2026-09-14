@@ -37,8 +37,28 @@ Cut directions come from the footprint itself. Roofs are built on walls, so
 ridges, hips and valleys run parallel or perpendicular to the walls below far
 more often than not, and the surveyed outline is a better source for those
 angles than anything recoverable from a 5.7 pts/m2 cloud.
+
+Map of this module (grep the function name, line numbers rot):
+
+  1. Plane fitting and partition core: _fit_plane / _fit_plane_robust,
+     _partition (the recursive cut engine), partition_by_planes
+  2. Point utilities: top_surface (top-of-cloud filter), _points_in,
+     explained_fraction
+  3. GEOMETRY SOURCES, in the precedence the build applies them --
+     partition_with_labels / facets_from_drawn_faces (the owner's markup,
+     exempt from all quality gates), facets_from_selected_faces (the
+     precomputed SAM/line/LiDAR winner behind SOLAR_SELECTED_FACES=1,
+     one-plane gate + RESIDUAL FILL so coverage is guaranteed),
+     line_facets (vision-line polygonisation), partition_roof (old path)
+  4. Footprint hygiene: roof_outline, trim_to_roof (courtyards, decks)
+
+The precedence contract and per-rule history live in
+docs/developers/reviewers-guide.md.
 """
 
+import json
+import math
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -1132,11 +1152,16 @@ DRAWN_MIN_FACET_M2 = 1.5
 # Measured across the 92 labelled roofs, coverage is a median 100% and only
 # that one sits below 70%, so this is a guard against a partial markup rather
 # than a threshold anything normal has to clear.
+LINES_LEAD = os.environ.get("SOLAR_LINES_LEAD", "0") == "1"
+FLAT_ROOF_MAX_SLOPE_DEG = 5.0   # below this there is no fold to cut on
+DRAWN_MAX_SLOPE_DEG = 85.0    # a face he drew is roof unless it is a wall
 DRAWN_COVER_MIN = 0.50
 
 # A drawn face at or above this share of the outline, when other faces exist
 # alongside it, is the arrangement's enclosing face rather than a roof plane.
-OUTER_FACE_FRAC = 0.90
+OUTER_FACE_FRAC = 0.90        # kept: still referenced by the older skeleton path
+OUTER_FACE_OVERSPILL = 1.02   # a face bigger than the building cannot be one of its planes
+OUTER_FACE_CONTAINS = 0.90    # ...nor can one that swallows every other face
 
 # How far a drawn or predicted line may be pushed along its own direction to
 # reach the roof edge. Measured on Josh's markups: endpoints sit a median 1.4 m
@@ -1230,6 +1255,170 @@ def _seal_network(segs, boundary, max_ext=None):
     return out
 
 
+
+
+# ------------------------------------------------- selected faces (imagery)
+
+# Faces chosen by the candidate selector (tools/predict_faces.py): SAM's
+# reading or the line network's, whichever the evidence scored higher --
+# validated against Josh's markup at 0.776 of a 0.782 oracle on his 28
+# benchmark roofs, and his eye on the winners page: "The rest are good".
+# Precomputed per building because the selector needs SAM and torch, which
+# have no business inside the build environment. Off unless the flag is set.
+SELECTED_FACES_DIR = (Path(__file__).resolve().parent.parent
+                      / "data" / "selected_faces")
+USE_SELECTED_FACES = os.environ.get("SOLAR_SELECTED_FACES", "0") == "1"
+SELECTED_MIN_SCORE = 0.30
+SELECTED_MIN_PLANE_INLIER = 0.45  # a facet must be A plane     # below this, neither reading earned trust
+
+
+def _regularise_machine_face(poly, footprint):
+    """Enforce the module's founding invariant on faces from the selected
+    chain: STRAIGHT BY CONSTRUCTION. SAM masks and LiDAR raster tilings
+    arrive as traced boundaries -- lightly smoothed wobble -- and on
+    10 Sep Josh flagged both in one sweep ("These roof lines are fuzzy,
+    no roof lines are fuzzy" #4734994; jagged overlapping faces on
+    #4735106). A face either becomes a low-vertex polygon whose edges
+    snap to the building's dominant axes, or it does not ship (residual
+    fill covers its area with clean partition cuts).
+    """
+    import numpy as np
+    import shapely.affinity as _aff
+    if poly.geom_type != "Polygon" or poly.is_empty:
+        return None
+    mrr = footprint.minimum_rotated_rectangle
+    cc = list(mrr.exterior.coords)
+    ax = np.degrees(np.arctan2(cc[1][1] - cc[0][1], cc[1][0] - cc[0][0]))
+    rot = _aff.rotate(poly, -ax, origin=(0, 0))
+    for tol in (0.3, 0.5, 0.8, 1.2):
+        cand = rot.simplify(tol)
+        if cand.geom_type != "Polygon" or cand.is_empty:
+            continue
+        cs = list(cand.exterior.coords)[:-1]
+        # snap near-axis-parallel edges truly parallel (the straightness
+        # that a traced boundary lacks)
+        snapped = []
+        for i in range(len(cs)):
+            x0, y0 = cs[i]
+            xp, yp = cs[i - 1]
+            if abs(x0 - xp) < 0.45:
+                x0 = (x0 + xp) / 2
+                if snapped:
+                    snapped[-1] = (x0, snapped[-1][1])
+            if abs(y0 - yp) < 0.45:
+                y0 = (y0 + yp) / 2
+                if snapped:
+                    snapped[-1] = (snapped[-1][0], y0)
+            snapped.append((x0, y0))
+        if len(snapped) < 3:
+            continue
+        out = Polygon(snapped)
+        if not out.is_valid or out.is_empty:
+            continue
+        if len(snapped) <= 10 and abs(out.area - poly.area) < 0.25 * poly.area:
+            back = _aff.rotate(out, ax, origin=(0, 0))
+            if back.is_valid and back.geom_type == "Polygon":
+                return back
+    return None
+
+
+def facets_from_selected_faces(building_id, footprint, pts):
+    """Facets straight from the precomputed winner, planes from LiDAR.
+
+    Same construction as facets_from_drawn_faces: the rings are taken as
+    the geometry, LiDAR contributes only each face's plane, sparse or
+    unfittable faces borrow a neighbour's plane rather than vanishing.
+    """
+    if not USE_SELECTED_FACES or building_id is None:
+        return []
+    fp = SELECTED_FACES_DIR / f"{building_id}.json"
+    if not fp.exists():
+        return []
+    try:
+        doc = json.loads(fp.read_text())
+    except (OSError, ValueError):
+        # narrow on purpose: a bare except here swallowed a missing import
+        # for a whole debugging session, exactly as this module's own
+        # docstrings warn
+        return []
+    if doc.get("score", 0.0) < SELECTED_MIN_SCORE:
+        return []
+    inside = _points_in(footprint, pts)
+    if len(inside) < MIN_POINTS:
+        inside = pts
+    out = []
+    pending = []
+    for ring in doc.get("faces") or []:
+        try:
+            poly = Polygon(ring)
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+        except Exception:
+            continue
+        if (poly.is_empty or poly.geom_type != "Polygon"
+                or poly.area < DRAWN_MIN_FACET_M2):
+            continue
+        # straight-by-construction, enforced at the seam: a traced boundary
+        # either regularises to a clean low-vertex polygon or does not ship
+        reg = _regularise_machine_face(poly, footprint)
+        if reg is None:
+            continue
+        poly = reg
+        sub = _points_in(poly, inside)
+        plane = _fit_plane_robust(sub) if len(sub) >= MIN_POINTS_PER_FACE \
+            else None
+        if plane is not None:
+            # A FACE THAT IS NOT ONE PLANE IS NOT A FACE. #4740503's balcony
+            # panels rode in on an 835 m2 SAM mask whose plane inlier was
+            # 0.13 -- a mask spanning the main roof AND three terrace levels.
+            # Machine-chosen geometry earns no borrowed plane for that: it is
+            # dropped outright, and the fitter simply places nothing there.
+            # (Josh's own faces never hit this path; sparse faces still
+            # borrow below.)
+            if _inlier_fraction(sub, plane) < SELECTED_MIN_PLANE_INLIER:
+                continue
+        bad = plane is None
+        if not bad:
+            slope, aspect = _slope_aspect(plane)
+            if slope > DRAWN_MAX_SLOPE_DEG:
+                bad = True
+            elif (slope >= STEEP_FACE_DEG
+                  and _inlier_fraction(sub, plane) < STEEP_FACE_MIN_FIT):
+                bad = True
+        if bad:
+            pending.append(poly)
+            continue
+        out.append({
+            "building_id": building_id,
+            "geometry": Polygon(poly.exterior, [r for r in poly.interiors]),
+            "plane_a": plane[0], "plane_b": plane[1], "plane_c": plane[2],
+            "slope_deg": slope, "aspect_deg": aspect,
+            "area_m2": float(poly.area), "point_count": int(len(sub)),
+            "from_selected": True,
+        })
+    for poly in pending:
+        best = None
+        for f in out:
+            try:
+                shared = poly.buffer(0.2).intersection(f["geometry"]).area
+            except Exception:
+                continue
+            if shared > 0 and (best is None or f["area_m2"] > best["area_m2"]):
+                best = f
+        if best is None:
+            continue
+        out.append({
+            "building_id": building_id,
+            "geometry": Polygon(poly.exterior, [r for r in poly.interiors]),
+            "plane_a": best["plane_a"], "plane_b": best["plane_b"],
+            "plane_c": best["plane_c"],
+            "slope_deg": best["slope_deg"], "aspect_deg": best["aspect_deg"],
+            "area_m2": float(poly.area), "point_count": 0,
+            "from_selected": True, "plane_borrowed": True,
+        })
+    return out
+
+
 def facets_from_drawn_faces(building_id, footprint, pts):
     """Build facets straight from the tool-derived rings in roof_labels.json.
 
@@ -1270,9 +1459,66 @@ def facets_from_drawn_faces(building_id, footprint, pts):
     # roof, and the coverage guard below then correctly hands both to the LiDAR
     # partition. Drop it afterwards instead and coverage is computed at 131%,
     # the guard passes, and the building ships 31 tiny facets and 18 panels.
+    # WHAT MAKES A FACE THE ARRANGEMENT'S OUTER FACE, rather than simply large.
+    #
+    # The first version dropped any face covering >= OUTER_FACE_FRAC of the
+    # footprint. That is true of the artefact and also of a roof Josh drew as
+    # ONE plane, and the `len(faces) >= 2` guard did not save those: a roof
+    # marked as one plane plus one small "no panels here" patch has two faces,
+    # so its only real plane was deleted and the remaining 5% failed the
+    # coverage check below. #5372585 -- a 210.8 m2 plane on a 221.8 m2 building
+    # plus an 11 m2 no-panel patch -- was rejected entirely that way.
+    #
+    # An outer face is the COMPLEMENT of the others, so it gives itself away by
+    # either enclosing them or spilling outside the footprint:
+    #
+    #   roof       face/footprint   contains the others
+    #   #5372585            0.951                  0%   a plane he drew
+    #   #5371108            0.161                  0%   a plane he drew
+    #   #5372588            1.000                100%   artefact
+    #   #4725584            1.230                 17%   artefact (4,962 m2
+    #                                                   on a 4,032 m2 building)
+    #
+    # Neither test alone separates all four: containment misses #4725584, and
+    # the area ratio misses #5372588 at 1.0002. Together they classify every
+    # case correctly.
     if len(faces) >= 2:
-        keep = [f for f in faces
-                if (f.get("m2") or 0.0) < OUTER_FACE_FRAC * footprint.area]
+        polys = []
+        for f in faces:
+            try:
+                q = Polygon(f["ring"])
+                polys.append(q if q.is_valid else q.buffer(0))
+            except Exception:
+                polys.append(None)
+
+        filled = Polygon(footprint.exterior)
+
+        def _is_outer(i):
+            q = polys[i]
+            if q is None or q.is_empty:
+                return False
+            if q.area > OUTER_FACE_OVERSPILL * footprint.area:
+                return True
+            # A COURTYARD HID THE ARTEFACT. #4725584's footprint arrives with
+            # its courtyard filled (5,172 m2 against 4,032 with the hole), so
+            # the 4,962 m2 complement face stopped overspilling and shipped
+            # 1,383 panels across the ridges Josh drew. Against the FILLED
+            # footprint it is 96% -- no real plane is 90% of a roof that
+            # carries five other faces beside it. The many-faces gate keeps
+            # #5372585's legitimate 95% single plane (two faces) safe.
+            if len(faces) >= 6 and q.area > 0.9 * filled.area:
+                return True
+            rest = [p for j, p in enumerate(polys)
+                    if j != i and p is not None and not p.is_empty]
+            if not rest:
+                return False
+            try:
+                u = unary_union(rest)
+                return q.intersection(u).area / max(u.area, 1e-9) >= OUTER_FACE_CONTAINS
+            except Exception:
+                return False
+
+        keep = [f for i, f in enumerate(faces) if not _is_outer(i)]
         if keep:
             faces = keep
 
@@ -1310,13 +1556,43 @@ def facets_from_drawn_faces(building_id, footprint, pts):
         if sub is None:
             pending.append(poly)
             continue
+        # A BAD PLANE IS NOT A REASON TO DELETE A FACE HE DREW.
+        #
+        # These three tests exist to reject walls and rubbish surfaces found by
+        # the LiDAR partition. On a face Josh drew they reject something else:
+        # the FIT, not the face. At 1.7 returns/m2 a 7 m2 dormer carries about
+        # twelve points, and twelve noisy points routinely fit a plane steeper
+        # than MAX_ROOF_SLOPE. Measured on the two worst roofs in the benchmark,
+        # this was the whole of the loss -- #4735237 lost 7 of 23 faces to slope
+        # and steep-fit, #5372610 lost 3 of 6:
+        #
+        #   #4735237  kept 13, slope>55 4, steep+poor fit 3, too sparse 3
+        #   #5372610  kept  2, slope>55 1, steep+poor fit 2
+        #
+        # He is the authority on which parts of the roof are roof. So a face
+        # whose own fit is unusable borrows a neighbour's plane, exactly as a
+        # face with too few points already does, and is only dropped if it has
+        # no neighbour to borrow from. That keeps the guard against genuine
+        # walls -- a wall drawn in isolation still goes -- without deleting
+        # geometry he marked.
         plane = _fit_plane_robust(sub)
-        if plane is None:
-            continue
-        slope, aspect = _slope_aspect(plane)
-        if slope > config.MAX_ROOF_SLOPE_DEG:
-            continue
-        if slope >= STEEP_FACE_DEG and _inlier_fraction(sub, plane) < STEEP_FACE_MIN_FIT:
+        bad_fit = plane is None
+        if not bad_fit:
+            slope, aspect = _slope_aspect(plane)
+            # Josh: "Panels can be placed steeper than 55 degrees too if
+            # needed". MAX_ROOF_SLOPE_DEG stays at 55 for geometry the LiDAR
+            # guessed, where it is the guard against calling a wall a roof.
+            # On a face he drew it was answering a question he has already
+            # answered, and steep roofs are exactly where the fitted slope is
+            # least trustworthy anyway. Only a near-vertical face is still
+            # refused here, since that is a wall however it was produced.
+            if slope > DRAWN_MAX_SLOPE_DEG:
+                bad_fit = True
+            elif (slope >= STEEP_FACE_DEG
+                  and _inlier_fraction(sub, plane) < STEEP_FACE_MIN_FIT):
+                bad_fit = True
+        if bad_fit:
+            pending.append(poly)
             continue
         out.append({
             "building_id": building_id,
@@ -1742,6 +2018,30 @@ LINE_MIN_SIDE_POINTS = 30
 CUT_COVER_MIN = 0.55
 
 
+def _reanchor(ang, off, src_poly, dst_poly):
+    """An offset measured from one polygon's centroid, expressed from another's.
+
+    THE BUG THIS FIXES, which produced the spurious lines Josh reported on 107
+    Beach Street. model_lines returns offsets measured from the FOOTPRINT's
+    centroid -- its docstring says so -- but _cut re-anchors whatever offset it
+    is given to the centroid of the polygon it is cutting. The first cell IS the
+    footprint, so the first cut lands correctly; every cell produced by that cut
+    has a different centroid, so the same (ang, off) then describes a different
+    absolute line in each one, and later cuts land where no crease is.
+
+    Measured signature of the drift: coverage of the observed segment over the
+    chord it would cut has p90 = 1.00 (the first-cell cuts, right frame) against
+    a median of 0.00 (the drifted ones) -- 68% of 247 cuts sit below 0.55.
+
+    A line is {p : n.(p - c) = off}. Re-expressing from src to dst centroid:
+    n.(p - dst) = n.(p - src) - n.(dst - src).
+    """
+    a = math.radians(float(ang))
+    nx, ny = -math.sin(a), math.cos(a)
+    s, d = src_poly.centroid, dst_poly.centroid
+    return float(off) - (nx * (d.x - s.x) + ny * (d.y - s.y))
+
+
 def _covers_cell(cell, seg, ang, off):
     """Does the detected segment actually span the cut it is proposing?
 
@@ -2122,8 +2422,123 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
         print(f"  roof_partition: drawn faces unavailable ({exc!r})", flush=True)
     if _lf:
         return _lf
+    # the selector's winner ranks below Josh's markup and above everything
+    # fitted here -- same construction, weaker author
+    try:
+        _sf = facets_from_selected_faces(building_id, footprint, pts)
+    except Exception as exc:
+        print(f"  roof_partition: selected faces unavailable ({exc!r})",
+              flush=True)
+        _sf = []
+    if _sf:
+        # COVERAGE IS GUARANTEED, quality gates or not. Dropping a garbage
+        # machine face used to leave its area EMPTY -- Josh: "Missing a lot of
+        # great sunny faces", "you only have panels on the shady side!" on a
+        # pyramid whose two sunny faces had failed the one-plane gate. The
+        # residue now goes back to the LiDAR partition, whose facets carry no
+        # from_selected flag and so face every downstream drop as usual.
+        try:
+            covered = unary_union([f["geometry"] for f in _sf])
+            residual = footprint.difference(covered.buffer(0.05))
+            if residual.area > max(12.0, 0.12 * footprint.area):
+                inside_r = _points_in(footprint, pts)
+                for cell in getattr(residual, "geoms", [residual]):
+                    if cell.geom_type != "Polygon" or cell.area < 8.0:
+                        continue
+                    fill = list(_partition(cell, _points_in(cell, inside_r)))
+                    # Josh, on the facet web the fill drew over a cluttered
+                    # flat (#4734913): "you should not create roof lines
+                    # unless you are confident in them." The boundary between
+                    # two fill facets whose planes barely differ is exactly
+                    # such a line -- merge them until every remaining boundary
+                    # separates planes that clearly disagree.
+                    merged = True
+                    while merged and len(fill) > 1:
+                        merged = False
+                        for i in range(len(fill)):
+                            for j2 in range(i + 1, len(fill)):
+                                pi, pli = fill[i]
+                                pj, plj = fill[j2]
+                                si, _ = _slope_aspect(pli)
+                                sj, _ = _slope_aspect(plj)
+                                _, ai = _slope_aspect(pli)
+                                _, aj = _slope_aspect(plj)
+                                d_asp = abs((ai - aj + 180) % 360 - 180)
+                                alike = (abs(si - sj) < 7.0
+                                         and (max(si, sj) < 8.0
+                                              or d_asp < 30.0))
+                                if not alike:
+                                    continue
+                                if not pi.buffer(0.1).intersects(pj):
+                                    continue
+                                u = pi.union(pj).buffer(0.05).buffer(-0.05)
+                                if u.geom_type != "Polygon":
+                                    continue
+                                sub_u = _points_in(u, inside_r)
+                                pl_u = (_fit_plane_robust(sub_u)
+                                        if len(sub_u) > 12
+                                        else (pli if pi.area >= pj.area
+                                              else plj))
+                                fill[i] = (u, pl_u)
+                                del fill[j2]
+                                merged = True
+                                break
+                            if merged:
+                                break
+                    for poly2, plane2 in fill:
+                        slope2, aspect2 = _slope_aspect(plane2)
+                        if slope2 > config.MAX_ROOF_SLOPE_DEG:
+                            continue
+                        sub2 = _points_in(poly2, inside_r)
+                        _sf.append({
+                            "building_id": building_id,
+                            "geometry": Polygon(
+                                poly2.exterior,
+                                [r for r in poly2.interiors]),
+                            "plane_a": plane2[0], "plane_b": plane2[1],
+                            "plane_c": plane2[2],
+                            "slope_deg": slope2, "aspect_deg": aspect2,
+                            "area_m2": float(poly2.area),
+                            "point_count": int(len(sub2)),
+                        })
+        except Exception as exc:
+            print(f"  roof_partition: residual fill failed ({exc!r})",
+                  flush=True)
+        return _sf
 
+    # A FLAT ROOF HAS NO FOLDS, so imagery cuts on one are noise.
+    #
+    # Josh flagged four town-centre roofs: "very simple roof, and you have got
+    # the roof lines way off". They are flat. #4734914 varies 0.87 m across
+    # 224 m2 and fits a plane at 0.3 degrees; #4734913 1.22 m at 1.0; #4734994
+    # at 3.7. The build gave them 4, 11 and 7 facets pitched at 8-10 degrees,
+    # with hips that do not exist.
+    #
+    # The detector is not wrong to fire on them -- a flat commercial roof is
+    # covered in real lines: parapets, plant, membrane seams, shadow edges.
+    # None is a fold. Retraining does not help, and was measured: on 5 of those
+    # 7 roofs a detector retrained on 50 more of his roofs produced an identical
+    # result, because the lines were never the binding constraint.
+    #
+    # Slope separates these cleanly from roofs that do need cutting -- the hips
+    # he drew fit at 9.6-12.5 degrees against 0.3-3.7 here.
+    #
+    # Only for geometry nobody has drawn: this sits after the drawn-faces return
+    # above, so a flat roof he HAS marked keeps every face he drew. #4735237 is
+    # exactly that -- 1,688 m2 at 1.6 degrees with 23 drawn faces.
+    _flat = False
     if imagery_ds is not None and USE_IMAGERY_CUTS:
+        try:
+            _in = _points_in(footprint, pts)
+            if len(_in) >= MIN_POINTS:
+                _pl = _fit_plane_robust(_in)
+                if _pl is not None:
+                    _sl, _ = _slope_aspect(_pl)
+                    _flat = _sl < FLAT_ROOF_MAX_SLOPE_DEG
+        except Exception:
+            _flat = False
+
+    if imagery_ds is not None and USE_IMAGERY_CUTS and not _flat:
         # NOT a bare except. A rewrite of roof_outline above once deleted
         # _line_is_real while leaving this call site, and a broad except turned
         # that into "imagery cuts silently do nothing" -- the measurements looked
@@ -2156,14 +2571,36 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
                     break        # already finely divided; stop before it runs away
                 nxt = []
                 for c in cells:
-                    ok = _line_is_real(c, _points_in(c, inside), ang, off)
+                    # The offset arrived measured from the FOOTPRINT's centroid;
+                    # everything below re-anchors to the polygon it is given, so
+                    # it has to be converted per cell or the cut drifts. See
+                    # _reanchor.
+                    off_c = _reanchor(ang, off, footprint, c)
+                    # THE IMAGERY SAYS WHERE THE LINE IS; THE LIDAR ONLY SAYS
+                    # HOW STEEP THE FACES ARE.
+                    #
+                    # Josh: "The image is what tells you the roof lines, the
+                    # lidar just tells you slope." _line_is_real asks the point
+                    # cloud whether the roof changes across a proposed line, and
+                    # at 1.7 returns/m2 on a shallow roof it usually cannot tell
+                    # -- so it vetoes real creases. On #4734696 three lines
+                    # survived the score and length bars and it passed exactly
+                    # one, which is why loosening those bars from 0.90/0.35 to
+                    # 0.30/0.08 moved the lines used from 3 to 20 and left the
+                    # facets identical at 5.
+                    #
+                    # So a confident, long imagery line now cuts on its own
+                    # authority. The LiDAR still fits every resulting facet's
+                    # plane, which is the half of the job it can actually do.
+                    ok = (LINES_LEAD
+                          or _line_is_real(c, _points_in(c, inside), ang, off_c))
                     # ...and the observation has to actually span this cell.
                     # Without this a crease seen on one bay of a roof cuts
                     # every bay, which is the fragmentation the note above the
                     # imagery-cut block has described since August.
-                    if ok and seg is not None and not _covers_cell(c, seg, ang, off):
+                    if ok and seg is not None and not _covers_cell(c, seg, ang, off_c):
                         ok = False
-                    parts = _cut(c, ang, off) if ok else []
+                    parts = _cut(c, ang, off_c) if ok else []
                     nxt.extend(parts if len(parts) >= 2 else [c])
                 cells = nxt
         except (ImportError, ValueError, AttributeError) as exc:
@@ -2172,6 +2609,27 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
 
     faces = []
     for cell in cells:
+        # ONE FACE PER CELL THE IMAGERY CUT OUT.
+        #
+        # Josh: "The image is what tells you the roof lines, the lidar just
+        # tells you slope." Cutting on imagery lines and then running RANSAC
+        # inside each cell hands the boundaries straight back to the point
+        # cloud -- the cuts happen (thousands of splits on these roofs) and the
+        # edges still land where RANSAC put them, which is why loosening the
+        # line bars from 0.90/0.35 to 0.30/0.08 took the lines used from 3 to 20
+        # and left the facets identical.
+        #
+        # So when the imagery has divided the roof, each cell IS a face and the
+        # LiDAR only fits its plane. _partition returns (polygon, plane) tuples,
+        # not dicts -- the dicts are built further down, and appending one here
+        # broke _recessed_region with a KeyError.
+        if LINES_LEAD and len(cells) > 1:
+            _sub = _points_in(cell, inside)
+            _pl = _fit_plane_robust(_sub) if len(_sub) >= MIN_POINTS_PER_FACE else None
+            if _pl is not None:
+                faces.append((Polygon(cell.exterior,
+                                      [r for r in cell.interiors]), _pl))
+                continue
         faces.extend(_partition(cell, _points_in(cell, inside)))
     if not faces:
         return []

@@ -79,28 +79,22 @@ def main():
         dem = ds.read(1)
         dem_inv = ~ds.transform
     gate_area(a.area, PointCloudSource(), dem, dem_inv, only_ids=ids)
-    # re-copy region layouts into the merged district file. A single-region
-    # deploy (Wellington) has no standing merged file -- the region IS the
-    # district, so rebuild it as a fresh copy (fresh matters: the shrink stage
-    # marks the file shrunk, and a stale copy would skip shrinking the newly
-    # patched, unshrunk features).
-    district = DATA / "panel_layouts.geojson"
-    if district.exists() and not json.load(open(district)).get("_from_region"):
-        patch(district)
-    else:
-        import shutil
-        d = json.load(open(area_paths(a.area)["panel_layouts"]))
-        d["_from_region"] = a.area
-        json.dump(d, open(district, "w"))
-        print(f"  rebuilt merged file from region {a.area}", flush=True)
+    # re-copy region layouts into the merged district file
+    patch(DATA / "panel_layouts.geojson")
 
     # solar_potential must tell the same story as the layouts it summarises.
+    # Until 31 Aug this file's docstring claimed it patched solar_potential and
+    # the code never did: a patched building got new panels on the map while
+    # the dashboard beside it kept quoting the old count, kW and generation.
+    # Ported from the Wellington copy, which had the implementation all along
+    # -- the two repos are hand-synced, so each had a piece the other lacked.
+    #
     # Splice ONLY the patched buildings' aggregates, preserving every other
     # building untouched (roof_confidence etc. live on these features).
     sp_path = DATA / "solar_potential.geojson"
     if sp_path.exists():
         import config
-        reg = json.load(open(area_paths(a.area)["panel_layouts"]))
+        reg = json.load(open(region))
         agg = {}
         for f in reg["features"]:
             p = f["properties"]
@@ -128,6 +122,11 @@ def main():
             if bid not in agg:
                 continue
             b = agg[bid]
+            # a rebuilt building with panels must not keep a stale
+            # no-estimate reason from the run it is replacing
+            if b["panel_count"] > 0:
+                f["properties"].pop("no_estimate_reason", None)
+                f["properties"].pop("reason", None)
             f["properties"].update({
                 "facet_count": b["facet_count"],
                 "obstruction_count": b["obstruction_count"],
@@ -159,7 +158,7 @@ def main():
         print(f"  tiles rebuilt ({time.time()-t0:.0f}s total)", flush=True)
 
     if a.push:
-        subprocess.run(["git", "add", "data/panel_layouts.pmtiles", "data/solar_potential.geojson"], cwd=ROOT, check=True)
+        subprocess.run(["git", "add", "data/panel_layouts.pmtiles"], cwd=ROOT, check=True)
         subprocess.run(["git", "-c", "user.name=Josh", "-c", "user.email=josh@ideatious.com",
                         "commit", "-q", "-m",
                         f"Patch buildings {' '.join(map(str, a.ids))} with current code"],

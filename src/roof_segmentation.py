@@ -1,17 +1,30 @@
-"""
-Per building footprint: extract the DSM patch, split into planar roof
-facets, drop facets over config.MAX_ROOF_SLOPE_DEG or too small to hold a
-panel.
+"""Roof segmentation: one building footprint -> planar facets.
 
-Method: multi-plane RANSAC directly on the DSM's pixel grid (each valid
-pixel inside the footprint treated as an (x, y, z) point). This is the
-grid-based variant of the standard LiDAR-roof-segmentation approach from
-the literature -- we don't have the raw point cloud locally (only the DSM
-raster), so pixel centres stand in for points. At 1m resolution a small
-garage roof is only a handful of pixels, which is the real precision
-ceiling of this approach; it's fine for the pilot, and swapping in the
-raw LAZ point cloud later (higher point density) would be a drop-in
-upgrade to `points_from_window` without touching the RANSAC/vectorize code.
+THE ENTRY POINT is segment_building_best() near the bottom: it runs the
+competing methods, applies the confidence gates, and hands every winning
+facet set to _attach_building_geometry() for the shared finishing rules.
+Everything above it is either a method or a finishing rule.
+
+Map of this module (grep the function name, line numbers rot):
+
+  1. DSM-grid RANSAC (the original 2023 method, still a competitor):
+     points_from_window .. segment_building_from_pointcloud
+  2. Image-guided partition (detect ridge lines in imagery, cut, fit):
+     _detect_interior_roof_lines .. segment_building_image_guided
+  3. Point-native segmentation (RANSAC/clustering on raw LAZ points):
+     _local_normals .. segment_building_orientation_clustered
+  4. Facet repair and physical-plausibility drops (shared finishing):
+     repair_nonplanar_facets, drop_plant_decks, drop_balcony_levels
+  5. _attach_building_geometry: the ONE funnel every facet set passes --
+     realism merge, footprint clip (machine facets only; drawn faces are
+     exempt from every rule in this module), building_geometry stamping
+  6. segment_building_best: method competition + confidence gates +
+     source precedence (owner's markup > selected faces > old paths).
+
+Historical note: this module grew rule-per-incident over a year of the
+owner's per-roof verdicts; each rule's comment carries the incident and
+the measurement that licensed it. The staged split of this file is
+tracked in docs/developers/reviewers-guide.md ("comprehension debt").
 """
 
 import sys
@@ -1626,6 +1639,63 @@ def drop_balcony_levels(facets, pc_source):
     main = max(mains, key=lambda t: t[0]["geometry"].area)
     main_area, main_h = main[0]["geometry"].area, main[2]
 
+    # THE HILLSIDE STAIRCASE. On the 10 Sep sweep #4740503 shipped 527
+    # panels with terraces full of them again: the building descends a
+    # hillside, so the LARGEST facet is itself a mid-level terrace and
+    # every "below main" test measures from the wrong floor. Josh: "the
+    # depth should be in the lidar" -- it is. Cluster ALL facet heights
+    # into levels; four or more levels stepping down in storey-sized
+    # treads (1.2-3.2 m) IS a terraced apartment block, and only levels
+    # within 4 m of the TOP one are roof. Everything lower is balcony,
+    # whatever its area, whoever fitted it.
+    heights = sorted(h for _, i, h in stats if h is not None)
+    if heights:
+        lvls = [heights[0]]
+        for h in heights[1:]:
+            if h - lvls[-1] > 0.8:
+                lvls.append(h)
+        steps = [b - a for a, b in zip(lvls, lvls[1:])]
+        stair = (len(lvls) >= 4
+                 and sum(1 for st in steps if 1.2 <= st <= 3.2) >= 3)
+        if stair:
+            top = lvls[-1]
+            kept = [f for f, i, h in stats
+                    if h is None or h > top - 4.0 or f.get("from_labels")]
+            dropped = len(facets) - len(kept)
+            if dropped:
+                print(f"  staircase: {len(lvls)} levels, dropped {dropped} "
+                      f"balcony facets below top-4m", flush=True)
+                return kept
+
+    # THE STAIRCASE RULE. #4740503's balcony terraces pass every test above:
+    # they are planar (inliers 0.83-0.97, the rule expects < 0.75) and up to
+    # 254 m2. What they cannot hide is their arrangement -- four distinct
+    # levels stepping down from the main roof, each level's area small next
+    # to it. A real lower ROOF is one level, and usually a large one. Three or
+    # more small lower levels is a terrace stack, and every facet more than
+    # 1.5 m below the main roof goes with it.
+    lower = [(f, h) for f, i, h in stats
+             if h is not None and h < main_h - 2.0]
+    if len(lower) >= 3:
+        levels = []
+        for f, h in sorted(lower, key=lambda t: t[1]):
+            for lv in levels:
+                if abs(lv["h"] - h) < 0.8:
+                    lv["area"] += f["geometry"].area
+                    break
+            else:
+                levels.append({"h": h, "area": f["geometry"].area})
+        # 0.30 was tuned against the old path's 1,114 m2 main; SAM reads the
+        # same main as 836 m2 (obstruction clipped) and the identical terrace
+        # levels then just exceed the share, so the same balconies shipped
+        # again. Half the main is still nothing like a roof level.
+        small = [lv for lv in levels if lv["area"] < 0.50 * main_area]
+        if len(small) >= 3:
+            kept = [f for f, i, h in stats
+                    if h is None or h >= main_h - 1.5]
+            if kept:
+                return kept
+
     kept = []
     for f, inl, h in stats:
         if (inl is not None and h is not None
@@ -1684,6 +1754,12 @@ def drop_roof_features(facets, pc_source):
     return out
 
 
+# Whether faces Josh drew keep their boundaries through the repair stages.
+# A flag rather than a bare condition so the change can be A/B'd honestly --
+# toggling a real switch, not two identical code paths.
+DRAWN_KEEP_BOUNDARY = True
+
+
 def _attach_building_geometry(facets, building_geom, pc_source=None, building_id=None):
     """Panel packing needs the building outline to align rows on flat roofs
     (a facet's own hull has no reliable orientation there). Attached once
@@ -1700,14 +1776,49 @@ def _attach_building_geometry(facets, building_geom, pc_source=None, building_id
     # whole-facet DROP tests still apply -- a constructed face can still be a
     # deck or a balcony.
     constructed = bool(facets) and all(f.get("constructed") for f in facets)
-    if facets and pc_source is not None and building_id is not None and not constructed:
+    # GEOMETRY JOSH DREW GETS THE SAME EXEMPTION AS CONSTRUCTED GEOMETRY, and
+    # for the reason already given above: these stages repair point-TRACED
+    # boundaries, and re-tracing a boundary that was not traced replaces it
+    # with the blobs the tracing exists to avoid.
+    #
+    # Measured on #5371108, a roof he drew as 9 faces tiling the outline
+    # exactly (zero overlap, 210.8 m2 against a 210.8 m2 footprint):
+    # facets_from_drawn_faces returned his rings unchanged, and
+    # drop_roof_features then carved 18.7 m2 -- 9% of the roof -- out of three
+    # of them, leaving 29.4 -> 22.5, 33.6 -> 30.0 and 28.9 -> 20.6. He reported
+    # it as "extra lines and planes ... it does not match what I drew", which
+    # is exactly what a difference() against LiDAR blobs does to a drawn plane.
+    #
+    # Nothing real is lost by skipping it: obstructions are detected separately
+    # and panel fitting already avoids them, so a chimney on a drawn face still
+    # takes no panels. This only stops a second mechanism re-cutting geometry he
+    # already approved.
+    authored = (DRAWN_KEEP_BOUNDARY and bool(facets)
+                and all(f.get("from_labels") for f in facets))
+    selected = (DRAWN_KEEP_BOUNDARY and bool(facets)
+                and all(f.get("from_selected") for f in facets))
+    drawn = authored          # balcony/deck drops key off this below
+    keep_boundary = constructed or authored or selected
+    if facets and pc_source is not None and building_id is not None and not keep_boundary:
         facets = _maybe_reconstruct(facets, pc_source, building_geom, building_id)
     if facets and pc_source is not None:
-        if not constructed:
+        if not keep_boundary:
             facets = repair_nonplanar_facets(facets, pc_source)
-        facets = drop_balcony_levels(facets, pc_source)
-        facets = drop_plant_decks(facets, pc_source)
-        if not constructed:
+        # Whole-facet DROP tests still apply to CONSTRUCTED facets: a fitted
+        # face can be a deck or a balcony and dropping one does not redraw the
+        # others. They do NOT apply to faces Josh drew, because he has an
+        # explicit way to say a face takes no panels -- the no-panel tag -- and
+        # these guess at the same question and overrule him. On #4735237 they
+        # took 2 of the 22 faces he drew.
+        # Josh's faces skip these -- he has an explicit no-panel tag and
+        # these guesses overruled him. The SELECTOR's faces must NOT skip
+        # them: SAM segments apartment balcony terraces as cheerfully as roof
+        # (#4740503, panels on every balcony), and no one authored those
+        # faces. Authored geometry is exempt; machine geometry is not.
+        if not authored:
+            facets = drop_balcony_levels(facets, pc_source)
+            facets = drop_plant_decks(facets, pc_source)
+        if not keep_boundary:
             facets = drop_roof_features(facets, pc_source)
     # Self-consistency refit at the one choke point every strategy passes
     # through: a facet's plane must be the best explanation of the points its
@@ -1721,7 +1832,12 @@ def _attach_building_geometry(facets, building_geom, pc_source=None, building_id
             facets = _refit_planes(facets, _ts(_pts))
         except Exception as exc:
             _note_fallback("refit_planes", building_id, exc)
-    if APPLY_REALISM_MERGE and facets:
+    # merge_uneconomic_splits combines facets it judges too small to be worth
+    # splitting. That is a reasonable guess about geometry nobody has checked
+    # and simply wrong about geometry Josh drew: on #4735237 it merged his 20
+    # remaining faces into 14, and on #5372610 his 5 into 3. He drew the split;
+    # it is not ours to undo.
+    if APPLY_REALISM_MERGE and facets and not drawn and not LINES_LEAD_KEEP:
         try:
             facets = merge_uneconomic_splits(facets)
         except Exception as exc:
@@ -1729,8 +1845,174 @@ def _attach_building_geometry(facets, building_geom, pc_source=None, building_id
             # it must not be invisible either -- a merge that always throws would
             # otherwise look exactly like a merge that never applies.
             _note_fallback("merge_uneconomic_splits", building_id, exc)
+    # A ROOF IS A PARTITION, NOT A PILE OF GUESSES. Josh, 13 Sep, on three
+    # roofs at once: "you are still drawing lots of unnecessary lines that
+    # should not be there... Roofs are simpler shapes that you are seeming
+    # to guess." The face sets shipped as soup: faces OVERLAPPING each
+    # other (double boundaries at offsets on #4735106), slivers, and
+    # internal lines separating IDENTICAL planes. Three set-level rules,
+    # authored faces exempt as always:
+    #   1. no overlaps -- larger faces claim ground first, later faces are
+    #      clipped to what remains;
+    #   2. no slivers -- a clipped remainder too small or too thin to be a
+    #      roof face is dropped (residual coverage rules already fill);
+    #   3. no line without a reason -- adjacent faces whose planes agree
+    #      merge, because a boundary must separate two DIFFERENT planes.
+    machine = [f for f in facets if not f.get("from_labels")]
+    authored = [f for f in facets if f.get("from_labels")]
+    if len(machine) >= 2:
+        from shapely.ops import unary_union as _uu
+        machine.sort(key=lambda f: -f["geometry"].area)
+        claimed = None
+        kept = []
+        for f in machine:
+            g = f["geometry"]
+            if claimed is not None:
+                try:
+                    g = g.difference(claimed)
+                except Exception:
+                    pass
+            if g.is_empty:
+                continue
+            if g.geom_type == "MultiPolygon":
+                g = max(g.geoms, key=lambda q: q.area)
+            if g.geom_type != "Polygon" or g.area < 4.0:
+                continue
+            # thinness: a remainder whose area is far below what its
+            # perimeter could enclose is a corridor, not a face
+            if g.area < 0.09 * g.exterior.length ** 2 / 16.0:
+                pass  # square-ish enough
+            if g.length > 1.0 and g.area / max(g.length, 1e-9) < 0.55:
+                continue
+            f = dict(f, geometry=g, area_m2=float(g.area))
+            kept.append(f)
+            claimed = g if claimed is None else _uu([claimed, g])
+        # like-plane adjacent merge, repeated until no pair merges
+        def _agree(a, b):
+            sa = a.get("slope_deg"); sb = b.get("slope_deg")
+            aa = a.get("aspect_deg"); ab = b.get("aspect_deg")
+            if sa is None or sb is None:
+                return False
+            if abs(sa - sb) > 5.0:
+                return False
+            if max(sa, sb) < 6.0:
+                return True          # both near-flat: aspect is noise
+            if aa is None or ab is None:
+                return False
+            return abs((aa - ab + 180) % 360 - 180) < 25.0
+        # BOUNDED: the first cut restarted the O(n^2) scan after every
+        # merge -- on #4722059 (frankton_flats industrial, hundreds of
+        # facets) that is O(n^3) with geometry ops inside, and it hung the
+        # district build for 4.5 hours until the stall guard killed it.
+        # Three sweeps catch transitive merges on every roof that matters;
+        # a roof with >80 machine facets skips the merge entirely (it has
+        # bigger problems than one extra internal line).
+        if len(kept) <= 80:
+            for _sweep in range(3):
+                did = False
+                i = 0
+                while i < len(kept):
+                    j = i + 1
+                    while j < len(kept):
+                        a, b = kept[i], kept[j]
+                        if not _agree(a, b):
+                            j += 1
+                            continue
+                        try:
+                            if a["geometry"].distance(b["geometry"]) > 0.3:
+                                j += 1
+                                continue
+                            u = _uu([a["geometry"], b["geometry"]]) \
+                                .buffer(0.05).buffer(-0.05)
+                        except Exception:
+                            j += 1
+                            continue
+                        if u.geom_type != "Polygon" or not u.is_valid:
+                            j += 1
+                            continue
+                        # angle agreement is not PLANE agreement: merging
+                        # across a gentle crease built facets that fail the
+                        # area-weighted inlier and got 693 buildings
+                        # WITHHELD for low confidence (#4744069: 1,780 live
+                        # panels -> 0). The union must still read as one
+                        # plane on its own points.
+                        if pc_source is not None:
+                            try:
+                                up = _facet_points(pc_source, u)
+                                if len(up) >= 30:
+                                    upl = fit_plane_lstsq_centered(up)
+                                    res = up[:, 2] - (upl[0] * up[:, 0]
+                                                      + upl[1] * up[:, 1]
+                                                      + upl[2])
+                                    import numpy as _np2
+                                    if float((_np2.abs(res - _np2.median(res))
+                                              < 0.18).mean()) < 0.55:
+                                        j += 1
+                                        continue
+                            except Exception:
+                                pass
+                        big = (a if a["geometry"].area >= b["geometry"].area
+                               else b)
+                        kept[i] = dict(big, geometry=u,
+                                       area_m2=float(u.area))
+                        del kept[j]
+                        did = True
+                    i += 1
+                if not did:
+                    break
+        facets = authored + kept
+    # NO FUZZY BOUNDARIES LEAVE THIS FUNNEL. Josh, on #4734994: "These
+    # roof lines are fuzzy, no roof lines are fuzzy, this makes no sense."
+    # The partition is straight by construction, but trim_to_roof and the
+    # residual-fill difference geometry can hand a facet a raster-traced
+    # exterior (928 vertices measured on that roof). Authored faces are
+    # exempt as always; everything else simplifies until it reads as
+    # drawn-with-a-ruler or loses its wobble to progressively coarser
+    # tolerance.
+    for f in facets:
+        if f.get("from_labels"):
+            continue
+        g = f.get("geometry")
+        if g is None or g.geom_type != "Polygon":
+            continue
+        if len(g.exterior.coords) > 24:
+            for tol in (0.35, 0.6, 1.0):
+                g2 = g.simplify(tol)
+                if (g2.geom_type == "Polygon" and g2.is_valid
+                        and not g2.is_empty
+                        and abs(g2.area - g.area) < 0.15 * g.area):
+                    g = g2
+                    if len(g.exterior.coords) <= 24:
+                        break
+            f["geometry"] = g
+            f["area_m2"] = float(g.area)
     for f in facets:
         f["building_geometry"] = building_geom
+    # A machine facet must live on the roof it claims. #4735613 shipped a
+    # "260 m2" facet of which 224 m2 hung OUTSIDE the outline over the
+    # neighbour -- the fitter then correctly refused most of it and the map
+    # showed a big sunny face with 6 panels. Clip to the footprint (small
+    # tolerance for eave overhang); Josh-drawn faces are exempt as always.
+    if building_geom is not None and not building_geom.is_empty:
+        tol = building_geom.buffer(0.4)
+        clipped = []
+        for f in facets:
+            if f.get("from_labels"):
+                clipped.append(f)
+                continue
+            g = f["geometry"]
+            try:
+                if g.difference(tol).area > 0.15 * g.area:
+                    gi = g.intersection(tol)
+                    if gi.geom_type == "MultiPolygon" and not gi.is_empty:
+                        gi = max(gi.geoms, key=lambda q: q.area)
+                    if gi.geom_type != "Polygon" or gi.area < 4.0:
+                        continue
+                    f = dict(f, geometry=gi, area_m2=float(gi.area))
+            except Exception:
+                pass
+            clipped.append(f)
+        facets = clipped
     return facets
 
 
@@ -1949,7 +2231,53 @@ USE_PARTITION = True
 # failed read of the roof and the plane-arrangement path gets to compete.
 # 0.85 mirrors roof_partition.ACCEPT_INLIER -- one face passes at 85%, so a
 # whole building comfortably under it means faces are spanning real folds.
+
+# HOW WELL DOES A CANDIDATE HONOUR THE LINES THE IMAGERY FOUND?
+#
+# explained_fraction asks only whether the facets hug the point cloud, and on
+# the roofs Josh flagged that is exactly the wrong question. Measured on his
+# five: the partition scores 0.879, 0.935 and 0.957 on roofs whose shape he
+# calls plainly wrong, so it returns before any competitor is even tried, and
+# retraining the detector, loosening the line bars and guarding flat roofs all
+# changed nothing because none of them ever got a turn.
+#
+# This asks the other half of the question the architecture was built on --
+# imagery finds the lines, LiDAR fits the angles. A candidate that puts facet
+# edges where the imagery saw creases is reading the roof; one that does not is
+# hugging points.
+LINE_MATCH_M = 1.0
+
+
+def line_agreement(facets, segs):
+    """Fraction of detected roof lines that lie along some facet edge."""
+    if not facets or not segs:
+        return None
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+    try:
+        edges = unary_union([f["geometry"].exterior for f in facets
+                             if f.get("geometry") is not None])
+    except Exception:
+        return None
+    hit = tot = 0.0
+    for s in segs:
+        try:
+            ln = LineString([(s[0], s[1]), (s[2], s[3])])
+            if ln.length <= 0:
+                continue
+            tot += ln.length
+            hit += ln.intersection(edges.buffer(LINE_MATCH_M)).length
+        except Exception:
+            continue
+    return (hit / tot) if tot > 0 else None
+
+
 PARTITION_GOOD_ENOUGH = 0.85
+# ...and it must also put its edges where the imagery saw creases.
+PARTITION_LINE_MIN = 0.45
+# Candidate: keep the structure the imagery cuts produced instead of merging
+# it away. Josh judges this from the render; the numbers cannot.
+LINES_LEAD_KEEP = __import__('os').environ.get('SOLAR_LINES_LEAD', '0') == '1'
 
 # How far behind the partition (points-explained) the skeleton reconstruction
 # may fall and still win on being constructible geometry. See _partition_facets.
@@ -2043,8 +2371,41 @@ def _partition_facets(pc_source, building_geom, building_id, imagery_ds=None):
         # hip network it has misread while the correct geometry scores lower.
         if faces and any(f.get("from_labels") for f in faces):
             return faces
+        if faces and any(f.get("from_selected") for f in faces):
+            # THROUGH the attach stage, unlike Josh's own faces: its whole-
+            # facet drops (balcony staircase, plant decks) must run on
+            # machine-chosen faces -- #4740503 shipped 850 panels over
+            # apartment balconies because this return used to skip them.
+            # keep_boundary still holds, so nothing reshapes the geometry.
+            return _attach_building_geometry(faces, building_geom,
+                                             pc_source, building_id)
 
-        if score >= PARTITION_GOOD_ENOUGH:
+        # THE IMAGERY DECIDES WHERE THE LINES ARE; THE LIDAR ONLY SETS SLOPE.
+        #
+        # Josh: "you need to place higher importance to where the lines are
+        # visually in the image. The image is what tells you the roof lines, the
+        # lidar just tells you slope."
+        #
+        # explained_fraction alone cannot see that. On the roofs he flagged the
+        # partition scored 0.879, 0.935 and 0.957 -- comfortably "good enough"
+        # -- and returned before any competitor was tried, on roofs whose shape
+        # he calls plainly wrong. That short-circuit is why retraining the
+        # detector, loosening the line bars and guarding flat roofs each changed
+        # nothing: none of them ever got a turn.
+        #
+        # So a partition that hugs the points but ignores the creases the
+        # imagery found no longer ends the search. It stays a candidate and is
+        # judged against the others on both counts.
+        _segs = []
+        try:
+            from src.roof_line_source import model_lines as _ml
+            _segs = [t[4] for t in (_ml(building_id, building_geom) or [])
+                     if len(t) > 4 and t[4]]
+        except Exception:
+            _segs = []
+        _agree = line_agreement(faces, _segs)
+        if score >= PARTITION_GOOD_ENOUGH and (_agree is None
+                                               or _agree >= PARTITION_LINE_MIN):
             return faces
         # The cut partition failed to read this roof. Two competitors get a
         # shot, judged on the same points-explained metric.

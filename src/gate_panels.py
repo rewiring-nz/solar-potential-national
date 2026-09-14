@@ -178,6 +178,37 @@ def gate_area(name, pc, dem, dem_inv, only_ids=None):
     print(msg)
 
 
+# Workers this machine can actually feed, rather than a flat 4.
+#
+# The old flat cap dated from workers that cached EIGHT decoded LiDAR tiles
+# each; eight of those crashed a 64 GB machine on Wellington's dense survey.
+# The cache is three tiles now, and a running worker measures 0.70 GB RES on
+# the VM -- of which the wide DEM every worker loads is only 0.07 GB. So the
+# flat 4 was leaving a 16-core box at 25% while the gate is the single longest
+# stage in the build (1240s on town_west_fernhill, against 362s for the layout
+# builder that was already running ten workers).
+#
+# PER_WORKER_GB is set well above the 0.70 GB measured here on purpose: a
+# denser survey decodes fatter tiles, and this stage is the one with a crash in
+# its history. Bounding by RAM rather than hardcoding a number is the actual
+# fix -- a smaller machine now scales itself down instead of trusting a
+# constant that was tuned on someone else's hardware.
+GATE_PER_WORKER_GB = 1.25
+GATE_USABLE_RAM_FRACTION = 0.55   # headroom for the parent, which holds every feature
+GATE_MAX_JOBS = 12                # past this the parent-side merge is the bottleneck
+
+
+def _gate_jobs():
+    import os
+    try:
+        total_gb = (os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+                    / 1024 ** 3)
+    except (ValueError, OSError, AttributeError):
+        return 4                  # unknown machine: the old conservative value
+    by_ram = int(total_gb * GATE_USABLE_RAM_FRACTION // GATE_PER_WORKER_GB)
+    return max(1, min(by_ram, (os.cpu_count() or 2) - 1, GATE_MAX_JOBS))
+
+
 _W = {}
 
 
@@ -241,7 +272,7 @@ def gate_area_parallel(name, jobs=None):
             dropped["sparse"] += 1
         else:
             todo.append(json.dumps(f))
-    jobs = jobs or max(1, min(4, (os.cpu_count() or 2) - 1))
+    jobs = jobs or _gate_jobs()
     # Spawn, never fork. On Linux the default is fork, and forked children
     # inherit the parent's initialised GDAL/rasterio state -- workers segfault
     # and the pool dies with BrokenProcessPool (seen on the VM's first run).
