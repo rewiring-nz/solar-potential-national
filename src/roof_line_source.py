@@ -62,6 +62,7 @@ Model predictions are read from:
 """
 
 import json
+import os
 import math
 import sys
 from pathlib import Path
@@ -69,7 +70,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-VISION_DIR = DATA_DIR / "vision_lines"
+VISION_DIR = Path(os.environ.get("SOLAR_VISION_DIR",
+                                 str(DATA_DIR / "vision_lines")))
+# Overridable so a retrained detector can be scored against the live one
+# without overwriting the predictions the build currently uses.
 
 # A predicted line below this confidence is not offered at all.
 #
@@ -96,7 +100,7 @@ VISION_DIR = DATA_DIR / "vision_lines"
 # ones. Precision matters more than recall here: a wrong cut fragments a roof
 # and is what got imagery cuts called "actively harmful" once before, while a
 # missed cut just leaves the LiDAR partition to do what it already does.
-MIN_SCORE = 0.90
+MIN_SCORE = float(os.environ.get("SOLAR_MIN_SCORE", "0.90"))
 
 # A predicted line shorter than this fraction of sqrt(roof area) is not cut on.
 #
@@ -124,7 +128,7 @@ MIN_SCORE = 0.90
 #
 # This is the first change that helps roofs he has NOT labelled. Everything
 # else fixed today only reaches the 114 he drew.
-MIN_LEN_FRAC = 0.35
+MIN_LEN_FRAC = float(os.environ.get("SOLAR_MIN_LEN_FRAC", "0.35"))
 
 
 def _to_angle_offset(x1, y1, x2, y2, footprint):
@@ -221,7 +225,7 @@ def has_model(building_id):
 # "unmistakable in 0.1 m imagery and nearly absent from a point cloud".
 _LABELS_CACHE = [None]
 LABELS_PATH = DATA_DIR / "roof_labels.json"
-FOLD_KINDS = {"ridge", "valley", "cliff"}
+FOLD_KINDS = {"ridge", "valley", "cliff", "hip"}
 # Flags that say the drawn geometry describes nothing trustworthy. bad_outline
 # is deliberately NOT here: an offset outline is exactly the case where the
 # drawn lines are the more reliable description of the roof.
@@ -290,6 +294,36 @@ def drawn_faces(building_id):
             out.append({"ring": [(float(x), float(y)) for x, y in ring],
                         "m2": float(f.get("m2") or 0.0),
                         "usable": bool(f.get("usable", True))})
+    return out
+
+
+def drawn_obstruction_polys(building_id):
+    """The obstructions Josh marked, as world polygons for the panel fitter.
+
+    He drew 549 of them and, until 6 Sep, nothing at fitting time read one:
+    they scored the detector and were then ignored, so panels sat on vents he
+    had personally boxed ("panels clearly overlapping obstructions",
+    #5372565). The fitter takes world polygons; these are exactly that.
+    """
+    if building_id is None:
+        return []
+    lab = _labels().get(str(building_id))
+    if not lab or lab.get("problem") in VOID_FLAGS:
+        return []
+    out = []
+    for o in lab.get("obstructions") or []:
+        ring = o.get("ring")
+        if not ring or len(ring) < 3:
+            continue
+        try:
+            from shapely.geometry import Polygon
+            poly = Polygon([(q[0], q[1]) for q in ring])
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+            if not poly.is_empty and poly.area > 0.05:
+                out.append(poly)
+        except Exception:
+            continue
     return out
 
 

@@ -37,6 +37,7 @@ DATA_DIR = ROOT / "data"
 LABELS = DATA_DIR / "roof_labels.json"
 PROGRESS = ROOT / "label_progress.json"          # served beside mark_roofs.html
 BUNDLE = DATA_DIR / "label_set" / "mark_roofs.html"
+BUNDLE_PAD_M = 4.0        # must match PAD_M in build_label_bundle.py
 
 VALID_KINDS = {"ridge", "valley", "cliff"}
 # A roof can be wrong in ways geometry cannot express. "absent" feeds
@@ -49,16 +50,77 @@ VALID_PROBLEMS = {"absent", "not_building", "bad_outline", "unclear"}
 OUTSIDE_TOLERANCE_M = 2.0
 
 
-def bundle_roofs():
-    """id -> {area, bounds} straight from the bundle people are marking, so the
-    checks are against what they were actually shown."""
-    if not BUNDLE.exists():
-        return {}
-    m = re.search(r"const ROOFS = (\[.*?\]);\n", BUNDLE.read_text(), re.S)
-    if not m:
-        return {}
-    return {str(r["id"]): {"area": r["area"], "bounds": r["bounds"]}
-            for r in json.loads(m.group(1))}
+def bundle_roofs(areas=()):
+    """id -> {area, bounds} for every roof that could legitimately be marked.
+
+    WHY THIS IS NOT JUST THE CURRENT BUNDLE ANY MORE. It used to read
+    mark_roofs.html, on the reasoning that labels should be checked against what
+    the labeller was actually shown. That is right until the bundle is rebuilt:
+    on 5 Sep the 156-roof bundle was replaced by a 36-roof queue, and Josh's
+    next return was 18 roofs of real work rejected as "not one of the roofs in
+    the bundle" -- including roofs from the bundle then live on Pages. The check
+    was measuring which file happened to sit on disk, not whether the labels
+    were sound.
+
+    The building outlines are the durable authority: a roof either exists in the
+    survey or it does not, and that answer does not change when a bundle is
+    rebuilt. Bounds are the footprint padded exactly as build_label_bundle pads
+    its crops, so the wrong-CRS and wrong-building checks below behave the same.
+
+    Every bundle on disk is still read first, so roofs are checked against the
+    exact crop they were shown in wherever that is known.
+    """
+    known = {}
+    for b in sorted((DATA_DIR / "label_set").glob("mark*.html")) + [BUNDLE]:
+        try:
+            m = re.search(r"const ROOFS = (\[.*?\]);\n", b.read_text(), re.S)
+        except Exception:
+            continue
+        if not m:
+            continue
+        for r in json.loads(m.group(1)):
+            known.setdefault(str(r["id"]),
+                             {"area": r["area"], "bounds": r["bounds"]})
+
+    try:
+        import geopandas as gpd
+        from src.region_build import area_paths, all_areas
+    except Exception:
+        return known
+    for name in (areas or (["pilot"] + [a for a in all_areas() if a != "pilot"])):
+        try:
+            pth = area_paths(name)
+        except Exception:
+            continue
+        dd = pth["dir"] / "building_outlines_dedup.geojson"
+        src = dd if dd.exists() else pth["outlines"]
+        if not src.exists():
+            continue
+        try:
+            gdf = gpd.read_file(src)
+        except Exception:
+            continue
+        for oid, geom in zip(gdf["building_id"], gdf.geometry):
+            k = str(int(oid))
+            if k in known or geom is None:
+                continue
+            minx, miny, maxx, maxy = geom.bounds
+            known[k] = {"area": name,
+                        "bounds": [minx - BUNDLE_PAD_M, miny - BUNDLE_PAD_M,
+                                   maxx + BUNDLE_PAD_M, maxy + BUNDLE_PAD_M]}
+    return known
+
+
+def _queue_n():
+    """How many roofs the live queue offers -- the denominator people care
+    about. `known` is now every roof in the survey, so a percentage against it
+    says nothing about progress."""
+    try:
+        m = re.search(r"const ROOFS = (\[.*?\]);\n",
+                      (ROOT / "mark_roofs.html").read_text(), re.S)
+        return len(json.loads(m.group(1))) if m else 0
+    except Exception:
+        return 0
 
 
 def ring_area(ring):
@@ -141,9 +203,20 @@ def main():
                     help="merge buildings that failed their checks anyway")
     a = ap.parse_args()
 
-    known = bundle_roofs()
+    # Peek at the incoming files for which regions they touch, so a return of
+    # 20 roofs does not read every outline file in the district.
+    _areas = set()
+    for f in a.files:
+        try:
+            d = json.loads(Path(f).read_text())
+        except Exception:
+            continue
+        for r in (d.get("buildings") or d).values():
+            if isinstance(r, dict) and r.get("area"):
+                _areas.add(r["area"])
+    known = bundle_roofs(sorted(_areas))
     if not known:
-        print(f"cannot read the bundle at {BUNDLE} -- checks would be blind")
+        print("cannot identify any known roofs -- checks would be blind")
         return 2
 
     merged = {}
@@ -216,7 +289,7 @@ def main():
     total_obs = sum(len(b.get("obstructions") or []) for b in merged.values())
     print(f"\n{added} new, {replaced} replaced, {skipped} skipped")
     print(f"holding {len(merged)} roofs / {total_lines} lines / {total_obs} obstructions"
-          f"  ({len(merged) / len(known):.0%} of the {len(known)} in the bundle)")
+          f"  (the queue on Pages holds {_queue_n()} roofs)")
 
     if a.dry_run:
         print("\n--dry-run: nothing written")

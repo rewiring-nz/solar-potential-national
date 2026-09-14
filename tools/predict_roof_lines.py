@@ -90,10 +90,20 @@ def segments_from_mask(prob, transform_xy, thr=THRESHOLD):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--model", default=str(MODEL),
+                    help="which detector to run (default: the v1 model)")
+    ap.add_argument("--out", default=None,
+                    help="where to write predictions; defaults beside the "
+                         "existing ones, so pass a directory to A/B a model "
+                         "without overwriting what the build currently uses")
     ap.add_argument("--region", default=None)
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--threshold", type=float, default=THRESHOLD)
+    ap.add_argument("--extract", choices=["old", "new"], default="old",
+                    help="new = skeleton-traced, junction-split, peak-snapped "
+                         "lines (src/line_extract); old = component principal "
+                         "axes, kept as the deployed baseline")
     a = ap.parse_args()
 
     import numpy as np
@@ -105,10 +115,12 @@ def main():
     from src.region_build import area_paths, all_areas
     import train_line_model as T
 
-    if not MODEL.exists():
-        print(f"no model at {MODEL} -- train one first")
+    model_path = Path(a.model)
+    out_dir = Path(a.out) if a.out else OUT
+    if not model_path.exists():
+        print(f"no model at {model_path} -- train one first")
         return 1
-    ck = torch.load(MODEL, map_location="cpu", weights_only=False)
+    ck = torch.load(model_path, map_location="cpu", weights_only=False)
     model = T.build_unet(ck.get("pretrained", False))
     model.load_state_dict(ck["state_dict"])
     device = "mps" if torch.backends.mps.is_available() else (
@@ -122,7 +134,7 @@ def main():
         print("give --region NAME or --all")
         return 2
 
-    OUT.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     total_b = total_l = 0
     for region in regions:
         p = area_paths(region)
@@ -161,16 +173,26 @@ def main():
                 return (b[0] + px / w * (b[2] - b[0]),
                         b[1] + (1 - py / h) * (b[3] - b[1]))
 
-            lines, scores = [], []
-            for k in range(pr.shape[0]):
-                for seg, sc in segments_from_mask(pr[k], to_world, a.threshold):
-                    lines.append([round(v, 3) for v in seg])
-                    scores.append(round(sc, 3))
+            lines, scores, kinds = [], [], []
+            if a.extract == "new":
+                from src.line_extract import extract as _extract, clip_to
+                for r in clip_to(_extract(pr, to_world), geom):
+                    lines.append([round(v, 3) for v in r["seg"]])
+                    scores.append(r["score"])
+                    kinds.append(r["kind"])
+            else:
+                # the old path never recorded WHICH channel a line came from,
+                # so ridge/valley/cliff was lost the moment it was detected
+                for k in range(pr.shape[0]):
+                    for seg, sc in segments_from_mask(pr[k], to_world, a.threshold):
+                        lines.append([round(v, 3) for v in seg])
+                        scores.append(round(sc, 3))
+                        kinds.append(["ridge", "valley", "cliff"][k])
             if not lines:
                 continue
-            (OUT / f"{bid}.json").write_text(json.dumps({
-                "lines": lines, "scores": scores,
-                "model": "roof_lines_v1"}))
+            (out_dir / f"{bid}.json").write_text(json.dumps({
+                "lines": lines, "scores": scores, "kinds": kinds,
+                "model": model_path.stem, "extract": a.extract}))
             n_b += 1
             n_l += len(lines)
             if a.limit and n_b >= a.limit:

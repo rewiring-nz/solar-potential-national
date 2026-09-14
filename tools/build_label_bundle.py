@@ -78,6 +78,15 @@ def crop(imagery, bounds):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ids", nargs="*", type=int, default=None)
+    ap.add_argument("--artifact", action="store_true",
+                    help="strip the document wrapper so the file can be "
+                         "published as an Artifact, which supplies its own")
+    ap.add_argument("--bench-n", type=int, default=0, dest="bench_n",
+                    help="how many unmarked roofs to include (0 = all). The "
+                         "roofs already drawn always come too, for context")
+    ap.add_argument("--bench", action="store_true",
+                    help="the benchmark cluster: the roofs already marked plus "
+                         "every unmarked one around them, opened as a work queue")
     ap.add_argument("--max", type=int, default=None)
     ap.add_argument("--out", default="mark_roofs.html")
     a = ap.parse_args()
@@ -96,6 +105,77 @@ def main():
 
     ids = a.ids
     why = {}
+    # THE BENCHMARK CLUSTER AS A WORK QUEUE. Josh: "only shows the marked
+    # rooftops and then the ones in the area you want me to do. So I can just
+    # press next unmarked".
+    #
+    # Marking scattered roofs across the district trains the detector well and
+    # leaves the scoreboard thin -- tools/bench.py scores 152 roofs of which
+    # only 11 are drawn, which can see a large regression and not a small one.
+    # The same effort spent inside one cluster turns it into dense ground truth.
+    # The marked roofs come along so their geometry is visible for context; the
+    # bundle opens on the first unmarked one.
+    if a.bench and ids is None:
+        bp = DATA_DIR / "bench_ids.txt"
+        if not bp.exists():
+            print("no data/bench_ids.txt -- run tools/bench.py --make first")
+            return 2
+        ids = [int(x) for x in bp.read_text().split() if x.strip()]
+        # RIGHT-SIZE THE ASK. Josh: "Does it need to be 152? That is a lot and I
+        # imagine diminishing returns?" It does not, and the returns were
+        # measured rather than guessed: bootstrapping the score over his 84
+        # drawn roofs, the 95% interval is +/-6.2 points at 10 roofs, +/-4.3 at
+        # 25 and +/-2.3 at 84. The knee is around 25-30; past that a day of
+        # drawing buys well under a point.
+        #
+        # The other roofs stay in the BENCHMARK -- they are built and scored
+        # automatically for fragmentation and panel counts, which costs him
+        # nothing. Only the drawn subset needs to grow, so only it is bundled.
+        #
+        # SIMPLEST FIRST, because the scarce resource is Josh's time, not the
+        # roof count. Josh: "Why don't we fix simple roofs first which are
+        # faster for me to draw?" -- and the data agrees more strongly than the
+        # argument did. Across his 84 drawn roofs:
+        #
+        #   simple (2-3 faces)   24 roofs   93.9% of faces exact    4.4 lines/roof
+        #   medium (4-6)         31         95.9%                  10.6
+        #   complex (7+)         29         96.7%                  33.1
+        #
+        # Simple roofs are the WORST band, so they are not already solved, and
+        # they cost a fifth of the drawing. Per line he draws they return about
+        # 1.1 faces of signal against 0.16 for a complex roof -- roughly seven
+        # times the value of the same hour. Ordering by complexity descending,
+        # which is what this did first, optimised faces per ROOF and ignored
+        # that a complex roof is seven roofs' worth of work.
+        if a.bench_n:
+            _lab = json.loads((DATA_DIR / "roof_labels.json").read_text())["buildings"] \
+                if (DATA_DIR / "roof_labels.json").exists() else {}
+            done = [i for i in ids if _lab.get(str(i), {}).get("complete")]
+            todo = [i for i in ids if i not in set(done)]
+
+            def _weight(bid):
+                vp = DATA_DIR / "vision_lines" / f"{bid}.json"
+                nlines = 0
+                if vp.exists():
+                    try:
+                        nlines = len(json.loads(vp.read_text()).get("lines") or [])
+                    except Exception:
+                        nlines = 0
+                return (nlines if nlines else 999)
+            todo.sort(key=_weight)
+            # ROOFS JOSH HAS POINTED AT COME FIRST, whatever their complexity.
+            # The ordering below is a proxy for his drawing effort and it is a
+            # rough one: #4734696 is a plain hip roof that the detector fires 20
+            # lines at, so it sorted to the back of a "simplest first" queue
+            # while being both quick to draw and visibly wrong on the map. A
+            # roof he has looked at and called wrong is worth more than any
+            # proxy, so those are pulled to the front.
+            flag = DATA_DIR / "flagged_ids.txt"
+            if flag.exists():
+                want = [int(x) for x in flag.read_text().split() if x.strip()]
+                todo = ([b for b in want if b in todo]
+                        + [b for b in todo if b not in set(want)])
+            ids = done + todo[:a.bench_n]
     if ids is None:
         q = OUT_DIR / "queue.json"
         if not q.exists():
@@ -112,12 +192,43 @@ def main():
     if a.max:
         ids = ids[:a.max]
 
+    _saved = {}
+    lp = DATA_DIR / "roof_labels.json"
+    if lp.exists():
+        for k, v in json.loads(lp.read_text()).get("buildings", {}).items():
+            if not (v.get("lines") or v.get("obstructions")
+                    or v.get("nopanel") or v.get("problem")):
+                continue
+            _saved[int(k)] = {
+                "lines": v.get("lines") or [],
+                "obstructions": v.get("obstructions") or [],
+                "nopanel": v.get("nopanel") or [],
+                "complete": bool(v.get("complete")),
+                "problem": v.get("problem"),
+            }
+
     truth = {}
     tp = DATA_DIR / "roof_truth.json"
     if tp.exists():
         for r in json.loads(tp.read_text()).get("roofs", []):
             if r.get("building_id"):
                 truth[int(r["building_id"])] = r
+
+    # ADDRESSES COME FROM THE BUILD, NOT FROM roof_truth.json. Josh: "Give me
+    # the address in the title for the building". roof_truth carries 28 roofs;
+    # the built solar_potential.geojson carries an address for all 15,353,
+    # because add_addresses runs over the whole district. Reading truth first
+    # meant almost every roof showed its region name instead of a street.
+    addr = {}
+    sp = DATA_DIR / "solar_potential.geojson"
+    if sp.exists():
+        try:
+            for f in json.loads(sp.read_text()).get("features", []):
+                pr = f.get("properties") or {}
+                if pr.get("building_id") is not None and pr.get("address"):
+                    addr[int(pr["building_id"])] = pr["address"]
+        except Exception:
+            pass
 
     # WHAT THE PIPELINE CURRENTLY THINKS THE ROOF IS.
     #
@@ -198,7 +309,7 @@ def main():
             t = truth.get(bid, {})
             roofs.append({
                 "id": bid, "area": name,
-                "address": t.get("address", ""),
+                "address": t.get("address") or addr.get(bid, ""),
                 "m2": round(g.area, 1),
                 "ll": [round(lat, 6), round(lon, 6)],
                 "bounds": [round(v, 2) for v in b],
@@ -213,6 +324,13 @@ def main():
                 "why": why.get(bid, []),
                 "built": built_cache.setdefault(
                     name, _built_facets(name)).get(bid, []),
+                # WORK ALREADY DONE TRAVELS WITH THE BUNDLE. The tool keeps
+                # marks in the browser's local storage, so a fresh bundle on a
+                # fresh machine shows every roof as untouched -- including the
+                # ones Josh has already drawn, which he would then draw again
+                # and "next unmarked" would stop on. Seeding from
+                # roof_labels.json makes the bundle carry its own history.
+                "saved": _saved.get(bid),
                 "jpg": jpg,
             })
             placed = True
@@ -224,6 +342,27 @@ def main():
 
     html = (ROOT / "tools" / "label_template.html").read_text()
     html = html.replace("/*__ROOFS__*/", json.dumps(roofs, separators=(",", ":")))
+    # Replaces the placeholder AND the "{}" default after it, so the template
+    # stays valid JavaScript when opened directly and valid once substituted.
+    html = html.replace("/*__OPTS__*/{}",
+                        json.dumps({"unmarkedOnly": bool(a.bench)}))
+    # PUBLISHED ONLINE THE PAGE IS A FRAGMENT, NOT A DOCUMENT. The Artifact
+    # host wraps whatever it is given in its own doctype/head/body, so shipping
+    # ours nests a second document inside the first. Everything between the
+    # tags is kept verbatim -- title, styles and script are all still there.
+    #
+    # Worth it because online the tool reaches claude.use("db") and saves each
+    # roof server-side as it is drawn, instead of trusting one browser's local
+    # storage with a day of markup.
+    if a.artifact:
+        import re
+        html = re.sub(r"(?is)<!doctype[^>]*>", "", html)
+        html = re.sub(r"(?is)</?html[^>]*>", "", html)
+        html = re.sub(r"(?is)</?head[^>]*>", "", html)
+        html = re.sub(r"(?is)</?body[^>]*>", "", html)
+        html = re.sub(r"(?is)<meta[^>]*charset[^>]*>", "", html)
+        html = html.strip()
+
     out = OUT_DIR / a.out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html)
