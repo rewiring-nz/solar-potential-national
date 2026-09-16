@@ -400,3 +400,29 @@ def provenance(building_id):
         return f"model:{d.get('model', 'unknown')}"
     except Exception:
         return "model:unreadable"
+
+
+def drawn_line_keepouts(building_id, width=None):
+    """Josh's fold lines as thin no-panel strips for the fitter.
+
+    Found via #4735237 (17 Sep): his two big faces carry 79 internal
+    ridge/valley/cliff lines, but lines that do not close into a cell never
+    become facet boundaries, so 264 of 450 panels tiled straight across
+    lines he drew. A drawn line is a fold in the real roof whether or not
+    the partition split on it; panels must not span it. Buffered by the
+    ridge setback so the clearance matches a machine-found ridge's.
+    """
+    segs = drawn_segments(building_id)
+    if not segs:
+        return []
+    if width is None:
+        import config
+        width = config.RIDGE_SETBACK_M
+    from shapely.geometry import LineString
+    out = []
+    for x1, y1, x2, y2 in segs:
+        try:
+            out.append(LineString([(x1, y1), (x2, y2)]).buffer(width))
+        except Exception:
+            pass
+    return out

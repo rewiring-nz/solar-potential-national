@@ -104,6 +104,11 @@ def _one(bid):
                 _dobs = drawn_obstruction_polys(bid)
                 if _dobs:
                     obs = [o for o in _dobs if o.intersects(f["geometry"])]
+                # Mirrors build_layout_geojson: drawn fold lines are no-panel
+                # strips even where the partition did not split (#4735237).
+                from src.roof_line_source import drawn_line_keepouts
+                obs = obs + [k for k in drawn_line_keepouts(bid)
+                             if k.intersects(f["geometry"])]
             except Exception:
                 pass
         except Exception:

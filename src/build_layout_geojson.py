@@ -445,6 +445,13 @@ def _build_one_at(building_id, nudge_m):
                 # he has spoken, only he speaks.
                 obstructions = [o for o in _drawn_obs
                                 if o.intersects(f["geometry"])]
+            from src.roof_line_source import drawn_line_keepouts
+            # His fold lines are no-panel strips even where the partition
+            # did not split on them (#4735237: 264/450 panels crossed drawn
+            # lines inside two big derived faces). Keepouts, not verdicts.
+            obstructions = obstructions + [
+                k for k in drawn_line_keepouts(f.get("building_id"))
+                if k.intersects(f["geometry"])]
         except Exception:
             pass
         siblings = [other for other in facets if other is not f]
