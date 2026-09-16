@@ -374,7 +374,9 @@ def merge_coplanar(facets, pts):
         for i in range(len(facets)):
             for j in range(i + 1, len(facets)):
                 f, g = facets[i], facets[j]
-                if not f["geometry"].buffer(0.05).intersects(g["geometry"]):
+                # dwithin == buffer(d).intersects, minus 291M buffer builds
+                # (measured: 78% of a 4.5h giant-roof rebuild, 16 Sep).
+                if not shapely.dwithin(f["geometry"], g["geometry"], 0.05):
                     continue
                 if not _same_surface(f, g):
                     continue
@@ -716,7 +718,7 @@ def merge_to_earn_setback(facets, pts):
         for i in range(len(facets)):
             for j in range(i + 1, len(facets)):
                 f, g = facets[i], facets[j]
-                if not f["geometry"].buffer(0.3).intersects(g["geometry"]):
+                if not shapely.dwithin(f["geometry"], g["geometry"], 0.3):
                     continue
                 if _plane_angle(f, g) > BRIDGE_ANGLE_DEG:
                     continue
@@ -809,10 +811,13 @@ def reconstruct(building_id, outline, pts, seed=0, with_obstructions=True):
         moved = 0
         for k, (cell, lab_k, sub) in enumerate(cell_label):
             share = {}
+            cell_pad = cell.buffer(0.05)   # once per cell, not per pair
             for m, (other, lab_m, _) in enumerate(cell_label):
                 if m == k or lab_m == lab_k:
                     continue
-                b = cell.buffer(0.05).intersection(other).area
+                if not shapely.dwithin(cell, other, 0.05):
+                    continue
+                b = cell_pad.intersection(other).area
                 if b > 0:
                     share[lab_m] = share.get(lab_m, 0.0) + b
             if not share:
