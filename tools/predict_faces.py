@@ -310,10 +310,16 @@ def main():
                 conf_hyp = getattr(hypothesis_faces, "last_confidence", 0.0)
             except Exception:
                 f_hyp, conf_hyp = [], 0.0
+        sc_hyp = score_candidate(f_hyp, geom, P, to_px, pts, inv_px) \
+            if f_hyp and conf_hyp >= 0.55 else 0.0
         if f_hyp and conf_hyp >= 0.55 \
-                and max(sc_sam, sc_line, sc_lid) < 0.50:
-            pick, faces = "hypothesis", f_hyp
-            score = score_candidate(f_hyp, geom, P, to_px, pts, inv_px)
+                and (max(sc_sam, sc_line, sc_lid) < 0.50
+                     or (os.environ.get("SOLAR_HYP_COMPETE") == "1"
+                         and sc_hyp > max(sc_sam, sc_line, sc_lid))):
+            # SOLAR_HYP_COMPETE: experimental -- a confident simple form may
+            # also beat a >=0.50 incumbent on raw score, not just fill the
+            # weak class. Benched before any default change.
+            pick, faces, score = "hypothesis", f_hyp, sc_hyp
         elif f_lid and dark and sc_lid >= 0.30 \
                 and sc_lid >= max(sc_sam, sc_line) - 0.10:
             pick, faces, score = "lidar", f_lid, sc_lid
