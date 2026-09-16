@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-RID_DIR = ROOT / "data" / "rid2" / "dataset"
+RID_DIR = ROOT / "data" / "rid2"
 OUT_DIR = ROOT / "data" / "training_rid2"
 KINDS = ["ridge", "valley", "cliff", "hip"]
 PATCH, STRIDE, LINE_WIDTH_PX = 128, 64, 3
@@ -95,17 +95,10 @@ def main():
     from shapely.ops import unary_union
 
     # annotations: one geojson with segment polygons + orientation class
-    cands = list(RID_DIR.rglob("*.json")) + list(RID_DIR.rglob("*.geojson"))
-    print("annotation candidates:", [c.name for c in cands[:10]])
-    seg_files = [c for c in cands if "segment" in c.name.lower()]
-    if not seg_files:
-        print("no segment geojson found -- inspect the layout")
-        return
-    feats = []
-    for sf in seg_files:
-        d = json.load(open(sf))
-        feats.extend(d.get("features") or [])
-    print(f"{len(feats)} segment polygons from {len(seg_files)} file(s)")
+    seg_file = RID_DIR / "geometries" / "gdf_all_segments.json"
+    d = json.load(open(seg_file))
+    feats = d.get("features") or []
+    print(f"{len(feats)} segment polygons from {seg_file.name}")
 
     # group by image tile via geo images: each tif named cx_cy in EPSG28992
     geo_dir = next((d for d in RID_DIR.rglob("geo_images") if d.is_dir()),
@@ -123,15 +116,21 @@ def main():
             if g.geom_type != "Polygon" or g.area < 2.0:
                 continue
             props = f.get("properties") or {}
-            cls = (props.get("class") or props.get("label")
-                   or props.get("orientation") or props.get("azimuth"))
+            # continuous azimuth in degrees where present; 'flat' has none
+            if str(props.get("label", "")).lower() == "flat":
+                az = None
+            else:
+                try:
+                    az = float(props.get("azimuth")) % 360.0
+                except (TypeError, ValueError):
+                    az = AZ.get(str(props.get("label", "")).upper().strip())
             polys.append(g)
-            metas.append(str(cls))
+            metas.append(az)
         except Exception:
             continue
     tree = STRtree(polys)
-    print(f"{len(polys)} usable segment polygons; classes sample:",
-          sorted(set(metas))[:20])
+    n_flat = sum(1 for m in metas if m is None)
+    print(f"{len(polys)} usable segment polygons ({n_flat} flat)")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     n_patch = 0
@@ -176,8 +175,7 @@ def main():
                 mid2 = ((np.array(cc[(k0 + 1) % 4])
                          + np.array(cc[(k0 + 2) % 4])) / 2)
                 shared = LineString([tuple(mid1), tuple(mid2)])
-                az_i = AZ.get(str(ci).upper().strip())
-                az_j = AZ.get(str(cj).upper().strip())
+                az_i, az_j = ci, cj   # already degrees or None (flat)
                 try:
                     union = unary_union([gi, gj])
                     if union.geom_type != "Polygon":

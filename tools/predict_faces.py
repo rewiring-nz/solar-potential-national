@@ -188,7 +188,13 @@ def main():
                 if not (sl0 < 4.5 and (spread < 1.2 or flat_inl > 0.55)):
                     all_flat = False
                     break
-            if all_flat and strong_lines < 3:
+            # the strong-lines exemption exists for #4734914, a 430 m2
+            # house with visible hips that LiDAR reads flat. On an
+            # industrial-scale flat, "strong lines" are duct edges: #4722059
+            # (10,000 m2) got an 85-face line reading whose residual-fill
+            # partition ate a 2-hour build budget. Houses keep the
+            # exemption; big flats defer regardless.
+            if all_flat and (strong_lines < 3 or geom.area > 800):
                 # a stale file from an earlier chain must not outlive the
                 # decision to defer -- delete it or the build keeps shipping
                 # the very reading the defer just refused

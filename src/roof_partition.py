@@ -1141,7 +1141,12 @@ MIN_POINTS_PER_FACE = 12
 #
 # A 3 m2 dormer face is real roof. Keeping it costs nothing -- panel fitting
 # will place nothing on it -- and losing it changes the shape of the roof.
-DRAWN_MIN_FACET_M2 = 1.5
+# 0.8, not 1.5: Josh marks sub-2 m2 dormer faces individually
+# (#4732152: eighteen faces at 1.3-2.0 m2, seven of which the old
+# threshold silently deleted -- drew 22, built 15). A face too small to
+# rack simply gets no panels; deleting HIS geometry for it violates
+# markup-wins. The floor now only rejects degenerate slivers.
+DRAWN_MIN_FACET_M2 = 0.8
 
 # A markup has to describe most of the roof before it is allowed to BE the
 # roof. #4735242 is a 1,054 m2 building whose drawn faces came to a single

@@ -64,7 +64,7 @@ def main():
     from src.roof_partition import top_surface
     from src.face_candidates import (sam_faces, line_faces, score_candidate,
                                      evidence_map, lidar_faces,
-                                     hypothesis_faces)
+                                     hypothesis_faces, type_agreement)
     import train_line_model as T
 
     _oac = _RLS.apply_coords
@@ -93,6 +93,18 @@ def main():
         lm6.to(device).eval()
     except Exception:
         lm6 = None
+    # v7: the TYPE model -- pretrained on RID2, best per-channel fold
+    # typing (hip 0.32/valley 0.16 vs v6's 0.19/0.06) though weakest
+    # union; it answers only "WHICH fold is this", never "is there one"
+    lm7 = None
+    try:
+        ck7 = torch.load(ROOT / "data/models/roof_lines_v7.pt",
+                         map_location="cpu", weights_only=False)
+        lm7 = T.build_unet(ck7.get("pretrained", False), out_channels=4)
+        lm7.load_state_dict(ck7["state_dict"])
+        lm7.to(device).eval()
+    except Exception:
+        lm7 = None
 
     labels = json.loads((ROOT / "data/roof_labels.json").read_text())["buildings"]
     if a.ids:
@@ -171,6 +183,10 @@ def main():
             if _p6.shape[0] >= 4:
                 ev = np.maximum(ev, _p6[3])
         P = evidence_map(ev, rgb)
+        # measured on TRUTH geometry: v7's Dutch-pretrained typing is
+        # RANDOM along real Queenstown folds (0.24); v6 reads 0.545.
+        # v6 is the type model as well as the evidence model.
+        pr7 = _p6 if lm6 is not None else None
 
         drawn = []
         for f in labels.get(str(bid), {}).get("faces") or []:
@@ -213,7 +229,16 @@ def main():
         ok = pick == oracle or (by_ag[0][1] - picked_ag) < 0.03
         right += ok
         wrong += not ok
-        rows.append({"id": bid, "ag_sam": ag_sam, "ag_line": ag_line,
+        ta = {}
+        for nm, fs2 in (("sam", f_sam), ("line", f_line), ("lid", f_lid),
+                        ("hyp", f_hyp)):
+            try:
+                agv, ne = type_agreement(fs2, geom, pr7, to_px, pts)
+            except Exception:
+                agv, ne = 0.5, 0
+            ta["ta_" + nm] = agv
+            ta["tn_" + nm] = ne
+        rows.append({**ta, "id": bid, "ag_sam": ag_sam, "ag_line": ag_line,
                      "ag_lid": ag_lid, "sc_lid": sc_lid,
                      "ag_hyp": ag_hyp, "sc_hyp": sc_hyp, "n_hyp": len(f_hyp),
                      "conf_hyp": conf_hyp,
