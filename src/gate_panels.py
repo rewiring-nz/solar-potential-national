@@ -135,6 +135,21 @@ def panel_ok(poly, pc, dem, dem_transform_inv):
     return True, "ok"
 
 
+def _has_usable_markup(building_id):
+    """A roof Josh drew is not second-guessed by the surface gates, for the
+    same reason a drawn face skips the plane-fit judgment: lumpy/sparse ask
+    whether the SURFACE is real roof, and he has answered by hand. #4725488
+    (119-face sawtooth, tiny 26-degree faces, 1.7 pts/m2): the sparse gate
+    took his 100-panel roof to 32."""
+    try:
+        from src.roof_line_source import _labels, VOID_FLAGS
+        lab = _labels().get(str(building_id))
+        return bool(lab and lab.get("problem") not in VOID_FLAGS
+                    and (lab.get("faces") or []))
+    except Exception:
+        return False
+
+
 def gate_area(name, pc, dem, dem_inv, only_ids=None):
     import config
     non_roof = getattr(config, "NON_ROOF_BUILDING_IDS", set())
@@ -157,6 +172,9 @@ def gate_area(name, pc, dem, dem_inv, only_ids=None):
             continue
         if f["properties"].get("building_id") in non_roof:
             dropped["sparse"] += 1
+            continue
+        if _has_usable_markup(f["properties"].get("building_id")):
+            kept.append(f)   # drawn roofs skip the surface gates
             continue
         try:
             poly = shp_transform(TO_NZTM, shape(f["geometry"]))
@@ -270,6 +288,8 @@ def gate_area_parallel(name, jobs=None):
             kept.append(f)
         elif f["properties"].get("building_id") in non_roof:
             dropped["sparse"] += 1
+        elif _has_usable_markup(f["properties"].get("building_id")):
+            kept.append(f)   # drawn roofs skip the surface gates -- see gate_area
         else:
             todo.append(json.dumps(f))
     jobs = jobs or _gate_jobs()
