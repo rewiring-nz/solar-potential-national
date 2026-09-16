@@ -297,8 +297,14 @@ def main():
         # scale, no incumbent reading scoring >= 0.50, and the form itself
         # decisive (conf >= 0.55, with aspect agreement in the score so a
         # pyramid claim needs four tilt directions in the LiDAR).
+        # Area cap raised 450 -> 2000 (17 Sep). The 450 fence made #4735292
+        # (a ~550 m2 textbook pyramid Josh flagged) fall to a 6-fragment SAM
+        # reading; hypothesis, once allowed, won the score contest and
+        # produced the 4 correct faces. Bench A/B 450 vs 2000: every markup
+        # metric identical, +147 panels. The conf/incumbent gates below are
+        # what protect against over-calling pyramids; the area cap was not.
         f_hyp, conf_hyp = [], 0.0
-        if geom.area <= 450:
+        if geom.area <= float(os.environ.get("SOLAR_HYP_MAX_AREA", "2000")):
             try:
                 f_hyp = hypothesis_faces(pts, geom, P, to_px)
                 conf_hyp = getattr(hypothesis_faces, "last_confidence", 0.0)
