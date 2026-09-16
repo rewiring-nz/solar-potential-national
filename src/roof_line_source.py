@@ -409,15 +409,20 @@ def drawn_line_keepouts(building_id, width=None):
     ridge/valley/cliff lines, but lines that do not close into a cell never
     become facet boundaries, so 264 of 450 panels tiled straight across
     lines he drew. A drawn line is a fold in the real roof whether or not
-    the partition split on it; panels must not span it. Buffered by the
-    ridge setback so the clearance matches a machine-found ridge's.
+    the partition split on it; panels must not span it.
+
+    Width 0.18 m, NOT the 0.25 m ridge setback: on #4725488 (sawtooth,
+    119 hand-drawn faces of 1.6-14 m2) the 0.25 strip stripped 88 legal
+    panels that sat near folds without touching them (100 -> 12, caught by
+    predeploy). Swept on the bench: 0.25 -> 2,433 panels / 0 crossing;
+    0.15 -> 2,521 / 6 crossing (raster slack); 0.18 -> 2,505 / 0 crossing.
+    0.18 is the narrowest width that zeroes true crossers.
     """
     segs = drawn_segments(building_id)
     if not segs:
         return []
     if width is None:
-        import config
-        width = config.RIDGE_SETBACK_M
+        width = 0.18
     from shapely.geometry import LineString
     out = []
     for x1, y1, x2, y2 in segs:
