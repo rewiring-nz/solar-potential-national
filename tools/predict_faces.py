@@ -310,12 +310,34 @@ def main():
                 conf_hyp = getattr(hypothesis_faces, "last_confidence", 0.0)
             except Exception:
                 f_hyp, conf_hyp = [], 0.0
+        # Scored whenever a form exists: the weak-evidence branch below
+        # ships forms under 0.55 confidence, and a 0.0 here would write a
+        # file the build's own SELECTED_MIN_SCORE (0.30) then rejects --
+        # the selection would silently fall through to the old path.
         sc_hyp = score_candidate(f_hyp, geom, P, to_px, pts, inv_px) \
-            if f_hyp and conf_hyp >= 0.55 else 0.0
-        if f_hyp and conf_hyp >= 0.55 \
-                and (max(sc_sam, sc_line, sc_lid) < 0.50
-                     or (os.environ.get("SOLAR_HYP_COMPETE") == "1"
-                         and sc_hyp > max(sc_sam, sc_line, sc_lid))):
+            if f_hyp else 0.0
+        # WHEN NOTHING READS CLEARLY, GUESS SIMPLE (Josh, 14 Sep). A
+        # reading scoring 0.33 is not knowledge, and shipping it ships a
+        # jagged 15-vertex guess: #4734994 (sam 0.33) and #4735106 (lidar
+        # 0.37) are the two roofs on his flagged sheet whose boundaries
+        # follow nothing visible. Below 0.45 no detector has earned the
+        # roof, so a merely plausible simple form (0.40) is preferred to
+        # a confident-looking mess. Above that the old bar stands.
+        # DEFAULT OFF (SOLAR_HYP_WEAK=1 to try it). Measured 18 Sep: it
+        # does make these roofs simpler -- #4734994's 15-vertex sam blob
+        # becomes 3 straight faces -- but rendered against the imagery
+        # they are simpler AND still wrong, and the bench cannot see the
+        # change at all (its roofs are Josh's, where his markup governs).
+        # Simplicity is his instruction; shipping an unmeasurable
+        # behaviour change across 15k buildings is how five regressions
+        # reached a deploy. It waits for evidence, not for agreement.
+        _weak = (os.environ.get("SOLAR_HYP_WEAK") == "1"
+                 and max(sc_sam, sc_line, sc_lid) < 0.45)
+        if f_hyp and (conf_hyp >= 0.55
+                      and (max(sc_sam, sc_line, sc_lid) < 0.50
+                           or (os.environ.get("SOLAR_HYP_COMPETE") == "1"
+                               and sc_hyp > max(sc_sam, sc_line, sc_lid)))
+                      or (conf_hyp >= 0.40 and _weak)):
             # SOLAR_HYP_COMPETE: experimental -- a confident simple form may
             # also beat a >=0.50 incumbent on raw score, not just fill the
             # weak class. Benched before any default change.

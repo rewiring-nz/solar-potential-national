@@ -898,18 +898,53 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
             # (away from the ridge of whichever face holds it)?
             agree_sum = 0.0
             agree_n = 0
-            if cells and ridge is not None:
+            # WATER RUNS TO THE EAVE. The prediction for a cell is the
+            # direction toward its own face's EAVE -- the part of that
+            # face's boundary lying on the building outline -- because
+            # that is what every form in this vocabulary actually claims.
+            #
+            # It used to be "away from the nearest seam", which is a
+            # geometric artifact, not a claim: a pyramid's seams are the
+            # four corner diagonals, so "away from the seam" points 45
+            # degrees off the true downhill and a PERFECTLY CORRECT
+            # pyramid scored ~0.78, while a truncated hip -- whose flat
+            # top's seams run parallel to the eaves -- scored 0.91 for
+            # inventing a flat top that is not there. #4735292 (36 Stanley
+            # St, the square pyramid Josh has flagged repeatedly) lost
+            # 0.733 to 0.689 on exactly this and shipped with a box
+            # carved into one slope. Josh: "you are inventing places to
+            # put lines that are clearly not right in the visual imagery."
+            eaves = []
+            _rim = geom.exterior.buffer(0.6)
+            for f in faces:
+                try:
+                    ev = f.exterior.intersection(_rim)
+                    eaves.append(ev if (not ev.is_empty and ev.length > 0.8)
+                                 else None)
+                except Exception:
+                    eaves.append(None)
+            if cells:
                 for (cx, cy, dx, dy, _gn) in cells:
                     pt = _Pt(cx, cy)
-                    holder = None
-                    for f in faces:
+                    hi = None
+                    for k, f in enumerate(faces):
                         if f.contains(pt):
-                            holder = f
+                            hi = k
                             break
-                    if holder is None:
+                    if hi is None:
                         continue
-                    npt = ridge.interpolate(ridge.project(pt))
-                    d0 = np.array([cx - npt.x, cy - npt.y])
+                    ev = eaves[hi]
+                    if ev is None:
+                        # An INTERIOR face claims flat (the flat top of a
+                        # truncated hip, a hip band). Cells only exist
+                        # where the LiDAR tilts at all, so every cell here
+                        # is evidence against that claim -- and a claim
+                        # that cannot be contradicted is not evidence.
+                        agree_sum += -min(1.0, _gn / 0.09)
+                        agree_n += 1
+                        continue
+                    npt = ev.interpolate(ev.project(pt))
+                    d0 = np.array([npt.x - cx, npt.y - cy])
                     nd = np.linalg.norm(d0)
                     if nd < 0.3:
                         continue
@@ -1031,6 +1066,112 @@ def evidence_map(prob_max, rgb):
     hi = np.percentile(mag, 99) or 1.0
     grad = np.clip(mag / hi, 0, 1)
     return np.maximum(prob_max, 0.75 * grad)
+
+
+def type_agreement(faces, geom, typed_probs, to_px, pts):
+    """Does the candidate's GEOMETRY tell the same story as the detector's
+    fold TYPES? Josh, setting the night's direction: "differentiating
+    ridges, valleys, and cliffs to better detect geometry shapes of
+    rooftops." A valley line means both faces drain toward it; a ridge
+    means both drain away; a cliff means a height step. Every candidate
+    claims types implicitly through its plane fits -- this term makes the
+    claim answerable to the typed channels (v7: the pretrained model that
+    lost the union contest but types folds twice as well as anything
+    else; each model serves its measured strength).
+
+    Returns (agreement 0..1, n_typed_edges); neutral (0.5, 0) when there
+    is nothing to type.
+
+    MEASURED 15 Sep, kept for diagnostics but NOT a selection term: with
+    v7 typing it anti-correlates (v7's Dutch typing is random, 0.24, on
+    real Queenstown folds); with v6 typing it is a wash between families
+    (oracle-best 0.647 vs others 0.641) -- every family's faces sit on
+    roughly the same folds, so their type stories match equally. Fold
+    types may yet matter inside geometry CONSTRUCTION; they do not pick
+    winners.
+    """
+    import numpy as np
+    import shapely.geometry as sg
+    from src.line_extract import _line_mean
+    if typed_probs is None or len(faces) < 2 or pts is None:
+        return 0.5, 0
+    # fitted plane per face, once
+    planes = []
+    for f in faces:
+        pl, _sub = _plane(f, pts)
+        planes.append(pl)
+    CH = {"ridge": 0, "valley": 1, "cliff": 2, "hip": 3}
+    num = den = 0.0
+    n_edges = 0
+    for i in range(len(faces)):
+        for j in range(i + 1, len(faces)):
+            if planes[i] is None or planes[j] is None:
+                continue
+            try:
+                shared = faces[i].buffer(0.12).intersection(
+                    faces[j].buffer(0.12))
+            except Exception:
+                continue
+            if shared.is_empty or shared.area < 0.15:
+                continue
+            mrr = shared.minimum_rotated_rectangle
+            cc = list(mrr.exterior.coords)[:4]
+            e = sorted(((np.hypot(cc[(k + 1) % 4][0] - cc[k][0],
+                                  cc[(k + 1) % 4][1] - cc[k][1]), k)
+                        for k in range(4)), reverse=True)
+            L, k0 = e[0]
+            if L < 1.2:
+                continue
+            a2 = (np.array(cc[k0]) + np.array(cc[(k0 + 3) % 4])) / 2
+            b2 = (np.array(cc[(k0 + 1) % 4])
+                  + np.array(cc[(k0 + 2) % 4])) / 2
+            m2 = (a2 + b2) / 2
+            pi, pj = planes[i], planes[j]
+            zi = pi[0] * m2[0] + pi[1] * m2[1] + pi[2]
+            zj = pj[0] * m2[0] + pj[1] * m2[1] + pj[2]
+            ci = faces[i].centroid
+            cj = faces[j].centroid
+            zci = pi[0] * ci.x + pi[1] * ci.y + pi[2]
+            zcj = pj[0] * cj.x + pj[1] * cj.y + pj[2]
+            if abs(zi - zj) > 0.6:
+                kind = "cliff"
+            else:
+                down_i = zi < zci - 0.05     # face i descends toward edge
+                down_j = zj < zcj - 0.05
+                if down_i and down_j:
+                    kind = "valley"
+                elif not down_i and not down_j:
+                    # convex fold: ridge, or hip when it dives toward a
+                    # footprint corner
+                    kind = "ridge"
+                    try:
+                        corners = list(geom.exterior.coords)
+                        for endpt in (a2, b2):
+                            if any((endpt[0] - c[0]) ** 2
+                                   + (endpt[1] - c[1]) ** 2 < 2.0 ** 2
+                                   for c in corners):
+                                kind = "hip"
+                                break
+                    except Exception:
+                        pass
+                else:
+                    continue     # mixed drainage: geometrically untyped
+            pa = np.array(to_px(*a2))
+            pb = np.array(to_px(*b2))
+            probs = [_line_mean(typed_probs[c], pa, pb)
+                     for c in range(typed_probs.shape[0])]
+            tot = sum(probs)
+            if tot < 0.15:
+                continue          # detector silent here: no vote
+            ch = CH[kind]
+            if ch >= typed_probs.shape[0]:
+                continue
+            num += L * (probs[ch] / tot)
+            den += L
+            n_edges += 1
+    if den == 0:
+        return 0.5, 0
+    return num / den, n_edges
 
 
 def score_candidate(faces, geom, prob_max, to_px, pts, inv_px=None):
