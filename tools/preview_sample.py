@@ -94,6 +94,7 @@ def _one(bid):
     for f in facets:
         if f.get("plane_a") is None:
             continue
+        kout = []
         try:
             obs = detect_obstructions_combined(
                 _CTX["img"], _CTX["pc"], f["geometry"],
@@ -107,8 +108,8 @@ def _one(bid):
                 # Mirrors build_layout_geojson: drawn fold lines are no-panel
                 # strips even where the partition did not split (#4735237).
                 from src.roof_line_source import drawn_line_keepouts
-                obs = obs + [k for k in drawn_line_keepouts(bid)
-                             if k.intersects(f["geometry"])]
+                kout = [k for k in drawn_line_keepouts(bid)
+                        if k.intersects(f["geometry"])]
             except Exception:
                 pass
         except Exception:
@@ -116,7 +117,8 @@ def _one(bid):
         sib = [o for o in facets if o is not f]
         try:
             for pnl in (fit_panels_on_facet(f, obstructions=obs,
-                                            sibling_facets=sib) or []):
+                                            sibling_facets=sib,
+                                            fold_keepouts=kout) or []):
                 panels.append(pnl["geometry"] if isinstance(pnl, dict) else pnl)
         except Exception:
             pass

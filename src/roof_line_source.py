@@ -411,18 +411,20 @@ def drawn_line_keepouts(building_id, width=None):
     lines he drew. A drawn line is a fold in the real roof whether or not
     the partition split on it; panels must not span it.
 
-    Width 0.18 m, NOT the 0.25 m ridge setback: on #4725488 (sawtooth,
-    119 hand-drawn faces of 1.6-14 m2) the 0.25 strip stripped 88 legal
-    panels that sat near folds without touching them (100 -> 12, caught by
-    predeploy). Swept on the bench: 0.25 -> 2,433 panels / 0 crossing;
-    0.15 -> 2,521 / 6 crossing (raster slack); 0.18 -> 2,505 / 0 crossing.
-    0.18 is the narrowest width that zeroes true crossers.
+    Consumed via fit_panels_on_facet(fold_keepouts=...), NOT as an
+    obstruction: obstruction slots accrue the ridge clearance a second
+    time, and that double tax emptied #4725488's narrow sawtooth faces
+    (his 100-panel roof fell to 12 before the fitter subtracted these
+    after its clearance stages). Width swept there and on the bench:
+    0.16 -> sawtooth 100 but 58 raster-slop crossers; 0.20 -> 100/12;
+    0.22 -> 96/1; 0.25 -> 88/0. 0.22 is the knee: crossings gone to one
+    grazer in 2,663 while the sawtooth keeps 96 of its 100 panels.
     """
     segs = drawn_segments(building_id)
     if not segs:
         return []
     if width is None:
-        width = 0.18
+        width = 0.22
     from shapely.geometry import LineString
     out = []
     for x1, y1, x2, y2 in segs:

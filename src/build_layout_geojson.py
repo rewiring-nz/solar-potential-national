@@ -432,6 +432,7 @@ def _build_one_at(building_id, nudge_m):
                               "shading_factor": shading_factor})
             continue
         plane = (f["plane_a"], f["plane_b"], f["plane_c"])
+        _keepouts = []
         obstructions = detect_obstructions_combined(imagery_ds, pc_source, f["geometry"], plane,
                                                     roof_geom=f.get("building_geometry"))
         try:
@@ -449,9 +450,8 @@ def _build_one_at(building_id, nudge_m):
             # His fold lines are no-panel strips even where the partition
             # did not split on them (#4735237: 264/450 panels crossed drawn
             # lines inside two big derived faces). Keepouts, not verdicts.
-            obstructions = obstructions + [
-                k for k in drawn_line_keepouts(f.get("building_id"))
-                if k.intersects(f["geometry"])]
+            _keepouts = [k for k in drawn_line_keepouts(f.get("building_id"))
+                         if k.intersects(f["geometry"])]
         except Exception:
             pass
         siblings = [other for other in facets if other is not f]
@@ -477,7 +477,8 @@ def _build_one_at(building_id, nudge_m):
         # present at 100%. Deleting is a verdict; demotion is a ranking.
         low_fit = (big_roof and not drawn
                    and _facet_fit(f, pc_source) < BIG_ROOF_FACET_MIN_FIT)
-        panels = fit_panels_on_facet(f, obstructions=obstructions, sibling_facets=siblings)
+        panels = fit_panels_on_facet(f, obstructions=obstructions, sibling_facets=siblings,
+                                     fold_keepouts=_keepouts)
         if low_fit:
             for pnl in panels:
                 pnl["straggler"] = True

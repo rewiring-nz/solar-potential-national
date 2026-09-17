@@ -348,7 +348,8 @@ def _has_twin(facet, sibling_facets):
 def fit_panels_on_facet(facet, panel_width=config.PANEL_WIDTH_M, panel_height=config.PANEL_HEIGHT_M,
                          setback=config.PANEL_EDGE_SETBACK_M, resolution=RASTER_RESOLUTION_M,
                          obstructions=None, sibling_facets=None, ridge_setback=config.RIDGE_SETBACK_M,
-                         fallback_setback=config.PANEL_EDGE_SETBACK_FALLBACK_M):
+                         fallback_setback=config.PANEL_EDGE_SETBACK_FALLBACK_M,
+                         fold_keepouts=None):
     """Returns list of panel dicts: {geometry (world XY Polygon), facet_id fields}.
     obstructions: optional list of world-XY Polygons (e.g. from
     obstruction_detection.detect_obstructions) to exclude from the usable
@@ -431,12 +432,26 @@ def fit_panels_on_facet(facet, panel_width=config.PANEL_WIDTH_M, panel_height=co
     # panels going next to each other that could be relaxed a bit". The generous
     # setback stays the default because it wins whenever it can; it just no
     # longer strands a whole row to keep a margin nobody asked for.
+    # Drawn fold lines subtract from the usable surface AFTER the clearance
+    # stages, raw: passed as obstructions they carved edges that then accrued
+    # the ridge clearance again, and that double tax emptied #4725488's
+    # narrow sawtooth faces (100 -> 32 panels). Here a keepout costs exactly
+    # its own width and nothing more: a panel may touch the strip, so its
+    # clearance to the drawn line is the strip's half-width by construction.
+    surface_keepout = None
+    if fold_keepouts:
+        surface_keepout = unary_union([
+            shapely_transform(lambda x, y, z=None: to_surface(x, y), k)
+            for k in fold_keepouts])
+
     best = []
     for sb in sorted({setback, fallback_setback}, reverse=True):
         if surface_building is not None:
             usable = surface_ridge.intersection(surface_building.buffer(-sb))
         else:
             usable = surface_poly.buffer(-sb)   # no outline: fall back to the old behaviour
+        if surface_keepout is not None:
+            usable = usable.difference(surface_keepout)
         candidate = _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet, sibling_facets)
         # The generous setback is tried first and kept unless a tighter one is a
         # REAL gain -- a whole extra row, not one squeezed panel. Josh: "it's
