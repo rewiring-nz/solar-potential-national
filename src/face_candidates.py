@@ -572,6 +572,71 @@ def lidar_faces(pts, geom):
     return faces
 
 
+
+
+def _lidar_plateau(part, pts, cell=0.75, step=0.35, min_area=4.0,
+                   want_step=False):
+    """A raised flat region inside `part`, or None.
+
+    Finds the thing a form vocabulary cannot guess: where a roof stops
+    rising and goes flat. A plateau announces itself as a STEP -- cells
+    sitting well above the local background with a sharp edge -- so that is
+    what is measured, rather than "high" (a pyramid's centre is always
+    high) or "flat" (a whole flat roof is).
+
+    Written for #4735292, where the flat top is 4 m across and 0.9 m above
+    the roof around it, and both the truncated form (which put it in the
+    wrong place) and the plain pyramid (which denied it) were wrong.
+    """
+    import numpy as np
+    from shapely.geometry import Polygon, MultiPoint
+    from src.roof_partition import _points_in
+    _none = (None, None) if want_step else None
+    sub = _points_in(part, pts)
+    if sub is None or len(sub) < 120:
+        return _none
+    minx, miny, maxx, maxy = part.bounds
+    nx = int((maxx - minx) / cell) + 1
+    ny = int((maxy - miny) / cell) + 1
+    if nx < 5 or ny < 5 or nx * ny > 20000:
+        return _none
+    ix = ((sub[:, 0] - minx) / cell).astype(int).clip(0, nx - 1)
+    iy = ((sub[:, 1] - miny) / cell).astype(int).clip(0, ny - 1)
+    zg = np.full((ny, nx), np.nan)
+    order = np.argsort(sub[:, 2])
+    for k in order:                      # median-ish: last write is highest
+        zg[iy[k], ix[k]] = sub[k, 2]
+    # local background: the lower quartile of a generous neighbourhood, so
+    # the plateau cannot raise its own baseline
+    from scipy.ndimage import generic_filter, label
+    rad = max(2, int(2.5 / cell))
+    filled = np.where(np.isnan(zg), np.nanmin(zg), zg)
+    bg = generic_filter(filled, lambda w: np.percentile(w, 25),
+                        size=2 * rad + 1, mode="nearest")
+    raised = (zg - bg > step) & ~np.isnan(zg)
+    if raised.sum() < max(4, int(min_area / (cell * cell))):
+        return _none
+    lab, n = label(raised)
+    if n == 0:
+        return _none
+    sizes = [(lab == i).sum() for i in range(1, n + 1)]
+    best = int(np.argmax(sizes)) + 1
+    if sizes[best - 1] * cell * cell < min_area:
+        return _none
+    ys, xs = np.nonzero(lab == best)
+    pts_xy = [(minx + (x + 0.5) * cell, miny + (y + 0.5) * cell)
+              for x, y in zip(xs, ys)]
+    if len(pts_xy) < 3:
+        return _none
+    hull = MultiPoint(pts_xy).convex_hull
+    if hull.geom_type != "Polygon" or hull.area < min_area:
+        return _none
+    if want_step:
+        med_step = float(np.nanmedian((zg - bg)[lab == best]))
+        return hull, med_step
+    return hull
+
+
 def hypothesis_faces(pts, geom, prob_max, to_px):
     """STRUCTURE FIRST: test simple parametric roof forms against the
     evidence, instead of assembling detections into shapes.
@@ -772,6 +837,37 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
                 seams = [(tuple(i1), tuple(i2)), (tuple(i2), tuple(i3)),
                          (tuple(i3), tuple(i4)), (tuple(i4), tuple(i1))]
                 out["trunc_hip"] = (faces, seams)
+        # THE FLAT TOP WHERE THE LIDAR ACTUALLY PUTS IT. The form above
+        # insets the same distance from all four sides, so its top is
+        # always centred, and snap_form then slides it on a guess-grid --
+        # which is how #4735292 got a box carved into one slope. Josh, on
+        # the fourth time he raised that roof: "you are missing the square
+        # in the middle at the top. It ends in a square at the peak which
+        # should be visible in both imagery and lidar." It is: a plateau of
+        # cells 0.9 m above the surrounding roof with a sharp step at its
+        # edge. So MEASURE the top rather than sweeping for it -- per-side
+        # insets read off the plateau, which is the same family, placed by
+        # evidence instead of by symmetry.
+        plat = _lidar_plateau(part, pts)
+        if plat is not None:
+            pu = [np.dot(np.array(q) - A, u) for q in plat.exterior.coords]
+            pv = [np.dot(np.array(q) - A, v) for q in plat.exterior.coords]
+            lo_u, hi_u = max(0.6, min(pu)), min(L - 0.6, max(pu))
+            lo_v, hi_v = max(0.6, min(pv)), min(Wd - 0.6, max(pv))
+            if hi_u - lo_u > 1.2 and hi_v - lo_v > 1.2:
+                j1 = A + u * lo_u + v * lo_v
+                j2 = A + u * hi_u + v * lo_v
+                j3 = A + u * hi_u + v * hi_v
+                j4 = A + u * lo_u + v * hi_v
+                top = Polygon([j1, j2, j3, j4])
+                sk = [Polygon([c1, c2, j2, j1]), Polygon([c2, c3, j3, j2]),
+                      Polygon([c3, c4, j4, j3]), Polygon([c4, c1, j1, j4])]
+                faces = [top.intersection(part)] + \
+                    [f.intersection(part) for f in sk]
+                if all(f.geom_type == "Polygon" and f.area > 2 for f in faces):
+                    out["trunc_lidar"] = (faces, [
+                        (tuple(j1), tuple(j2)), (tuple(j2), tuple(j3)),
+                        (tuple(j3), tuple(j4)), (tuple(j4), tuple(j1))])
         if not (L > Wd * 1.15):
             # PYRAMID on square-ish parts
             ctr = (A + u * L / 2 + v * Wd / 2)
@@ -802,7 +898,7 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
 
     COMPLEXITY_RENT = {"flat": 0.0, "gable": 0.045, "gable_x": 0.045,
                       "hip": 0.09, "pyramid": 0.09, "skeleton": 0.07,
-                      "trunc_hip": 0.10, "hip_band1.6": 0.10,
+                      "trunc_hip": 0.10, "trunc_lidar": 0.10, "hip_band1.6": 0.10,
                       "hip_band2.6": 0.10}
     # THE SKELETON FORM. Josh's 3-6 face tier (his villas: hips with
     # valleys wrapping the wings) measured 0.14-0.40 because no simple
@@ -881,8 +977,18 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
                             best = (f2, s2, sup2)
             return best
 
+        _plat_ref = list(_lidar_plateau(blob, pts, want_step=True))
         for name, (faces, seams) in forms_for(blob).items():
-            faces, seams, _snapped_sup = snap_form(faces, seams)
+            # DO NOT SNAP A MEASURED FORM. snap_form slides inner vertices
+            # on a +-1.2 m grid looking for seam evidence, which is right
+            # for a form whose position was guessed and wrong for one whose
+            # position was read off the LiDAR: it slid the plateau-placed
+            # top straight off the plateau it was built on, and the form
+            # then lost to a pyramid for splitting the very feature it was
+            # holding. This is the same slide that put the box on the wrong
+            # side of #4735292 in the first place.
+            if name != "trunc_lidar":
+                faces, seams, _snapped_sup = snap_form(faces, seams)
             ridge = _uu2([_LS([a, b]) for a, b in seams]) if seams else None
             pl_num = pl_den = 0.0
             for f in faces:
@@ -966,6 +1072,16 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
                 sup = float(np.mean(ss[:max(1, len(ss) // 2)]))
             else:
                 sup = 0.0
+            # A SEAM THE LIDAR MEASURED IS SUPPORTED, whatever the camera
+            # can see. seam_support asks the imagery detector, and from
+            # straight above a 0.9 m vertical step often shows as nothing
+            # at all -- on #4735292 the plateau-placed form scored best of
+            # every form on BOTH LiDAR terms (plane 0.99, aspect 0.96) and
+            # was then held down to 0.25 on imagery support for a feature
+            # the imagery cannot resolve. Exactly the trap that hid hips.
+            # The step height IS the evidence, so it sets a floor.
+            if name == "trunc_lidar" and _plat_ref[1] is not None:
+                sup = max(sup, min(1.0, _plat_ref[1] / 0.6))
             # rent is charged on UNPROVEN complexity only ("complexity
             # earned, not assumed"): a hip whose seams sit on 0.86 evidence
             # has earned its faces; one with silent seams pays full price.
@@ -973,6 +1089,21 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
             # #5371107 after snapping (true forms led pre-rent on both).
             sc = 0.30 * plane + 0.45 * aspect + 0.15 * sup \
                 - COMPLEXITY_RENT[name] * (1.0 - min(1.0, sup))
+            # A MEASURED PLATEAU IS ONE SURFACE. Where the LiDAR shows a
+            # flat top with a step at its edge, a form that runs four
+            # sloping faces through it is contradicted by the data, and
+            # until now nothing said so: on #4735292 the plain pyramid
+            # (which denies the square Josh kept pointing at) and the
+            # plateau-placed form scored 0.761 against 0.759, a tie broken
+            # by nothing. The penalty is proportional to how badly the form
+            # splits it, so a form that holds the plateau in one face pays
+            # nothing and only a form that carves it up is charged.
+            if _plat_ref[0] is not None:
+                pl_poly = _plat_ref[0]
+                if pl_poly.area > 1e-6:
+                    share = max((f.intersection(pl_poly).area
+                                 for f in faces), default=0.0) / pl_poly.area
+                    sc -= 0.18 * max(0.0, 0.85 - share)
             if name == "flat":
                 # a ONE-FACE claim is "one tilt direction (or none)": score
                 # it by tilt-field COHERENCE. The horizontal-only bonus
