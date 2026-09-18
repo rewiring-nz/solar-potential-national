@@ -9,8 +9,13 @@ data/*
 !data/heatmap_raster.json
 !data/seasonal_curves.json
 !data/marked_scores.json
+!data/roof_cases.json   # the roofs Josh has flagged: tracked, never ignored
 !data/roof_labels.json
+!data/bench_ids.txt
+!data/bench_set.json
+!data/status_items.json
 !data/label_set/
+data/label_set/*
 !data/label_set/queue.json
 !data/label_set/summary.json
 !data/heatmaps/
@@ -27,3 +32,7 @@ __pycache__/
 .DS_Store
 au_pilot/
 validation/
+# generated training patches -- regenerate with tools/export_training_data.py
+data/training/
+training_faces/
+data/training_faces/
