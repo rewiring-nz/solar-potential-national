@@ -124,6 +124,42 @@ def main():
     show("NEWLY WITHHELD", withheld,
          lambda r: f"#{r[0]}  had {r[1]} panels, now: {r[2]}")
 
+    # THE ROOFS JOSH HAS POINTED AT get their own section, always. He said
+    # it plainly on 18 Sep: "I provide examples but they don't often get
+    # fully fixed." A release that moves one of his cases must say so here,
+    # and a release that moves one he already PASSED is a regression that
+    # has to be seen before the push, not after he finds it again.
+    try:
+        import json as _json
+        from pathlib import Path as _P
+        reg = _json.loads((_P(__file__).resolve().parents[1]
+                           / "data/roof_cases.json").read_text())
+        moved, regressed = [], []
+        for c in reg["cases"]:
+            b = int(c["id"])
+            if b not in new or b not in live:
+                continue
+            o = live[b].get("panel_count") or 0
+            n2 = new[b].get("panel_count") or 0
+            if n2 != o:
+                moved.append((c, o, n2))
+                if c.get("status") == "fixed":
+                    regressed.append(c["id"])
+        print(f"\n  JOSH'S CASE ROOFS: {len(reg['cases'])} tracked, "
+              f"{len(moved)} changed in this build")
+        for c, o, n2 in moved:
+            tag = "  <-- WAS MARKED FIXED" if c.get("status") == "fixed" else ""
+            print(f"    #{c['id']}  {o} -> {n2} panels  "
+                  f"[{c.get('status')}]  {c['defect'][:40]}{tag}")
+        if regressed:
+            print(f"    REGRESSION: {regressed} were confirmed fixed and have "
+                  f"moved. Do not deploy without looking at them.")
+        pending = [c["id"] for c in reg["cases"]
+                   if c.get("status") in ("open", "wrong", "needs_verdict")]
+        print(f"    {len(pending)} still unfixed or awaiting his verdict")
+    except Exception as _exc:
+        print(f"\n  (case register unavailable: {_exc!r})")
+
     bad = len(zeroed) + len(withheld)
     print(f"\n  {'LOOK AT THESE BEFORE DEPLOYING' if bad else 'nothing zeroed or newly withheld'}")
     print("  A drop is not automatically wrong -- better geometry removes panels")
