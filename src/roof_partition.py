@@ -1327,6 +1327,90 @@ def _regularise_machine_face(poly, footprint):
     return None
 
 
+def residual_fill(building_id, footprint, pts, faces):
+    """Facets for whatever of the footprint `faces` does not cover.
+
+    COVERAGE IS A GUARANTEE, NOT A SIDE EFFECT. A machine face used to
+    leave its area EMPTY -- Josh: "Missing a lot of great sunny faces",
+    "you only have panels on the shady side!" on a pyramid whose two sunny
+    faces had failed the one-plane gate.
+
+    Shared by BOTH paths since 18 Sep. It lived inside partition_roof only,
+    so every building on the vision chain -- 13,376 of them -- silently
+    skipped it: #4724740 shipped 8 facets over 63% of its roof and left a
+    216 m2 flat middle with no facet, hence no panels, hence nothing for
+    Josh to see but empty roof ("Why are there no panels in the middle
+    here? It's a flat section and also has no obstructions or lines").
+
+    The residue goes back to the LiDAR partition, and its facets carry no
+    from_selected flag, so they face every downstream drop as usual.
+    """
+    out = []
+    try:
+        if not faces:
+            return out
+        covered = unary_union([f["geometry"] for f in faces])
+        residual = footprint.difference(covered.buffer(0.05))
+        if residual.area <= max(12.0, 0.12 * footprint.area):
+            return out
+        inside_r = _points_in(footprint, pts)
+        for cell in getattr(residual, "geoms", [residual]):
+            if cell.geom_type != "Polygon" or cell.area < 8.0:
+                continue
+            fill = list(_partition(cell, _points_in(cell, inside_r)))
+            # Josh, on the facet web the fill drew over a cluttered flat
+            # (#4734913): "you should not create roof lines unless you are
+            # confident in them." The boundary between two fill facets whose
+            # planes barely differ is exactly such a line -- merge them until
+            # every remaining boundary separates planes that clearly disagree.
+            merged = True
+            while merged and len(fill) > 1:
+                merged = False
+                for i in range(len(fill)):
+                    for j2 in range(i + 1, len(fill)):
+                        pi, pli = fill[i]
+                        pj, plj = fill[j2]
+                        si, ai = _slope_aspect(pli)
+                        sj, aj = _slope_aspect(plj)
+                        d_asp = abs((ai - aj + 180) % 360 - 180)
+                        alike = (abs(si - sj) < 7.0
+                                 and (max(si, sj) < 8.0 or d_asp < 30.0))
+                        if not alike:
+                            continue
+                        if not pi.buffer(0.1).intersects(pj):
+                            continue
+                        u = pi.union(pj).buffer(0.05).buffer(-0.05)
+                        if u.geom_type != "Polygon":
+                            continue
+                        sub_u = _points_in(u, inside_r)
+                        pl_u = (_fit_plane_robust(sub_u) if len(sub_u) > 12
+                                else (pli if pi.area >= pj.area else plj))
+                        fill[i] = (u, pl_u)
+                        del fill[j2]
+                        merged = True
+                        break
+                    if merged:
+                        break
+            for poly2, plane2 in fill:
+                slope2, aspect2 = _slope_aspect(plane2)
+                if slope2 > config.MAX_ROOF_SLOPE_DEG:
+                    continue
+                sub2 = _points_in(poly2, inside_r)
+                out.append({
+                    "building_id": building_id,
+                    "geometry": Polygon(poly2.exterior,
+                                        [r for r in poly2.interiors]),
+                    "plane_a": plane2[0], "plane_b": plane2[1],
+                    "plane_c": plane2[2],
+                    "slope_deg": slope2, "aspect_deg": aspect2,
+                    "area_m2": float(poly2.area),
+                    "point_count": int(len(sub2)),
+                })
+    except Exception as exc:
+        print(f"  roof_partition: residual fill failed ({exc!r})", flush=True)
+    return out
+
+
 def facets_from_selected_faces(building_id, footprint, pts):
     """Facets straight from the precomputed winner, planes from LiDAR.
 
@@ -1421,6 +1505,12 @@ def facets_from_selected_faces(building_id, footprint, pts):
             "area_m2": float(poly.area), "point_count": 0,
             "from_selected": True, "plane_borrowed": True,
         })
+    # COVERAGE IS A GUARANTEE ON THIS PATH TOO. Until 18 Sep only
+    # partition_roof filled the residue, so a vision reading that covered
+    # part of a roof left the rest with no facet at all -- and no facet
+    # means no panels, no obstructions, nothing. #4724740 shipped 63%
+    # coverage and a bare 216 m2 flat middle.
+    out.extend(residual_fill(building_id, footprint, pts, out))
     return out
 
 
@@ -2442,73 +2532,7 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
         # pyramid whose two sunny faces had failed the one-plane gate. The
         # residue now goes back to the LiDAR partition, whose facets carry no
         # from_selected flag and so face every downstream drop as usual.
-        try:
-            covered = unary_union([f["geometry"] for f in _sf])
-            residual = footprint.difference(covered.buffer(0.05))
-            if residual.area > max(12.0, 0.12 * footprint.area):
-                inside_r = _points_in(footprint, pts)
-                for cell in getattr(residual, "geoms", [residual]):
-                    if cell.geom_type != "Polygon" or cell.area < 8.0:
-                        continue
-                    fill = list(_partition(cell, _points_in(cell, inside_r)))
-                    # Josh, on the facet web the fill drew over a cluttered
-                    # flat (#4734913): "you should not create roof lines
-                    # unless you are confident in them." The boundary between
-                    # two fill facets whose planes barely differ is exactly
-                    # such a line -- merge them until every remaining boundary
-                    # separates planes that clearly disagree.
-                    merged = True
-                    while merged and len(fill) > 1:
-                        merged = False
-                        for i in range(len(fill)):
-                            for j2 in range(i + 1, len(fill)):
-                                pi, pli = fill[i]
-                                pj, plj = fill[j2]
-                                si, _ = _slope_aspect(pli)
-                                sj, _ = _slope_aspect(plj)
-                                _, ai = _slope_aspect(pli)
-                                _, aj = _slope_aspect(plj)
-                                d_asp = abs((ai - aj + 180) % 360 - 180)
-                                alike = (abs(si - sj) < 7.0
-                                         and (max(si, sj) < 8.0
-                                              or d_asp < 30.0))
-                                if not alike:
-                                    continue
-                                if not pi.buffer(0.1).intersects(pj):
-                                    continue
-                                u = pi.union(pj).buffer(0.05).buffer(-0.05)
-                                if u.geom_type != "Polygon":
-                                    continue
-                                sub_u = _points_in(u, inside_r)
-                                pl_u = (_fit_plane_robust(sub_u)
-                                        if len(sub_u) > 12
-                                        else (pli if pi.area >= pj.area
-                                              else plj))
-                                fill[i] = (u, pl_u)
-                                del fill[j2]
-                                merged = True
-                                break
-                            if merged:
-                                break
-                    for poly2, plane2 in fill:
-                        slope2, aspect2 = _slope_aspect(plane2)
-                        if slope2 > config.MAX_ROOF_SLOPE_DEG:
-                            continue
-                        sub2 = _points_in(poly2, inside_r)
-                        _sf.append({
-                            "building_id": building_id,
-                            "geometry": Polygon(
-                                poly2.exterior,
-                                [r for r in poly2.interiors]),
-                            "plane_a": plane2[0], "plane_b": plane2[1],
-                            "plane_c": plane2[2],
-                            "slope_deg": slope2, "aspect_deg": aspect2,
-                            "area_m2": float(poly2.area),
-                            "point_count": int(len(sub2)),
-                        })
-        except Exception as exc:
-            print(f"  roof_partition: residual fill failed ({exc!r})",
-                  flush=True)
+        _sf.extend(residual_fill(building_id, footprint, pts, _sf))
         return _sf
 
     # A FLAT ROOF HAS NO FOLDS, so imagery cuts on one are noise.
