@@ -1272,7 +1272,16 @@ def _seal_network(segs, boundary, max_ext=None):
 # have no business inside the build environment. Off unless the flag is set.
 SELECTED_FACES_DIR = (Path(__file__).resolve().parent.parent
                       / "data" / "selected_faces")
-USE_SELECTED_FACES = os.environ.get("SOLAR_SELECTED_FACES", "0") == "1"
+# DEFAULTS ON, because production does. It defaulted OFF while every
+# shipping path exported SOLAR_SELECTED_FACES=1, so any tool that forgot
+# the variable silently measured and rendered the OLD geometry path --
+# not what ships. That cost three wrong answers in one day, the worst of
+# them a contact sheet of twelve roofs sent to Josh for his verdict, all
+# drawn from the wrong pipeline, including the pyramid he then had to
+# tell me was still wrong for the fourth time. A default that disagrees
+# with production is a trap, not a safety net; opt OUT with
+# SOLAR_SELECTED_FACES=0 to build the old path deliberately.
+USE_SELECTED_FACES = os.environ.get("SOLAR_SELECTED_FACES", "1") == "1"
 SELECTED_MIN_SCORE = 0.30
 SELECTED_MIN_PLANE_INLIER = 0.45  # a facet must be A plane     # below this, neither reading earned trust
 
@@ -1485,7 +1494,7 @@ def facets_from_selected_faces(building_id, footprint, pts):
             "area_m2": float(poly.area), "point_count": int(len(sub)),
             "from_selected": True,
         })
-    for poly in pending:
+    for poly, _no_panel in pending:
         best = None
         for f in out:
             try:
@@ -1630,8 +1639,16 @@ def facets_from_drawn_faces(building_id, footprint, pts):
     out = []
     pending = []
     for f in faces:
-        if not f.get("usable", True):
-            continue
+        # A "NO PANELS HERE" FACE IS STILL A FACE. Dropping it entirely
+        # also deleted its boundaries, so a line Josh drew simply vanished
+        # from the roof: on #4735623 he saw exactly that and said "this is
+        # good but missing one valley line compared to what I drew". The
+        # valley was the edge of a face he had marked unusable. It is kept
+        # now, carrying no_panel, so the geometry is the roof he drew and
+        # the fitter still places nothing on it. This is what the
+        # drawn_faces docstring always claimed: "knowing a face exists but
+        # takes no panels is more useful than not knowing it exists."
+        _no_panel = not f.get("usable", True)
         try:
             poly = Polygon(f["ring"])
             if not poly.is_valid:
@@ -1649,7 +1666,7 @@ def facets_from_drawn_faces(building_id, footprint, pts):
             # than being deleted.
             sub = None
         if sub is None:
-            pending.append(poly)
+            pending.append((poly, _no_panel))
             continue
         # A BAD PLANE IS NOT A REASON TO DELETE A FACE HE DREW.
         #
@@ -1687,7 +1704,7 @@ def facets_from_drawn_faces(building_id, footprint, pts):
                   and _inlier_fraction(sub, plane) < STEEP_FACE_MIN_FIT):
                 bad_fit = True
         if bad_fit:
-            pending.append(poly)
+            pending.append((poly, _no_panel))
             continue
         out.append({
             "building_id": building_id,
@@ -1696,12 +1713,13 @@ def facets_from_drawn_faces(building_id, footprint, pts):
             "slope_deg": slope, "aspect_deg": aspect,
             "area_m2": float(poly.area), "point_count": int(len(sub)),
             "from_labels": True,
+            **({"no_panel": True} if _no_panel else {}),
         })
 
     # Faces with too little survey under them take the plane of the largest
     # neighbour they share an edge with. Better a small face on its neighbour's
     # plane than the roof reverting to a partition that ignores the markup.
-    for poly in pending:
+    for poly, _no_panel in pending:
         best = None
         for f in out:
             try:
@@ -1720,6 +1738,7 @@ def facets_from_drawn_faces(building_id, footprint, pts):
             "slope_deg": best["slope_deg"], "aspect_deg": best["aspect_deg"],
             "area_m2": float(poly.area), "point_count": 0,
             "from_labels": True, "plane_borrowed": True,
+            **({"no_panel": True} if _no_panel else {}),
         })
     return out
 

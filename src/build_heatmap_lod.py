@@ -40,6 +40,22 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 HEATMAPS_DIR = DATA_DIR / "heatmaps"
 LOD_DIR = HEATMAPS_DIR / "lod"
 MAX_DIM = 4096
+# A MIDDLE TIER, because 4096 is the right cap for DISTRICT zoom and much too
+# coarse for the zooms in between. Josh, 19 Sep: "It seems low resolution and
+# maybe lower resolution than the underlying point cloud data?" Measured: the
+# full rasters are 0.41-0.44 m/px against a point cloud of 4.9-7.4 pts/m2
+# (0.37-0.45 m spacing), so at z16.5+ the raster already matches the survey
+# and cannot honestly go finer. Below that the overview copy took over, and
+# in the big regions that is 1.1-1.65 m/px -- three to four times coarser
+# than the data supports, for no reason except a cap chosen for the view
+# where twenty regions attach at once.
+#
+# At neighbourhood zoom only a handful of regions intersect the viewport, so
+# they can afford 8192: the worst region becomes 0.83 m/px instead of 1.65,
+# and 8192 is the texture limit even conservative hardware reports (the
+# original note rejected it for FULL rasters at 15989 px, which is a
+# different question).
+MID_DIM = 8192
 
 
 def main(force=None):
@@ -60,15 +76,21 @@ def main(force=None):
             print(f"  WARNING: {entry['name']} png missing at {src}, skipping")
             continue
         dst = LOD_DIR / f"{entry['name']}.png"
+        mid = LOD_DIR / f"{entry['name']}.mid.png"
         entry["png_lod"] = f"data/heatmaps/lod/{entry['name']}.png"
+        entry["png_mid"] = f"data/heatmaps/lod/{entry['name']}.mid.png"
         # Pixel dimensions go in the manifest so the frontend can budget GPU
         # texture memory before attaching anything, instead of discovering the
         # cost after the upload.
         with Image.open(src) as im:
             entry["size"] = list(im.size)
-        if dst.exists() and not force and dst.stat().st_mtime >= src.stat().st_mtime:
+        if (dst.exists() and mid.exists() and not force
+                and min(dst.stat().st_mtime,
+                        mid.stat().st_mtime) >= src.stat().st_mtime):
             with Image.open(dst) as im:
                 entry["size_lod"] = list(im.size)
+            with Image.open(mid) as im:
+                entry["size_mid"] = list(im.size)
             print(f"  {entry['name']}: up to date")
             continue
         with Image.open(src) as im:
@@ -78,15 +100,19 @@ def main(force=None):
             # LANCZOS, not NEAREST: this is a continuous colour field, and a
             # nearest-neighbour shrink of a 4x oversampled raster drops most of
             # the roofs entirely (a 2m building lands between sample points).
-            out = im.convert("RGBA").resize((nw, nh), Image.LANCZOS)
-            out.save(dst, optimize=True)
+            rgba = im.convert("RGBA")
+            rgba.resize((nw, nh), Image.LANCZOS).save(dst, optimize=True)
+            ms = min(1.0, MID_DIM / max(w, h))
+            mw, mh = max(1, round(w * ms)), max(1, round(h * ms))
+            rgba.resize((mw, mh), Image.LANCZOS).save(mid, optimize=True)
         entry["size_lod"] = [nw, nh]
+        entry["size_mid"] = [mw, mh]
         saved_px += (w * h - nw * nh)
         print(f"  {entry['name']}: {w}x{h} -> {nw}x{nh} "
               f"({dst.stat().st_size / 1e6:.1f}MB)")
 
     manifest_path.write_text(json.dumps(manifest))
-    print(f"manifest.json updated with png_lod for {len(manifest)} regions; "
+    print(f"manifest.json updated with png_lod/png_mid for {len(manifest)} regions; "
           f"{saved_px * 4 / 1e9:.1f} GB of RGBA texture saved at overview zoom")
 
 

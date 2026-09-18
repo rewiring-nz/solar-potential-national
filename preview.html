@@ -2788,7 +2788,9 @@ map.on("load", async () => {
       id: `heatmap-raster-${m.name}`,
       url: `${m.png}?v=${DATA_VERSION}`,
       urlLod: m.png_lod ? `${m.png_lod}?v=${DATA_VERSION}` : null,
+      urlMid: m.png_mid ? `${m.png_mid}?v=${DATA_VERSION}` : null,
       size: m.size, sizeLod: m.size_lod || m.size,
+      sizeMid: m.size_mid || m.size_lod || m.size,
       coordinates: m.coordinates
     }));
   } catch (e) {
@@ -2826,7 +2828,16 @@ map.on("load", async () => {
   // is exactly where people sit) would do that on every nudge. Go to detail
   // at 16.5, fall back only below 16.0.
   const HEATMAP_DETAIL_ZOOM_IN = 16.5, HEATMAP_DETAIL_ZOOM_OUT = 16.0;
+  // A MIDDLE TIER between the two. The overview copies are capped at 4096px
+  // so twenty regions can attach at district zoom, which in the big regions
+  // means 1.1-1.65 m/px -- far coarser than the 0.4 m rasters or the point
+  // cloud behind them. Josh: "It seems low resolution and maybe lower
+  // resolution than the underlying point cloud data?" He was right, but only
+  // below z16.5. From z15 up only a handful of regions are in view, so they
+  // can afford the 8192px copies: the worst region halves to 0.83 m/px.
+  const HEATMAP_MID_ZOOM_IN = 15.0, HEATMAP_MID_ZOOM_OUT = 14.5;
   let heatmapDetail = false;
+  let heatmapMid = false;
   // Hard ceiling on attached texture, in megapixels (x4 bytes for RGBA). The
   // uncapped version attached 20 of 24 rasters at district zoom -- measured
   // 4.1GB of texture for a view where a whole building is two pixels. When
@@ -2921,6 +2932,9 @@ map.on("load", async () => {
     if (z >= HEATMAP_DETAIL_ZOOM_IN) heatmapDetail = true;
     else if (z < HEATMAP_DETAIL_ZOOM_OUT) heatmapDetail = false;
     const detail = heatmapDetail;
+    if (z >= HEATMAP_MID_ZOOM_IN) heatmapMid = true;
+    else if (z < HEATMAP_MID_ZOOM_OUT) heatmapMid = false;
+    const mid = heatmapMid && !detail;
     const cx = (b.getWest() + b.getEast()) / 2, cy = (b.getSouth() + b.getNorth()) / 2;
 
     const wanted = new Map();
@@ -2938,13 +2952,15 @@ map.on("load", async () => {
         .sort((a, b2) => a.dist - b2.dist);
       let spent = 0;
       for (const { m } of candidates) {
-        const size = detail ? m.size : m.sizeLod;
+        const size = detail ? m.size : (mid ? m.sizeMid : m.sizeLod);
         const mp = size ? size[0] * size[1] / 1e6 : 0;
         // Always attach the nearest one even if it alone blows the budget --
         // a blank heat map is worse than a heavy one.
         if (wanted.size && spent + mp > HEATMAP_BUDGET_MP) continue;
         spent += mp;
-        wanted.set(m.id, detail ? m.url : (m.urlLod || m.url));
+        wanted.set(m.id, detail ? m.url
+                                : (mid ? (m.urlMid || m.urlLod || m.url)
+                                       : (m.urlLod || m.url)));
       }
     }
 

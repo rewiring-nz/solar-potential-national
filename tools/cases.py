@@ -169,6 +169,43 @@ def measure(case, ctx):
         if segs and panels:
             m["across"] = sum(1 for p in panels
                               if any(p.intersects(s) for s in segs))
+        # HIS LINES, ONE BY ONE. Every verdict he gave on 18 Sep was
+        # counted in lines, not faces: "missing two valley lines and a
+        # ridgeline that I clearly drew", "missing one valley line",
+        # "missing two ridge lines that I drew". So the number tracked has
+        # to be the same one he is counting -- how many of the lines he
+        # drew exist as a facet boundary, and how much boundary we drew
+        # that he did not. Face-level agreement averages both away.
+        raw = []
+        for l in lab.get("lines") or []:
+            pts = l.get("points") or ([l.get("a"), l.get("b")]
+                                      if l.get("a") else None)
+            if not pts:
+                continue
+            from shapely.geometry import LineString
+            for i in range(len(pts) - 1):
+                seg = LineString([tuple(pts[i]), tuple(pts[i + 1])])
+                if seg.length > 0.5:
+                    raw.append((seg, l.get("kind")))
+        if raw and facets:
+            from shapely.ops import unary_union
+            edges = unary_union([f.exterior for f in facets])
+            found = 0
+            missed = []
+            for seg, kind in raw:
+                mid = seg.interpolate(0.5, normalized=True)
+                q1 = seg.interpolate(0.25, normalized=True)
+                q3 = seg.interpolate(0.75, normalized=True)
+                if max(edges.distance(q1), edges.distance(mid),
+                       edges.distance(q3)) < 1.0:
+                    found += 1
+                else:
+                    missed.append(kind or "line")
+            m["lines_drawn"] = len(raw)
+            m["lines_found"] = found
+            if missed:
+                from collections import Counter
+                m["missing"] = dict(Counter(missed))
     return m
 
 
@@ -187,7 +224,18 @@ def cmd_check(a):
         # a roof he PASSED that has since moved is a regression until he
         # says otherwise -- this is the check that was missing when
         # #4722059 quietly re-acquired its bad reading
-        if c["status"] == "fixed" and changed:
+        # A REGRESSION THAT UNDOES ITSELF CLEARS ITSELF. The fingerprint
+        # Josh approved is recorded with his verdict, so a roof that comes
+        # back to exactly that geometry is fixed again and must not sit in
+        # his queue asking to be re-judged -- his attention is the scarce
+        # input. Anything else stays flagged until he looks.
+        approved = next((v.get("fingerprint") for v in
+                         reversed(c.get("verdicts") or [])
+                         if v.get("verdict") == "fixed"), None)
+        if c["status"] == "regressed" and m.get("fingerprint") == approved:
+            c["status"] = "fixed"
+            changed = False
+        elif c["status"] == "fixed" and changed:
             c["status"] = "regressed"
         elif c["status"] in ("open", "wrong") and changed:
             c["status"] = "needs_verdict"
@@ -201,14 +249,14 @@ def cmd_check(a):
              "ERROR": 3, "fixed": 4}
     rows.sort(key=lambda r: order.get(r[2], 5))
     print(f"\n{'roof':>9} {'status':13s} {'facets':>6} {'cover':>6} "
-          f"{'panels':>6} {'agree':>6} {'across':>6}  defect")
+          f"{'panels':>6} {'your lines':>11} {'across':>6}  defect")
     for c, m, st, ch in rows:
         if m.get("error"):
             print(f"{c['id']:>9} {'ERROR':13s} {m['error'][:54]}")
             continue
         print(f"{c['id']:>9} {st:13s} {m['facets']:>6} "
               f"{m['coverage']*100:>5.0f}% {m['panels']:>6} "
-              f"{(('%.2f' % m['agree']) if 'agree' in m else '-'):>6} "
+              f"{((str(m['lines_found'])+'/'+str(m['lines_drawn'])) if 'lines_drawn' in m else '-'):>11} "
               f"{(str(m['across']) if 'across' in m else '-'):>6}"
               f"  {c['defect'][:44]}{'  <-- CHANGED' if ch else ''}")
     n = {k: sum(1 for c in d["cases"] if c["status"] == k)

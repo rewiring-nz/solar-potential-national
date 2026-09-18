@@ -177,9 +177,32 @@ def _init_worker(area, model):
     })
 
 
+# SIGALRM IS POSIX-ONLY. Windows has no alarm signal, so the per-building
+# budget below cannot exist there and every building would die on an
+# AttributeError instead. Rather than bar Windows from the project (the
+# quickstart said "macOS or Linux" and Josh asked why), the budget becomes
+# a no-op there, announced once so nobody is surprised later: without it a
+# pathological roof can run unbounded instead of being dropped and named.
+# Every other POSIX dependency in the build is already guarded -- the two
+# os.sysconf calls fall back to a conservative worker count.
+_HAVE_ALARM = hasattr(signal, "SIGALRM")
+_ALARM_WARNED = [False]
+
+
+def _set_alarm(seconds):
+    if _HAVE_ALARM:
+        signal.alarm(seconds)
+    elif seconds and not _ALARM_WARNED[0]:
+        _ALARM_WARNED[0] = True
+        print("  note: no SIGALRM on this platform -- the per-building time "
+              "budget is disabled, so a pathological roof will run long "
+              "rather than being dropped", flush=True)
+
+
 def _build_one(building_id):
     """Everything for one building. Returns its GeoJSON features."""
-    signal.signal(signal.SIGALRM, _on_timeout)
+    if _HAVE_ALARM:
+        signal.signal(signal.SIGALRM, _on_timeout)
     # the budget scales with the roof: a flat 600s cap zeroed the
     # district's biggest building (#4722059, 3,704 live panels) while
     # every neighbour got its estimate. One 30-minute outlier on one
@@ -191,7 +214,7 @@ def _build_one(building_id):
     _cap = int(os.environ.get("SOLAR_BUILDING_BUDGET_CAP_S", "1800"))
     budget = int(min(_cap, max(BUILDING_TIME_BUDGET_S,
                                BUILDING_TIME_BUDGET_S + (_area - 1500) * 0.6)))
-    signal.alarm(budget)
+    _set_alarm(budget)
     try:
         return _build_one_inner(building_id)
     except _BuildingTimeout:
@@ -202,7 +225,7 @@ def _build_one(building_id):
         print(f"  building {building_id} FAILED: {exc!r}", flush=True)
         return _no_estimate_only(building_id, "failed")
     finally:
-        signal.alarm(0)
+        _set_alarm(0)
 
 
 # WHY A BUILDING HAS NO ESTIMATE.
@@ -477,8 +500,15 @@ def _build_one_at(building_id, nudge_m):
         # present at 100%. Deleting is a verdict; demotion is a ranking.
         low_fit = (big_roof and not drawn
                    and _facet_fit(f, pc_source) < BIG_ROOF_FACET_MIN_FIT)
-        panels = fit_panels_on_facet(f, obstructions=obstructions, sibling_facets=siblings,
-                                     fold_keepouts=_keepouts)
+        if f.get("no_panel"):
+            # Josh clicked "no panels here" on this face. It exists as
+            # geometry -- his lines are the roof's lines -- and takes
+            # nothing. See facets_from_drawn_faces.
+            panels = []
+        else:
+            panels = fit_panels_on_facet(f, obstructions=obstructions,
+                                         sibling_facets=siblings,
+                                         fold_keepouts=_keepouts)
         if low_fit:
             for pnl in panels:
                 pnl["straggler"] = True
