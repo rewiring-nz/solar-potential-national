@@ -378,6 +378,23 @@ def main():
                 continue
         else:
             continue
+        # A ROOF FACE IS A SIMPLE POLYGON. #4722059 (the 16,010 m2 Frankton
+        # industrial roof) reads as 85 faces, one of them with 134 vertices
+        # -- duct edges and plant polygonised into a web. That reading
+        # cost 4.5 hours of build time once and shipped the roof DARK
+        # twice; it is not a roof, and no downstream stage should have to
+        # cope with it. Refuse to write it and let the proven LiDAR path
+        # own the building. Josh: "you are inventing places to put lines
+        # that are clearly not right in the visual imagery."
+        _verts = sorted(len(f.exterior.coords) - 1 for f in faces)
+        if _verts and (_verts[-1] > 40 or _verts[len(_verts) // 2] > 12):
+            try:
+                (OUT / f"{bid}.json").unlink()
+            except FileNotFoundError:
+                pass
+            print(f"  #{bid}: refused {pick} reading "
+                  f"({len(faces)} faces, max {_verts[-1]} vertices)")
+            continue
         (OUT / f"{bid}.json").write_text(json.dumps({
             "source": pick, "score": round(score, 3),
             "score_sam": round(sc_sam, 3), "score_line": round(sc_line, 3),
