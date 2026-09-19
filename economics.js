@@ -232,3 +232,284 @@ if (typeof module !== "undefined" && module.exports) {
                      isBusiness, sellRate, economicsFor, setEcon: e => { econ = e; },
                      getEcon: () => econ };
 }
+
+// ============================================================ HOURLY ENGINE
+//
+// WHY AN HOUR IS THE UNIT NOW. Everything above works on annual kWh with
+// self-consumption capped by an average daytime load. That is enough to
+// answer "is solar worth it", and it cannot answer either of the two
+// questions Josh asked for on 19 Sep:
+//
+//   * a RETAIL PLAN only differs from another if it prices electricity
+//     differently at different times -- day/night, peak/off-peak, a free
+//     hour. Annually they are all just "a number of cents".
+//   * a BATTERY is nothing but a time-shifting device. It moves midday
+//     surplus into the evening. At annual resolution it does not exist;
+//     the old model faked one as a bigger daytime load, which credits it
+//     for energy it never stored.
+//
+// The resolution is a REPRESENTATIVE DAY PER SEASON -- four days of 24
+// hours, weighted by the days in each season -- not 8,760 hours. Two
+// reasons. The generation side is exactly what data/seasonal_curves.json
+// already holds, so the money and the chart on screen can never disagree
+// about what the roof makes. And an 8,760-hour run would need a genuine
+// half-hourly load trace, which we do not have; pretending to that
+// resolution with a repeated daily shape would be precision theatre.
+//
+// Everything here stays pure: numbers in, numbers out.
+
+// Household and business demand through the day, as a share of the day's
+// total. Shapes, not magnitudes: the annual use figure sets the scale.
+// The home shape is the familiar double peak (breakfast, then a larger
+// evening one after work) with a midday trough -- which is exactly why
+// self-consumption is limited and why a battery has something to do.
+const LOAD_SHAPES = {
+  home: [
+    0.020, 0.018, 0.017, 0.017, 0.018, 0.024, 0.038, 0.055,   // 0-7
+    0.052, 0.042, 0.036, 0.034, 0.034, 0.033, 0.033, 0.036,   // 8-15
+    0.045, 0.062, 0.085, 0.082, 0.068, 0.054, 0.040, 0.027,   // 16-23
+  ],
+  business: [
+    0.012, 0.011, 0.011, 0.011, 0.012, 0.016, 0.026, 0.042,   // 0-7
+    0.062, 0.073, 0.077, 0.078, 0.074, 0.076, 0.075, 0.070,   // 8-15
+    0.058, 0.044, 0.030, 0.022, 0.018, 0.015, 0.014, 0.013,   // 16-23
+  ],
+};
+
+// A plan prices each hour. `periods` maps an hour (0-23) to a rate in
+// cents; `sell_c` is that plan's buyback. These are ILLUSTRATIVE SHAPES OF
+// REAL PLAN TYPES sold in New Zealand, not offers from any retailer, and
+// they are all editable -- which is why none of them carries a company
+// name. The point is to let someone see how much the plan structure
+// matters, which for a solar household is a lot: a plan that pays little
+// for export but charges little at night suits a battery, and the reverse
+// suits a bare array.
+function flatRates(c) { return new Array(24).fill(c); }
+function touRates(spec, base) {
+  const r = new Array(24).fill(base);
+  for (const [from, to, c] of spec) {
+    for (let h = from; h !== to; h = (h + 1) % 24) r[h] = c;
+  }
+  return r;
+}
+const RETAIL_PLANS = [
+  {
+    id: "flat", label: "Flat rate", biz: false,
+    note: "One price all day. The simplest plan and the default here.",
+    buy: () => flatRates(30), sell_c: 14, daily_c: 250,
+  },
+  {
+    id: "day_night", label: "Day / night", biz: false,
+    note: "Cheaper overnight, dearer through the day. Suits a battery that " +
+          "can fill up on cheap night power; suits bare solar less.",
+    buy: () => touRates([[23, 7, 18]], 33), sell_c: 12, daily_c: 250,
+  },
+  {
+    id: "peak_offpeak", label: "Peak / off-peak / night", biz: false,
+    note: "Morning and evening peaks priced highest. Solar rarely covers " +
+          "either peak on its own, so this is where a battery earns most.",
+    buy: () => touRates([[23, 7, 17], [7, 9, 45], [17, 21, 45]], 28),
+    sell_c: 12, daily_c: 250,
+  },
+  {
+    id: "high_buyback", label: "High buyback, dearer power", biz: false,
+    note: "Pays well for export and charges more for what you draw. Suits " +
+          "a big array on a house that is empty during the day.",
+    buy: () => flatRates(35), sell_c: 20, daily_c: 250,
+  },
+  {
+    id: "free_evening", label: "One free hour a day", biz: false,
+    note: "A free hour in the evening, paid for with a higher rate the rest " +
+          "of the time. Worth checking against your own usage.",
+    buy: () => touRates([[21, 22, 0]], 33), sell_c: 12, daily_c: 250,
+  },
+  {
+    id: "biz_flat", label: "Business — flat rate", biz: true,
+    note: "Commercial rates are lower per kWh and the load is daytime, " +
+          "which is when the roof generates.",
+    buy: () => flatRates(17), sell_c: 14, daily_c: 800,
+  },
+  {
+    id: "biz_tou", label: "Business — time of use", biz: true,
+    note: "Daytime commercial rate with a cheaper overnight block.",
+    buy: () => touRates([[22, 7, 12]], 19), sell_c: 14, daily_c: 800,
+  },
+];
+
+// A battery is defined by what it can hold, how fast it moves energy, and
+// what it loses doing so. `reserve_pct` is the floor a real installation
+// keeps for backup and cycle life -- ignoring it would credit the battery
+// with capacity no installer lets you use.
+const BATTERY_DEFAULTS = {
+  enabled: false,
+  kwh: 10,            // usable-before-reserve capacity
+  kw: 5,              // charge/discharge power limit
+  round_trip_pct: 90, // in-and-out efficiency
+  reserve_pct: 10,    // never discharged below this
+  cost_per_kwh: 1000, // installed, NZ, indicative
+  life_years: 15,     // replaced once inside a 30-year system life
+};
+
+// One representative day. Generation and load are 24 kW values; the battery
+// charges only from surplus (never from the grid, which is a separate
+// product decision and a different plan calculation) and discharges only
+// into a deficit.
+//
+// Returns the day's kWh split three ways, and the hour each one happened in,
+// because a time-of-use plan prices them differently.
+function simulateDay(genKw, loadKw, batt, socStart) {
+  const cap = batt && batt.enabled ? Math.max(0, batt.kwh) : 0;
+  const floor = cap * (batt ? batt.reserve_pct : 0) / 100;
+  const pmax = batt ? Math.max(0, batt.kw) : 0;
+  // Round-trip loss is charged on the way in, so a kWh that comes back out
+  // is a kWh the house actually uses.
+  const eff = Math.sqrt(Math.max(0.01, (batt ? batt.round_trip_pct : 100) / 100));
+  let soc = Math.min(Math.max(socStart, floor), cap);
+  const selfH = new Array(24).fill(0);
+  const expH = new Array(24).fill(0);
+  const impH = new Array(24).fill(0);
+  for (let h = 0; h < 24; h++) {
+    const g = genKw[h], l = loadKw[h];
+    const direct = Math.min(g, l);
+    selfH[h] += direct;
+    let surplus = g - direct;
+    let deficit = l - direct;
+    if (cap > 0 && surplus > 0) {
+      const room = (cap - soc) / eff;              // grid-side kWh to fill
+      const take = Math.min(surplus, pmax, room);
+      soc += take * eff;
+      surplus -= take;
+    }
+    if (cap > 0 && deficit > 0) {
+      const avail = (soc - floor) * eff;           // house-side kWh available
+      const give = Math.min(deficit, pmax, Math.max(0, avail));
+      soc -= give / eff;
+      selfH[h] += give;                            // stored sun, used later
+      deficit -= give;
+    }
+    expH[h] = surplus;
+    impH[h] = deficit;
+  }
+  return { selfH, expH, impH, socEnd: soc };
+}
+
+// A year of representative days. `genByHour[s][h]` is kW for season s, and
+// `seasonDays[s]` how many days that season stands for.
+//
+// The battery's state of charge is carried across two passes of each season
+// so a day starts where the previous one ended rather than empty -- an
+// empty start every morning would understate a battery that habitually
+// holds charge overnight.
+function simulateYear(genByHour, seasonDays, dailyKwh, shape, batt) {
+  const out = { selfKwh: 0, exportKwh: 0, importKwh: 0,
+                selfByHour: new Array(24).fill(0),
+                exportByHour: new Array(24).fill(0),
+                importByHour: new Array(24).fill(0) };
+  const loadKw = shape.map(f => f * dailyKwh);     // kWh in an hour == kW
+  let soc = 0;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let s = 0; s < genByHour.length; s++) {
+      const d = simulateDay(genByHour[s], loadKw, batt, soc);
+      soc = d.socEnd;
+      if (pass === 0) continue;                    // first pass only warms soc
+      const days = seasonDays[s];
+      for (let h = 0; h < 24; h++) {
+        out.selfByHour[h] += d.selfH[h] * days;
+        out.exportByHour[h] += d.expH[h] * days;
+        out.importByHour[h] += d.impH[h] * days;
+      }
+    }
+  }
+  for (let h = 0; h < 24; h++) {
+    out.selfKwh += out.selfByHour[h];
+    out.exportKwh += out.exportByHour[h];
+    out.importKwh += out.importByHour[h];
+  }
+  return out;
+}
+
+// The money, hour by hour. Same shape of answer as economicsFor above --
+// cost, annual, lifetime, payback -- so the page can swap one for the other,
+// but every kWh is now priced at the hour it happened in and a battery is
+// simulated rather than approximated.
+//
+// genByHour[s][h] is kW per hour for a representative day in season s, at
+// TODAY's output. Degradation, retail inflation and the export decline are
+// applied per year exactly as in the annual model, and the year is
+// re-simulated each time: as generation fades the battery fills less, which
+// a single scaling factor could not express.
+function economicsHourlyFor(kwp, genByHour, seasonDays, roofM2, override) {
+  if (!(kwp > 0) || !genByHour || !genByHour.length) return null;
+  const o = override || {};
+  const biz = (o.biz != null) ? o.biz : isBusiness(kwp, roofM2);
+  const plan = o.plan || RETAIL_PLANS.find(p => !!p.biz === !!biz) || RETAIL_PLANS[0];
+  const buyRates = o.buyRates || plan.buy();
+  const sellStart = (o.sell_c != null) ? o.sell_c : plan.sell_c;
+  const batt = Object.assign({}, BATTERY_DEFAULTS, o.battery || {});
+  const useKwh = (o.useKwh != null) ? o.useKwh
+    : (biz ? econ.biz_use_kwh : econ.home_use_kwh);
+  const shape = o.shape || (biz ? LOAD_SHAPES.business : LOAD_SHAPES.home);
+  const days = seasonDays || new Array(genByHour.length)
+    .fill(365 / genByHour.length);
+  const dailyKwh = useKwh / 365;
+
+  const battCost = batt.enabled ? batt.kwh * batt.cost_per_kwh : 0;
+  const cost = systemCost(kwp) + battCost;
+  const d = econ.degradation_pct / 100;
+  const infl = 1 + econ.elec_inflation_pct / 100;
+  const disc = 1 + econ.discount_rate_pct / 100;
+
+  const yearOf = y => {
+    const deg = Math.pow(1 - d, y);
+    const gen = genByHour.map(row => row.map(v => v * deg));
+    const sim = simulateYear(gen, days, dailyKwh, shape, batt);
+    let retail = 0;
+    for (let h = 0; h < 24; h++) retail += sim.selfByHour[h] * buyRates[h];
+    const exported = sim.exportKwh * sellRate(THIS_YEAR + y, sellStart);
+    return { sim, value: (retail * Math.pow(infl, y) + exported) / 100 };
+  };
+
+  const y0 = yearOf(0);
+  const annual = y0.value / Math.pow(disc, 0);
+  let lifetime = 0;
+  for (let y = 0; y < econ.life_years; y++) {
+    lifetime += yearOf(y).value / Math.pow(disc, y);
+  }
+  const inverterCost = econ.inverter_replace_year < econ.life_years
+    ? systemCost(kwp) * (econ.inverter_cost_pct / 100)
+      / Math.pow(disc, econ.inverter_replace_year)
+    : 0;
+  // A battery does not last a 30-year system either, and leaving its
+  // replacement out is the single easiest way to make one look good.
+  const battReplace = (batt.enabled && batt.life_years < econ.life_years)
+    ? battCost / Math.pow(disc, batt.life_years) : 0;
+  lifetime -= inverterCost + battReplace;
+
+  let cum = 0, payback = null;
+  for (let y = 0; y < 60; y++) {
+    const v = yearOf(Math.min(y, econ.life_years - 1)).value / Math.pow(disc, y);
+    cum += v;
+    if (cum >= cost) { payback = y + 1 - (cum - cost) / v; break; }
+  }
+  const genKwh = genByHour.reduce(
+    (t, row, s) => t + row.reduce((a, b) => a + b, 0) * days[s], 0);
+  return {
+    cost, annual, lifetime, payback, biz, plan, batteryCost: battCost,
+    inverterCost, batteryReplaceCost: battReplace,
+    rate: costPerKw(kwp), sellNow: sellStart,
+    genKwh, useKwh,
+    selfKwh: y0.sim.selfKwh, exportKwh: y0.sim.exportKwh,
+    importKwh: y0.sim.importKwh,
+    selfPct: genKwh > 0 ? 100 * y0.sim.selfKwh / genKwh : 0,
+    selfByHour: y0.sim.selfByHour, exportByHour: y0.sim.exportByHour,
+    importByHour: y0.sim.importByHour,
+    buyRates, hourly: true,
+  };
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = Object.assign(module.exports || {}, {
+    LOAD_SHAPES, RETAIL_PLANS, BATTERY_DEFAULTS,
+    simulateDay, simulateYear, economicsHourlyFor,
+  });
+}
