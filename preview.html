@@ -95,6 +95,21 @@
   .cov-row .cov-power { font-weight: 700; color: var(--ink); font-size: var(--fs-body); }
   .cov-row .cov-energy { color: var(--ink-3); }
 
+  /* Per-hour prices, so a plan is something you can read rather than a name.
+     The strip is 24 cells shaded by price with the roof's own generation
+     drawn over them, which is the comparison that matters: does this roof
+     produce when the power is dear, or when it is cheap? */
+  .rate-strip { display: flex; gap: 1px; height: 30px; margin-top: var(--s2);
+    border-radius: 4px; overflow: hidden; background: rgba(255,255,255,0.05); }
+  .rate-cell { position: relative; flex: 1 1 0; }
+  .rate-fill { position: absolute; inset: 0; }
+  .rate-gen { position: absolute; left: 12%; right: 12%; bottom: 0;
+    background: rgba(255,255,255,0.55); border-radius: 1px 1px 0 0; }
+  .rate-axis { display: flex; justify-content: space-between;
+    font-size: var(--fs-meta); color: var(--muted); margin-top: 1px; }
+  .rate-band { display: flex; justify-content: space-between; align-items: center;
+    gap: var(--s2); font-size: var(--fs-label); padding: 1px 0; }
+  .rate-input { width: 52px; text-align: right; }
   .panel-caveat { font-size: var(--fs-meta); color: var(--warn); margin-top: var(--s2); line-height: 1.4; }
   /* Economics reads as four plain statements rather than a table of rows: the
      label carries the weight and the figure sits under it light, so the eye
@@ -3463,6 +3478,16 @@ map.on("load", async () => {
                 `<option value="${pl.id}">${pl.label}</option>`).join("") +
               `</select></label>` +
             `<div class="econ-cap" id="econ-plan-note"></div>` +
+            // WHAT YOU PAY, AND WHEN. Josh, 19 Sep: "You need to make the
+            // prices all transparent, so the user can see them and see what
+            // hours they apply to." A plan that only shows a name is the
+            // same opaque number the flat rate was. This draws the 24 hours
+            // with the price of each, marks the hours the roof actually
+            // generates, and lets every band be edited -- which is also
+            // what makes the plans "customisable" rather than five fixed
+            // options.
+            `<div id="econ-rate-strip"></div>` +
+            `<div id="econ-rate-bands"></div>` +
             // BATTERY. Simulated, not approximated: the old model carried a
             // battery as "a bigger daytime load", which credits it for
             // energy it never stored.
@@ -3483,6 +3508,70 @@ map.on("load", async () => {
         // Redraw the NUMBERS in place, never the block. Rebuilding innerHTML on
         // every keystroke destroyed the field being typed into -- the old code
         // called updateFittedStats from its own input handler.
+        // Per-hour prices the reader can see and change. `rateOverride`
+        // starts empty (the plan's own rates) and holds whatever has been
+        // edited, so switching plan resets to that plan's shape.
+        let rateOverride = null;
+        const bandsOf = rates => {
+          const out = [];
+          for (let h = 0; h < 24; h++) {
+            const last = out[out.length - 1];
+            if (last && Math.abs(last.c - rates[h]) < 1e-9) last.to = h + 1;
+            else out.push({ from: h, to: h + 1, c: rates[h] });
+          }
+          // A band that wraps midnight reads as one period to a person, so
+          // join the ends when they price the same.
+          if (out.length > 1 && Math.abs(out[0].c - out[out.length - 1].c) < 1e-9) {
+            const first = out.shift();
+            out[out.length - 1].wrapTo = first.to;
+          }
+          return out;
+        };
+        const hh = h => String(h % 24).padStart(2, "0") + ":00";
+        const drawRates = (rates, genByHour) => {
+          const strip = el("econ-rate-strip");
+          if (!strip) return;
+          const lo = Math.min(...rates), hi = Math.max(...rates);
+          const gmax = genByHour ? Math.max(0.001, ...genByHour) : 0;
+          let cells = "";
+          for (let h = 0; h < 24; h++) {
+            // darker = dearer; the generation overlay is the pale bar, so a
+            // reader can see at a glance whether the roof produces during
+            // the expensive hours or the cheap ones.
+            const t = hi > lo ? (rates[h] - lo) / (hi - lo) : 0;
+            const g = genByHour ? genByHour[h] / gmax : 0;
+            cells += `<div class="rate-cell" title="${hh(h)} — ${rates[h].toFixed(0)}c` +
+              (genByHour ? `, ${genByHour[h].toFixed(1)} kW` : "") + `">` +
+              `<div class="rate-fill" style="background:rgba(255,210,74,${0.12 + 0.75 * t})"></div>` +
+              `<div class="rate-gen" style="height:${Math.round(g * 100)}%"></div></div>`;
+          }
+          strip.innerHTML = `<div class="rate-strip">${cells}</div>` +
+            `<div class="rate-axis"><span>00</span><span>06</span>` +
+            `<span>12</span><span>18</span><span>24</span></div>` +
+            `<div class="econ-cap">Shaded by price · pale bars are when this ` +
+            `roof generates</div>`;
+          const box = el("econ-rate-bands");
+          if (!box) return;
+          box.innerHTML = bandsOf(rates).map((b, i) =>
+            `<label class="rate-band"><span>${hh(b.from)}–${hh(b.wrapTo != null ? b.wrapTo : b.to)}</span>` +
+            `<span><input type="number" class="rate-input" data-from="${b.from}" ` +
+            `data-to="${b.to}" data-wrap="${b.wrapTo != null ? b.wrapTo : ""}" ` +
+            `min="0" step="1" value="${b.c.toFixed(0)}"> c/kWh</span></label>`).join("");
+          box.querySelectorAll(".rate-input").forEach(inp => {
+            inp.addEventListener("change", () => {
+              const next = (rateOverride || rates).slice();
+              const v = Math.max(0, +inp.value || 0);
+              const from = +inp.dataset.from, to = +inp.dataset.to;
+              for (let h = from; h < to; h++) next[h] = v;
+              if (inp.dataset.wrap !== "") {
+                for (let h = 0; h < +inp.dataset.wrap; h++) next[h] = v;
+              }
+              rateOverride = next;
+              refresh();
+            });
+          });
+        };
+
         const bindRefresh = ids => ids.forEach(id => {
           const n = el(id);
           if (n) n.addEventListener("change", () => refresh());
@@ -3516,7 +3605,12 @@ map.on("load", async () => {
             e = economicsHourlyFor(kwp, gen, gp.seasonDays,
                                    props.facet_area_m2,
                                    { plan: chosen, battery: batt,
+                                     buyRates: rateOverride || undefined,
                                      zoneClass: props.zone_class });
+            drawRates(e.buyRates,
+                      gen.length ? gen[0].map((_, h) =>
+                        gen.reduce((t, row) => t + row[h], 0) / gen.length)
+                        : null);
           } else {
             e = economicsFor(kwp, kwhYear, props.facet_area_m2,
                              { zoneClass: props.zone_class });
@@ -3584,7 +3678,13 @@ map.on("load", async () => {
             `${(e.sellLater != null && e.sellLater < e.sellNow - 0.05) ? `, export falling ${econ.export_decline_pct}%/yr to ${e.sellLater.toFixed(1)}c by ${THIS_YEAR + econ.life_years}` : ""}`;
         };
         refresh();
-        bindRefresh(["econ-plan", "econ-batt", "econ-batt-kwh", "econ-batt-cost"]);
+        bindRefresh(["econ-batt", "econ-batt-kwh", "econ-batt-cost"]);
+        // Choosing a plan clears any hand-edited rates: they described the
+        // plan you were looking at, not this one.
+        if (el("econ-plan")) el("econ-plan").addEventListener("change", () => {
+          rateOverride = null;
+          refresh();
+        });
 
         // These are the same assumptions the settings modal holds, so they
         // write to it rather than to a per-building copy: two places showing
