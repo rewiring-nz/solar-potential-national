@@ -3450,15 +3450,92 @@ map.on("load", async () => {
             `<input type="range" id="econ-self" min="0.2" max="${e.biz ? 30 : 6}" ` +
               `step="${e.biz ? 0.5 : 0.1}" value="${econ[p + "daytime_kw"]}">` +
             `<div class="econ-cap" id="econ-self-note"></div>` +
+            // RETAIL PLAN. Josh, 19 Sep: "I want to build in the option to
+            // select example retail plans, just a few and customisable
+            // ones." These are SHAPES of plan sold in New Zealand, not
+            // offers -- no retailer is named, and every rate stays editable
+            // above. A plan only changes the answer because the hourly
+            // engine prices each hour separately; on the annual model they
+            // would all be the same number.
+            `<label class="econ-plan-lab">Retail plan` +
+              `<select id="econ-plan">` +
+              RETAIL_PLANS.filter(pl => !!pl.biz === !!e.biz).map(pl =>
+                `<option value="${pl.id}">${pl.label}</option>`).join("") +
+              `</select></label>` +
+            `<div class="econ-cap" id="econ-plan-note"></div>` +
+            // BATTERY. Simulated, not approximated: the old model carried a
+            // battery as "a bigger daytime load", which credits it for
+            // energy it never stored.
+            `<label class="econ-batt-lab">` +
+              `<input type="checkbox" id="econ-batt"> Add a battery</label>` +
+            `<div id="econ-batt-box" style="display:none">` +
+              `<label>Battery size` +
+                `<span><input type="number" id="econ-batt-kwh" min="1" max="100" ` +
+                `step="1" value="${BATTERY_DEFAULTS.kwh}"> kWh</span></label>` +
+              `<label>Installed cost` +
+                `<span><input type="number" id="econ-batt-cost" min="0" step="100" ` +
+                `value="${BATTERY_DEFAULTS.cost_per_kwh}"> $/kWh</span></label>` +
+              `<div class="econ-cap" id="econ-batt-note"></div>` +
+            `</div>` +
           `</div>` +
           `<div class="panel-caveat">Indicative only &mdash; not a quote.</div>`;
 
         // Redraw the NUMBERS in place, never the block. Rebuilding innerHTML on
         // every keystroke destroyed the field being typed into -- the old code
         // called updateFittedStats from its own input handler.
+        const bindRefresh = ids => ids.forEach(id => {
+          const n = el(id);
+          if (n) n.addEventListener("change", () => refresh());
+        });
         const refresh = () => {
-          e = economicsFor(kwp, kwhYear, props.facet_area_m2);
+          // HOURLY WHERE WE CAN, annual where we cannot. The hourly engine
+          // needs the generation profile the chart publishes; before the
+          // curves load, or on a roof with no profile, the annual model
+          // still answers. A plan or a battery only has meaning in the
+          // hourly path, so the controls hide themselves in the other one.
+          const gp = window.__genProfile;
+          const planSel = el("econ-plan");
+          const chosen = planSel && RETAIL_PLANS.find(pl => pl.id === planSel.value);
+          const batt = {
+            enabled: !!(el("econ-batt") && el("econ-batt").checked),
+            kwh: +(el("econ-batt-kwh") || {}).value || BATTERY_DEFAULTS.kwh,
+            cost_per_kwh: +(el("econ-batt-cost") || {}).value
+                          || BATTERY_DEFAULTS.cost_per_kwh,
+          };
+          // The chart sizes the array its own way (facet area x coverage)
+          // and the panel sizes it from the building's kwp, and the two
+          // legitimately differ by a few percent. What the hourly engine
+          // needs is the SHAPE of the day, so the profile is rescaled to
+          // whatever system is being priced rather than demanding the two
+          // agree -- requiring a match just silently fell back to the
+          // annual model on most buildings.
+          const canHourly = gp && gp.gen && gp.kwp > 0;
+          if (canHourly) {
+            const k = kwp / gp.kwp;
+            const gen = gp.gen.map(row => row.map(v => v * k));
+            e = economicsHourlyFor(kwp, gen, gp.seasonDays,
+                                   props.facet_area_m2,
+                                   { plan: chosen, battery: batt,
+                                     zoneClass: props.zone_class });
+          } else {
+            e = economicsFor(kwp, kwhYear, props.facet_area_m2,
+                             { zoneClass: props.zone_class });
+          }
           if (!e) return;
+          const bb = el("econ-batt-box");
+          if (bb) bb.style.display = batt.enabled ? "" : "none";
+          const pl = el("econ-plan-note");
+          if (pl) pl.textContent = canHourly
+            ? (chosen ? chosen.note : "")
+            : "Plan and battery need the generation profile — open the chart above.";
+          const bn = el("econ-batt-note");
+          if (bn && batt.enabled && e.hourly) {
+            bn.textContent =
+              `Stores ${Math.round(e.selfKwh).toLocaleString()} kWh/yr on site `
+              + `(${Math.round(e.selfPct)}% of what the roof makes), `
+              + `${Math.round(e.exportKwh).toLocaleString()} kWh exported. `
+              + `Replaced once inside the ${econ.life_years}-year life.`;
+          } else if (bn) { bn.textContent = ""; }
           const net = e.lifetime - e.cost;
           el("econ-v-cost").textContent = fmtMoneyFull(e.cost);
           el("econ-v-annual").textContent = fmtMoneyFull(e.annual);
@@ -3476,8 +3553,21 @@ map.on("load", async () => {
             ? Math.round(100 * net / e.cost) + "%" : "\u2014";
           el("econ-roi-year").textContent = e.cost > 0
             ? Math.round(100 * e.annual / e.cost) + "%" : "\u2014";
-          el("econ-self-val").textContent = e.daytimeKw.toFixed(1) + " kW";
-          el("econ-self-note").innerHTML = selfNote(e);
+          // The self-consumption slider describes the ANNUAL model's load
+          // ceiling. In the hourly path the load is a shape through the day
+          // and self-consumption is an output, so the figure shown is what
+          // actually happened rather than the input that caused it.
+          if (e.hourly) {
+            el("econ-self-val").textContent =
+              Math.round(e.selfPct) + "% of generation";
+            el("econ-self-note").innerHTML =
+              `${Math.round(e.selfKwh).toLocaleString()} kWh/yr used on site, ` +
+              `${Math.round(e.exportKwh).toLocaleString()} kWh exported, ` +
+              `priced hour by hour.`;
+          } else {
+            el("econ-self-val").textContent = e.daytimeKw.toFixed(1) + " kW";
+            el("econ-self-note").innerHTML = selfNote(e);
+          }
           // Stated in full under the figure it produced (Josh), because every
           // one of these moves the answer materially and a reader cannot check
           // a number whose basis is invisible.
@@ -3491,9 +3581,10 @@ map.on("load", async () => {
           el("econ-basis").innerHTML =
             `${e.payback ? e.payback.toFixed(1) + " year payback" : "does not pay back within its life"}` +
             ` &middot; over ${econ.life_years} years &middot; priced as ${e.biz ? "a business" : "a home"}` +
-            `${e.sellLater < e.sellNow - 0.05 ? `, export falling ${econ.export_decline_pct}%/yr to ${e.sellLater.toFixed(1)}c by ${THIS_YEAR + econ.life_years}` : ""}`;
+            `${(e.sellLater != null && e.sellLater < e.sellNow - 0.05) ? `, export falling ${econ.export_decline_pct}%/yr to ${e.sellLater.toFixed(1)}c by ${THIS_YEAR + econ.life_years}` : ""}`;
         };
         refresh();
+        bindRefresh(["econ-plan", "econ-batt", "econ-batt-kwh", "econ-batt-cost"]);
 
         // These are the same assumptions the settings modal holds, so they
         // write to it rather than to a per-building copy: two places showing
@@ -3945,6 +4036,17 @@ map.on("load", async () => {
         peak[s2][h] += pk;
       }
     });
+
+    // ONE GENERATION PROFILE, used by the chart and by the money. The
+    // economics needs an hourly shape to price a time-of-use plan or run a
+    // battery, and the only defensible shape is the one the reader is
+    // looking at -- publishing it here means the two can never disagree
+    // about what the roof makes.
+    window.__genProfile = {
+      gen: avg.map(row => row.slice()),
+      seasonDays: new Array(avg.length).fill(365 / avg.length),
+      kwp: totalKwp,
+    };
 
     // Width follows the panel, so expanding it actually makes the chart bigger
     // rather than leaving a 288px graphic marooned in a wide column.
