@@ -757,19 +757,26 @@ def _pack_usable(usable, panel_width, panel_height, resolution, to_world, facet,
                 row_phase = (int(round(-v_min / resolution)) + (lock.get("row_phase") or 0)) % hc_
             phases = (row_phase, col_phase)
         result = _pack_orientation(occupancy, resolution, w, h, phases=phases)
-        if phases is not None and result is not None:
+        if phases is not None:
             # THE FRAME MAY COST A FACE A ROW OR A COLUMN, NOT A THIRD OF IT.
             # A locked grid on a narrow strip loses a row wherever the
-            # strip's edges miss the grid lines; on 28 Melbourne Street's 38
-            # strips that was 207 -> 119 panels, on 10 Stanley Street's 119
-            # sawtooth faces 124 -> 60, with the bearing already right. So
-            # each face is also packed free in the SAME orientation, and if
-            # the frame places fewer than (1 - FRAME_MAX_LOSS) of that, the
-            # face leaves the frame: alignment where it is cheap, count
-            # where alignment is not.
-            free = _pack_orientation(occupancy, resolution, w, h)
-            if free and len(free[0]) * (1.0 - FRAME_MAX_LOSS) > len(result[0]):
-                result = free
+            # strip's edges miss the grid lines (28 Melbourne Street's 38
+            # strips: 207 -> 119 panels), and one orientation for the whole
+            # building loses far more on a flat roof, where landscape rows
+            # are half the depth of portrait ones (24 Beach Street: 340 ->
+            # 205 with the bearing right and rows unlocked). So each face is
+            # also packed free, in both orientations, and if the frame
+            # places fewer than (1 - FRAME_MAX_LOSS) of the better one, the
+            # face leaves the frame: alignment where it is cheap, count where
+            # alignment is not.
+            best_free, free_portrait = None, is_portrait
+            for fp, (fw, fh) in ((True, (panel_width, panel_height)), (False, (panel_height, panel_width))):
+                fr = _pack_orientation(occupancy, resolution, fw, fh)
+                if fr and (best_free is None or len(fr[0]) > len(best_free[0]) * (1.0 + LANDSCAPE_WIN_MARGIN if not fp else 1.0)):
+                    best_free, free_portrait = fr, fp
+            locked_n = len(result[0]) if result else 0
+            if best_free and len(best_free[0]) * (1.0 - FRAME_MAX_LOSS) > locked_n:
+                result, is_portrait = best_free, free_portrait
         if result:
             placed_o, wc, hc = result
             candidates.append((is_portrait, placed_o, wc, hc))
