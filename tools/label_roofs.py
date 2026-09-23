@@ -1,15 +1,15 @@
 """
 Roof labelling server: draw true roof geometry in the browser, save it as vectors.
 
-Track A of the vision pathway. mark_roofs.py renders a roof for Josh to draw on
-with a pen; this replaces the pen with a canvas and, crucially, saves what he
+Track A of the vision pathway. mark_roofs.py renders a roof to draw on with a
+pen; this replaces the pen with a canvas and, crucially, saves what the labeller
 draws as COORDINATES rather than as a picture and a sentence. Today's ground
 truth is 28 roofs of which only 4 carry traced lines -- the rest are prose like
 "8 faces on this one", which can score a face COUNT and nothing else. No model
 can be trained on that, and no boundary error can be measured against it.
 
 The point is throughput. A vision model wants a few hundred roofs, and the only
-irreplaceable cost in the whole pathway is Josh's time drawing them, so
+irreplaceable cost in the whole pathway is the time spent drawing them, so
 everything here exists to make a roof take a minute instead of five.
 
 ANCHORING, deliberately handled rather than ignored. mark_roofs.py shows imagery
@@ -59,7 +59,7 @@ def _load_labels():
             return json.loads(LABELS.read_text())
         except Exception:
             pass
-    return {"_note": ("Roof geometry drawn by Josh in tools/label_roofs.py. "
+    return {"_note": ("Roof geometry drawn by hand in tools/label_roofs.py. "
                       "Coordinates are NZTM (EPSG:2193) metres. `lines` are "
                       "roof lines by kind; `obstructions` are closed rings. "
                       "`seeded` records whether the model's guess was loaded "
@@ -74,7 +74,7 @@ def _save_labels(d):
 
 
 def _truth_index():
-    """What Josh has already said about these roofs, in prose or coordinates."""
+    """What is already recorded about these roofs, in prose or coordinates."""
     p = DATA_DIR / "roof_truth.json"
     if not p.exists():
         return {}
@@ -179,7 +179,7 @@ def build_bundle(bid, bundles, areas, truth, want_guess=True):
         "area_m2": round(g.area, 1),
         "imagery_png": png,
         "model_guess": _model_guess(area, bid, ctx) if want_guess else [],
-        # What Josh already said about this roof, shown as a hint beside it.
+        # What is already recorded about this roof, shown as a hint beside it.
         "known": {k: t[k] for k in ("faces", "obstructions_marked", "structure",
                                     "key_finding") if k in t},
     }
@@ -252,7 +252,7 @@ def main():
     from src.region_build import all_areas
     areas = a.area or (["pilot"] + [x for x in all_areas() if x != "pilot"])
     truth = _truth_index()
-    # Default queue: the roofs Josh has already marked. They are the hardest and
+    # Default queue: the roofs already marked. They are the hardest and
     # most informative buildings in the district, and turning their prose into
     # coordinates is the cheapest labelling in the whole set.
     ids = a.ids or sorted(truth)

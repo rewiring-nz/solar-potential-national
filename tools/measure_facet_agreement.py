@@ -1,22 +1,22 @@
 """
-Do the facets look like the roof Josh drew?
+Do the facets look like the drawn roof?
 
 Panel-crossing rate (tools/measure_panel_crossings.py) asks whether panels
-straddle a fold. This asks the question he actually raised looking at the map:
-"you still got the facets wrong ... completely different to the mark up I gave
-you". Those are different failures and only this one sees the second.
+straddle a fold. This asks the other question: are the facets themselves
+right, or completely different from the markup? Those are different failures
+and only this one sees the second.
 
 TWO DIRECTIONS, AND THE SECOND IS THE ONE THAT WAS MISSING. Measuring only
-whether his lines are covered by some facet edge scores 7 Anderson Heights at
-94.8% while the roof on screen is visibly a jumble -- because a partition can
-find every line he drew AND add a dozen he did not. So:
+whether the drawn lines are covered by some facet edge scores 7 Anderson
+Heights at 94.8% while the roof on screen is visibly a jumble -- because a
+partition can find every drawn line AND add a dozen never drawn. So:
 
-  FOUND      how much of his drawn line length has a facet edge running within
+  FOUND      how much of the drawn line length has a facet edge running within
              TOL of it. Low means creases were missed.
   UNDRAWN    how much of the INTERIOR facet-edge length has no drawn line near
              it. Edges along the building outline are excluded, since those are
-             the footprint rather than anything he claimed. High means the roof
-             was chopped up along lines he never saw.
+             the footprint rather than anything drawn. High means the roof
+             was chopped up along lines nobody drew.
   CLUTTER    total interior edge length. Two partitions can both score well and
              one of them draws twice as many metres of line to do it.
 
@@ -69,7 +69,7 @@ def main():
     ap.add_argument("--ids", nargs="*", type=int, default=None)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--ab", action="store_true",
-                    help="compare with Josh's lines wired in vs ignored")
+                    help="compare with the drawn lines wired in vs ignored")
     a = ap.parse_args()
 
     import geopandas as gpd
@@ -140,7 +140,7 @@ def main():
     if not n:
         print("nothing measured")
         return 1
-    print(f"\nFACET AGREEMENT WITH JOSH'S MARKUP, over {n} roofs he marked "
+    print(f"\nFACET AGREEMENT WITH THE MARKUP, over {n} roofs marked "
           f"complete\n")
     print(f"  {'':6s} {'your lines found':>17s} {'edges you did NOT draw':>24s} "
           f"{'interior edge m':>16s} {'facets':>8s}")
@@ -155,8 +155,8 @@ def main():
         print(f"  {name:6s} {f:>16.1f}% {u:>23.1f}% {c:>16.0f} {fc:>8.1f}")
     print("\n  A roof is right only when the first number is high AND the")
     print("  second is low. 7 Anderson scored 94.8% on the first while looking")
-    print("  like a jumble on screen -- every line he drew was found, and a")
-    print("  dozen he never drew were added alongside them.")
+    print("  like a jumble on screen -- every drawn line was found, and a")
+    print("  dozen never drawn were added alongside them.")
     return 0
 
 

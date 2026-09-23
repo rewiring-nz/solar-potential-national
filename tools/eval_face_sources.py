@@ -1,15 +1,15 @@
-"""Which reading of a roof is closest to what Josh drew?
+"""Which reading of a roof is closest to the drawn faces?
 
 Scores every candidate generator on the SAME held-out roofs, with the same
 measure, so "the learned model is better" is a number and not an impression.
 
 Per roof, per source:
-    agree    mean over Josh's faces of the best IoU any candidate face
-             achieves against it (his face is the unit, so missing one
+    agree    mean over the drawn faces of the best IoU any candidate face
+             achieves against it (the drawn face is the unit, so missing one
              costs in full and no amount of extra faces can pay it back)
-    matched  his faces matched at IoU >= 0.5 -- "did it find this face"
-    nface    how many faces the source claims, against how many he drew;
-             over-claiming is the failure he keeps pointing at
+    matched  drawn faces matched at IoU >= 0.5 -- "did it find this face"
+    nface    how many faces the source claims, against how many were drawn;
+             over-claiming is the recurring failure
 
 Only roofs in data/bench_ids.txt are scored: those are pinned out of the
 face-region model's training set, so the comparison is honest.
@@ -118,7 +118,7 @@ def main():
             acc[s]["dn"].append(len(cand) - len(drawn))
             acc[s]["n"] += 1
     print(f"{'source':12s} {'roofs':>5s} {'agree':>7s} {'matched':>8s} "
-          f"{'faces vs Josh':>14s}")
+          f"{'faces vs drawn':>14s}")
     for s in a.sources:
         d = acc[s]
         if not d["n"]:

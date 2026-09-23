@@ -1,7 +1,7 @@
 """
 Isolate the skeleton-roof reconstruction and measure what it costs or buys.
 
-WHY THIS EXISTS. Panels crossing Josh's drawn lines went from 20.4% (30 Aug
+WHY THIS EXISTS. Panels crossing drawn lines went from 20.4% (30 Aug
 build) to 23.8% (1 Sep build). The obvious suspect was the vision-cut work, and
 the obvious suspect is wrong: the 1 Sep build was written three minutes before
 the vision seam was even committed, so imagery cuts were not running in either
@@ -16,7 +16,7 @@ that margin unreachable turns the skeleton off and changes nothing else. Same
 code, same points, same panel fitter, one knob.
 
 TRUTH IS UNCHANGED AND INDEPENDENT of the knob: panels measured against the
-lines Josh drew, exactly as tools/measure_panel_crossings.py does it. Both arms
+drawn lines, exactly as tools/measure_panel_crossings.py does it. Both arms
 are scored the same way, so whatever the arms disagree about is the skeleton.
 
 WHAT WOULD MAKE THIS MEANINGLESS. Running it on roofs where the skeleton never

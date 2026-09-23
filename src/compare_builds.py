@@ -2,8 +2,7 @@
 Diff a finished build against the previous one, per building.
 
 Why this exists: every placement regression in this project so far was
-found the same way -- Josh looked at a roof on the live map and said "this
-is wrong". Three separate gate rules each deleted real panels from real
+found the same way -- by looking at a roof on the live map. Three separate gate rules each deleted real panels from real
 houses (4 Abbottswood Ln 61->6, 6 Shotover St 72kW->4, 7 Cedar Dr 69->6),
 and nothing in the pipeline noticed, because every run prints healthy
 totals whether or not it just destroyed a suburb. Totals hide it: a rule
@@ -42,9 +41,32 @@ SNAP = DATA_DIR / "build_snapshot_prev.json"
 PANELS, KWH, LEGACY_COUNT, ADDRESS = 0, 1, 2, 3
 
 
+SUMMARIES = DATA_DIR / "summaries"
+
+
 def _read_current():
-    d = json.loads(SOLAR.read_text())
+    """Per-building [panels, kwh, panel_count, address].
+
+    From data/summaries/<region>.json when the build emitted per region
+    (the ship path since 22 Sep), else from the merged file. The summaries
+    carry no address; the merged file, where it still exists, fills it in.
+    """
     out = {}
+    if SUMMARIES.exists() and any(SUMMARIES.glob("*.json")):
+        for f in SUMMARIES.glob("*.json"):
+            for b, (panels, kwh) in json.loads(f.read_text()).get("ladder", {}).items():
+                out[str(b)] = [panels, kwh, panels, ""]
+        if SOLAR.exists():
+            try:
+                for f in json.loads(SOLAR.read_text())["features"]:
+                    p = f["properties"]
+                    b = str(p["building_id"])
+                    if b in out:
+                        out[b][ADDRESS] = p.get("address", "")
+            except Exception:
+                pass
+        return out
+    d = json.loads(SOLAR.read_text())
     for f in d["features"]:
         p = f["properties"]
         out[str(p["building_id"])] = [p.get("fill_panels_100", 0), p.get("fill_kwh_100", 0),
@@ -122,7 +144,7 @@ def compare(top=40, min_loss=5):
             print(f"  #{b}  {p[PANELS]} -> 0 panels  {p[ADDRESS]}")
 
 
-# The 11 buildings from Josh's first bug doc (docs/bugdoc-2026-08-22.md).
+# The 11 buildings from the first bug doc (docs/bugdoc-2026-08-22.md).
 # Every rebuild should be checked against these by name, not just in the
 # aggregate -- they are the cases that defined what "wrong" looks like here.
 WATCHLIST = {

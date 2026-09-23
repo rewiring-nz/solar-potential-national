@@ -1,4 +1,4 @@
-"""Read a roof's faces from the model trained on Josh's drawn faces.
+"""Read a roof's faces from the model trained on the drawn faces.
 
 The fourth candidate generator, and the first that learns the OUTPUT we
 actually want. sam/line/lidar/hypothesis all produce polygons by assembling
@@ -11,29 +11,29 @@ Here the model predicts, per pixel, BOUNDARY and CORE; a watershed turns the
 pair into regions that tile the roof exactly once. A region cannot fail to
 close, and nothing is assumed about what shape a roof "should" be.
 
-Over-segmentation is controlled where Josh asked for it to be -- "we need to
-avoid too many lines or random invented lines" -- by MIN_FACE_FRAC and the
+Over-segmentation -- too many lines, or invented ones -- is controlled by
+MIN_FACE_FRAC and the
 seed threshold, both measurable against his face counts rather than tuned by
 eye.
 
 STATUS 18 Sep: MEASURED, NOT SHIPPING. On the 35 held-out roofs it has
-never trained on (tools/eval_face_sources.py), against Josh's own faces:
+never trained on (tools/eval_face_sources.py), against the drawn faces:
 
-    reading                    agree   matched   faces vs Josh
+    reading                    agree   matched   faces vs drawn
     the chain that ships now   0.714     77.6%   +1.9 (over on 19 roofs)
     learned from his markup    0.577     55.9%   -1.0 (under on 14)
 
 It is not close enough to replace anything, so nothing in the build calls
 it. But note HOW each one fails: the shipping chain INVENTS faces, which is
-the complaint Josh keeps raising, and this one draws too few. Every polygon
+the recurring defect, and this one draws too few. Every polygon
 it does draw is closed and straight -- there is no junk to clean up, only
 detail to gain.
 
 TWO MEASURED DEAD ENDS, so neither is retried blind:
   * RID2 pretraining. 1,819 roof-centred German roofs reach 0.624 boundary
     F1 on their OWN held-out split -- the architecture learns creases well
-    given data -- but fine-tuned onto Josh's roofs it scores 0.544/48.8%,
-    WORSE than training on his 96 alone (0.567/54.0%). RID has no LiDAR
+    given data -- but fine-tuned onto the marked roofs it scores 0.544/48.8%,
+    WORSE than training on the 96 alone (0.567/54.0%). RID has no LiDAR
     (four of seven channels neutral), its masks are azimuth classes rather
     than face instances, and German roofs are not NZ roofs. This is the
     same corpus that was a dead end for the line detector; it is now a
@@ -42,8 +42,8 @@ TWO MEASURED DEAD ENDS, so neither is retried blind:
     face 0.012/0.005: the best pairing (0.50, 0.005) buys 0.567 -> 0.577.
     The shortfall is not in the post-processing.
 
-WHAT WOULD ACTUALLY MOVE IT: more of Josh's roofs. 96 training roofs is the
-binding constraint, and unlike the shape-fitting path, this one converts his
+WHAT WOULD ACTUALLY MOVE IT: more marked roofs. 96 training roofs is the
+binding constraint, and unlike the shape-fitting path, this one converts
 marking effort directly into the output -- the only lever measured to work.
 """
 
@@ -153,7 +153,7 @@ def learned_faces(geom, img_ds, pts):
     if nseed == 0:
         return []
     # drop specks before they become faces -- this is the over-segmentation
-    # control Josh asked for, expressed as a share of THIS roof
+    # control, expressed as a share of THIS roof
     min_px = max(30, int(MIN_FACE_FRAC * roof.sum()))
     keep = [i for i in range(1, nseed + 1) if (seeds == i).sum() >= min_px]
     if not keep:

@@ -37,7 +37,7 @@ MAX_CACHED_TILES = 8  # decoded LiDAR tiles held per process. See __init__.
 # Callers that FAN OUT must pass something smaller: 8 workers x 8 cached tiles
 # was survivable on Queenstown's ~2026 survey but Wellington's 2019 tiles
 # decode several times larger, and the parallel panel gate reached >50 GB and
-# took Josh's machine down with it. Total memory is workers x tiles x decoded
+# took the workstation down with it. Total memory is workers x tiles x decoded
 # size -- budget it explicitly wherever both multipliers are in play.
 
 

@@ -1,15 +1,15 @@
 """What a foundation segmentation model sees on each roof, judged by eye.
 
-Josh, after a day of watching a small custom detector fumble clear roofs:
-"The images have all the pixel data to clearly show the shape of the roof. It
+After a day of a small custom detector fumbling clear roofs: the images
+have all the pixel data to clearly show the shape of the roof. It
 makes no sense you can't detect that when image recognition models can detect
 things in far more detail. You should be able to clearly see the shape of the
 roof, obstructions, what are just shadows from surrounding trees etc."
 
-He is right, and this is the test of it. SAM (ViT-B, the checkpoint already in
+This is the test of it. SAM (ViT-B, the checkpoint already in
 data/) segments each roof crop with no training on our data at all. Every mask
 that sits on the building becomes a candidate FACE -- no line extraction, no
-archetypes, no fusion heuristics. The panel pairs it with the faces Josh drew,
+archetypes, no fusion heuristics. The panel pairs it with the drawn faces,
 which are the standard.
 
 Runs under .venv-sam (torch + segment_anything live there):
@@ -102,7 +102,7 @@ def main():
 
     # THE SPLITTER. SAM glides over low-contrast creases on uniform roofs, so
     # its mask can span two true faces -- Anderson stayed "clearly worse" than
-    # Josh's markup for exactly that reason, and merge/drop arbitration cannot
+    # the markup for exactly that reason, and merge/drop arbitration cannot
     # fix a face that needed CUTTING. The line detector is the one instrument
     # here that fires on those creases, so: split a face along a confident
     # detected line, and keep the split only if LiDAR says the two sides are
@@ -153,8 +153,8 @@ def main():
             if h < 32 or w < 32:
                 break
 
-            # COVERAGE-COMPLETION PROMPTING. Josh, on the automatic grid:
-            # "A lot of faces are being missed, but it does seem better at
+            # COVERAGE-COMPLETION PROMPTING. On the automatic grid a lot of
+            # faces were missed, though it did better at
             # detecting where they are and their shape than the line method".
             # SAM answers where it is asked; the grid does not ask everywhere.
             # So ask deliberately: segment, subtract what came back, and ask
@@ -222,7 +222,7 @@ def main():
                         faces.append(g2.simplify(0.15))
                 uncovered = uncovered.difference(pick.buffer(0.05))
 
-            # WHAT SAM CANNOT KNOW, LIDAR ARBITRATES. Josh flagged the two
+            # WHAT SAM CANNOT KNOW, LIDAR ARBITRATES. The two
             # big commercial roofs: rooftop plant segmented faithfully and then
             # wrongly promoted to faces, one mask spanning two true faces, and
             # ragged boundaries. SAM sees shape; only the point cloud knows

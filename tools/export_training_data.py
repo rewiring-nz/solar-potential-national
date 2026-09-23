@@ -103,7 +103,7 @@ def main():
     # stable when re-run on the same labels and reshuffles completely the moment
     # a label is added: len(ids) changes, so does the permutation, and roofs
     # swap between train and validation. That is fine for a one-off "does more
-    # data help" curve and wrong for the loop Josh actually wants -- mark up
+    # data help" curve and wrong for the real loop -- mark up
     # more roofs, retrain, re-score -- where the validation set moving is
     # indistinguishable from the model changing.
     #
@@ -162,7 +162,7 @@ def main():
 
         # one channel per kind, so the model can be asked which it found.
         # HIP is derived, not drawn: the tool offers ridge/valley/cliff, so
-        # his hips live inside "ridge" as the minority pattern (subtle
+        # drawn hips live inside "ridge" as the minority pattern (subtle
         # diagonal creases vs high-contrast axis ridges) -- that is why the
         # detector "can't see hips". A ridge-kind line with an endpoint at
         # a footprint corner IS a hip on NZ vernacular roofs.

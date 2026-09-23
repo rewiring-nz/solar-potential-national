@@ -12,15 +12,15 @@ fixes that measured well:
   23 buildings                withheld as low_confidence that had panels before
 
 NONE of them were visible in tools/measure_facet_agreement.py, which is what
-had been driving the work all day. That tool scores facet SHAPE against Josh's
-drawings; it has no idea whether a building ships any panels at all. A roof can
-match his markup beautifully and show nothing on the map.
+had been driving the work all day. That tool scores facet SHAPE against the
+drawn markup; it has no idea whether a building ships any panels at all. A roof
+can match the markup beautifully and show nothing on the map.
 
 WHY AGAINST LIVE, NOT AGAINST THE LAST BUILD. `compare_builds.py --snapshot`
 overwrites its baseline every run, so after two rebuilds in a day it compares a
 build to itself and reports no change -- which happened. The deployed site is
 the only baseline that cannot be overwritten by the thing being tested, and it
-is also the thing Josh is actually looking at.
+is also the thing people are actually looking at.
 
 WHAT IS FLAGGED, worst first:
   ZEROED     had panels, now has none. The most visible failure there is: a
@@ -31,8 +31,8 @@ WHAT IS FLAGGED, worst first:
   WITHHELD   newly carries a no_estimate_reason having been estimated before.
 
 A drop is not automatically wrong -- better geometry legitimately removes
-panels that were overlapping a ridge, and Josh said so himself: "on some faces
-this will add more panels, on others it will reduce them". This does not judge.
+panels that were overlapping a ridge: on some faces better geometry adds
+panels, on others it removes them. This does not judge.
 It surfaces what a person should look at before pushing.
 
 Usage:
@@ -60,7 +60,43 @@ DROP_MIN = 20       # ...and at least this many
 
 
 def _panels(p):
-    return p.get("fill_panels_100", p.get("panel_count", 0)) or 0
+    """Panels actually placed on this roof.
+
+    THIS USED TO PREFER fill_panels_100, AND THAT MADE THE GATE LIE. The two
+    are the same number by definition -- fill_panels_100 counts the panels at
+    or below rank 100, which is all of them -- so preferring one over the
+    other should never matter. It matters when the file is internally
+    inconsistent, which the LIVE file is: on 21 Sep, 13,265 of its 15,353
+    buildings carried a ladder that disagreed with their own panel_count,
+    overstating the district by 116,470 panels (+18%). The ladder was baked
+    from one generation of layouts and the count spliced in from another.
+
+    Comparing that inflated ladder against a freshly-baked build reported a
+    14% COLLAPSE on a build that in fact placed 1.5% MORE panels -- a false
+    alarm big enough to stop a good release, and, pointed the other way, big
+    enough to wave a bad one through.
+
+    So: count what was placed, and let _ladder_consistent() report the
+    disagreement as the defect it is instead of silently pricing it in.
+    """
+    return p.get("panel_count", 0) or 0
+
+
+def _ladder_consistent(props_by_id, label):
+    """fill_panels_100 must equal panel_count. Report where it does not."""
+    bad = [(b, p) for b, p in props_by_id.items()
+           if "fill_panels_100" in p
+           and (p.get("fill_panels_100") or 0) != (p.get("panel_count") or 0)]
+    if not bad:
+        return
+    over = sum((p.get("fill_panels_100") or 0) - (p.get("panel_count") or 0)
+               for _, p in bad)
+    print(f"\n  STALE DENSITY LADDER IN THE {label} BUILD")
+    print(f"    {len(bad)} of {len(props_by_id)} buildings have fill_panels_100 "
+          f"disagreeing with panel_count, {over:+,} panels")
+    print("    The dashboard reads the ladder and the map draws the count, so "
+          "they are telling\n    different stories about the same roof. "
+          "Re-run src/bake_density_deciles.py.")
 
 
 def main():
@@ -71,8 +107,9 @@ def main():
     a = ap.parse_args()
 
     newp = Path(a.new)
-    if not newp.exists():
-        print(f"no build at {newp}")
+    summaries = ROOT / "data" / "summaries"
+    if not newp.exists() and not summaries.is_dir():
+        print(f"no build at {newp} and no {summaries}")
         return 2
     print(f"fetching the live build from {a.live_url.split('/data/')[0]} ...")
     try:
@@ -86,9 +123,24 @@ def main():
     live = {int(f["properties"]["building_id"]): f["properties"]
             for f in live_doc["features"]
             if f["properties"].get("building_id") is not None}
-    new = {int(f["properties"]["building_id"]): f["properties"]
-           for f in json.loads(newp.read_text())["features"]
-           if f["properties"].get("building_id") is not None}
+    # THE NEW BUILD IS PER-REGION SUMMARIES NOW (docs/scale-architecture.md).
+    # Each carries a per-building [panel_count, kwh] ladder; that is what the
+    # gate compares. The merged file is read only where a checkout still has
+    # one and no summaries.
+    if summaries.is_dir() and any(summaries.glob("*.json")):
+        new = {}
+        for sp in summaries.glob("*.json"):
+            for b, (panels, kwh) in json.loads(sp.read_text()).get("ladder", {}).items():
+                new[int(b)] = {"panel_count": panels, "fill_panels_100": panels,
+                               "ac_kwh_year": kwh, "building_id": int(b)}
+        print(f"new build: {len(new):,} buildings from {len(list(summaries.glob('*.json')))} region summaries")
+    else:
+        new = {int(f["properties"]["building_id"]): f["properties"]
+               for f in json.loads(newp.read_text())["features"]
+               if f["properties"].get("building_id") is not None}
+    _ladder_consistent(live, "LIVE")
+    _ladder_consistent(new, "NEW")
+
     common = sorted(set(live) & set(new))
     if not common:
         print("no buildings in common -- is this the same district?")
@@ -124,11 +176,10 @@ def main():
     show("NEWLY WITHHELD", withheld,
          lambda r: f"#{r[0]}  had {r[1]} panels, now: {r[2]}")
 
-    # THE ROOFS JOSH HAS POINTED AT get their own section, always. He said
-    # it plainly on 18 Sep: "I provide examples but they don't often get
-    # fully fixed." A release that moves one of his cases must say so here,
-    # and a release that moves one he already PASSED is a regression that
-    # has to be seen before the push, not after he finds it again.
+    # THE FLAGGED ROOFS get their own section, always: flagged examples did
+    # not reliably get fully fixed. A release that moves one of the cases
+    # must say so here, and a release that moves one already PASSED is a
+    # regression that has to be seen before the push, not after.
     try:
         import json as _json
         from pathlib import Path as _P
@@ -156,7 +207,7 @@ def main():
                   f"moved. Do not deploy without looking at them.")
         pending = [c["id"] for c in reg["cases"]
                    if c.get("status") in ("open", "wrong", "needs_verdict")]
-        print(f"    {len(pending)} still unfixed or awaiting his verdict")
+        print(f"    {len(pending)} still unfixed or awaiting a verdict")
     except Exception as _exc:
         print(f"\n  (case register unavailable: {_exc!r})")
 

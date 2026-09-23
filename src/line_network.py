@@ -2,11 +2,11 @@
 Turn detected line fragments into a connected roof-line network.
 
 THE GAP THIS FILLS, measured rather than assumed. Across 299 buildings the
-vision model emits about as many lines per roof as Josh draws by hand -- 19.2
+vision model emits about as many lines per roof as a person draws by hand -- 19.2
 against 18.0 -- and they are almost entirely disconnected:
 
                         lines/roof   touching pairs   dangling ends
-    Josh's markup           18.0         24.3%            56.4%
+    manual markup           18.0         24.3%            56.4%
     model predictions       19.2          2.6%            98.5%
 
 That difference is not accuracy, it is TOPOLOGY. A person draws a ridge until
@@ -176,7 +176,7 @@ def connect(segs):
 # A sawtooth roof is a set of parallel ridges. The model finds the building's
 # long axes confidently and the folds only as short weak stubs -- on 7 Anderson
 # Heights the two sawtooth lines score 0.880 and 0.850 and are 1.5 m and 1.7 m
-# against the 4.7-7.0 m Josh drew. Raising or lowering the confidence cutoff
+# against the 4.7-7.0 m drawn. Raising or lowering the confidence cutoff
 # cannot help: the geometry is a stub either way.
 #
 # But a stub that shares a bearing with other lines on the same roof is

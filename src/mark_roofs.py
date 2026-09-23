@@ -1,9 +1,9 @@
 """
-Clean, large roof renders for Josh to draw the true roof lines on.
+Clean, large roof renders to draw the true roof lines on.
 
 Every automated signal tried so far -- plane fit, fold fraction, fold location,
-acceptance threshold, plane counts -- fails to separate the roofs Josh calls
-correct from the ones he calls wrong. On 7 Anderson Heights and 5 Isle St the
+acceptance threshold, plane counts -- fails to separate the roofs confirmed
+correct from the ones confirmed wrong. On 7 Anderson Heights and 5 Isle St the
 numbers are nearly identical and his verdicts are opposite, so there is nothing
 left to tune against.
 

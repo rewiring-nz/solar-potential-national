@@ -2,8 +2,8 @@
 Find roof area that is not roof: decks, balconies and terraces inside the
 building outline.
 
-Josh, on 1/49 Belfast Terrace: "you are counting a balcony area in the outline
-of the building, really the roof is only taking up half the building outline."
+On 1/49 Belfast Terrace a balcony area was counted as roof; the roof is only
+half the building outline.
 Confirmed there -- the model resolved facets over 99% of a 228 m2 outline when
 about half of it is open deck. That inflates capacity AND places panels on
 balconies, and it is invisible to every metric we have, because a deck is a
@@ -47,7 +47,7 @@ railings, furniture, colour -- at 0.1 m, where the LiDAR is 0.42 m and blind to
 all of it. That is the next thing to try, and it is the same
 LiDAR-plus-imagery reconciliation this project keeps arriving back at.
 
-The problem itself is real and confirmed by Josh on 1/49 Belfast Terrace, where
+The problem itself is real, confirmed on 1/49 Belfast Terrace, where
 facets covered 99% of a 228 m2 outline and about half of it is open deck. Its
 PREVALENCE is still unmeasured.
 

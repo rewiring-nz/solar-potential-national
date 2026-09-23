@@ -1,4 +1,4 @@
-"""Score the CURRENT pipeline against every roof Josh has marked. Run before
+"""Score the CURRENT pipeline against every marked roof. Run before
 any push: it is the regression gate that stops the 'count matched, structure
 wrong' trap from shipping again.
 
@@ -72,7 +72,7 @@ for r in TRUTH["roofs"]:
     carve = (unary_union([o.buffer(0) for o in obs]).intersection(roof).area
              if obs and roof is not None else 0.0)
 
-    # structure checks where traced geometry exists (Josh's metric: AREA, not counts)
+    # structure checks where traced geometry exists (the metric is AREA, not counts)
     extra = ""
     t = r.get("traced_lines_nztm")
     if t and "middle_section_corners" in t:
@@ -100,7 +100,7 @@ for bid, addr, exp, got, wtd, worst, carve, ra, extra in rows:
           f"{'' if ok else '!'}  {wtd:>7.1%} {worst:>6.0%} "
           f"{carve/max(ra,1e-9):>6.1%} {extra}")
 for w in warns: print("  WARN:", w)
-print(f"\n{len(rows)} marked roofs scored; {fails} outside +/-2 of Josh's count.")
+print(f"\n{len(rows)} marked roofs scored; {fails} outside +/-2 of the marked count.")
 print("Compare against the last committed run in data/marked_scores.json before pushing.")
 prev = Path("data/marked_scores.json")
 cur = {str(b): {"faces": g, "wtd": round(w, 3), "worst": round(wo, 3),

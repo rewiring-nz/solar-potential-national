@@ -36,14 +36,14 @@ slope_deg, aspect_deg, area_m2, point_count, geometry) so it can be dropped
 in behind a flag once it is proven.
 
 Prototype: NOT wired into the pipeline, and it should not be re-enabled in its
-current form. Josh reviewed ten before/after layouts on 26 Aug and called the
-reconstruction worse on all ten. See src/compare_reconstruct.py and
+current form. In a review of ten before/after layouts the reconstruction
+was worse on all ten. See src/compare_reconstruct.py and
 src/compare_layouts.py.
 
 WHY IT FAILED, and the design rule any next attempt has to obey:
 
-Josh: "They need to be large and blocky most of the time like real rooftops.
-It's a lot more common for rooftops to be clear large flat surfaces on a few
+Faces need to be large and blocky most of the time, like real rooftops:
+it is far more common for rooftops to be clear large flat surfaces on a few
 different angles and slopes, than it is to have lots of small changes." And:
 "you've massively overcomplicated panel placement, I think it's because you are
 drawing lots of tiny facet outlines and you might have a rule a panel can't
@@ -66,7 +66,7 @@ costs, and small ones never do. The merge thresholds here (MERGE_SLOPE_DEG,
 SPLIT_MIN_*) are far too eager to divide.
 
 The plane counts also said this was fine: it scored level with the shipped
-segmenter on Josh's 20 labelled roofs. Neither plane count nor off-plane
+segmenter on the 20 labelled roofs. Neither plane count nor off-plane
 residual can see the cost of a split. Judge any future version on layouts.
 """
 
@@ -127,7 +127,7 @@ MERGE_MIN_INLIER_FRAC = 0.35
 # A plane and a polygon are not the same thing. One flat deck interrupted by a
 # lift overrun comes back as three polygons, and merge_coplanar cannot fuse
 # them because it only considers facets that TOUCH. 1 Memorial St returned ten
-# facets against Josh's count of seven, and three of those ten were the same
+# facets against the true seven, and three of those ten were the same
 # deck at 329.25/329.25/329.26 m. So facets carry a plane_id: same surface,
 # possibly several pieces. Layout still works per polygon; counting works per
 # plane.
@@ -143,8 +143,8 @@ SMOOTH_ROUNDS = 3
 # cell gets cut by the two planes competing for it.
 MIXED_MAX_SHARE = 0.75
 # Cutting a roof up always lowers the residual, so residual alone cannot decide
-# whether to cut. Josh, on 5 Isle St: "this one is better as one plane, not two
-# with one diagonal". That roof is one large flat surface with drainage falls;
+# whether to cut. 5 Isle St is better as one plane than two with one
+# diagonal: it is one large flat surface with drainage falls;
 # two near-identical planes were separated by a line corresponding to nothing.
 # A split has to be justified by a real difference -- a change of pitch, of
 # bearing, or a step in height -- not by the arithmetic improving.
@@ -172,8 +172,8 @@ OBST_ENCLOSURE = 0.35        # share of its border shared with one parent face
 OBST_CLUSTER_EPS_M = 0.60    # ~1.4x the 0.42m point spacing at pilot density
 OBST_MIN_PTS = 5
 OBST_MIN_AREA_M2 = 0.35      # smaller than this is noise, not equipment
-# LiDAR draws a box bigger than it is. Josh, on 28 Rees St: obstructions "show
-# up wider in the lidar than they really are, because they often have vertical
+# LiDAR draws a box bigger than it is: obstructions show up wider in the
+# LiDAR than they really are (28 Rees St), because they often have vertical
 # edges but don't necessarily show as vertical edges in the lidar". A return
 # near a vertical face lands at an intermediate height, so the above-plane
 # cluster is dilated by roughly half the point spacing in every direction --
@@ -663,8 +663,8 @@ def extract_obstructions(facets, pts):
 # the roof and merging is strictly better -- it recovers the setback strip and
 # removes an edge panels had to stop at.
 #
-# This also answers Josh on 29 Park St: "treating a gradually curving sloping
-# roof as two planes when really it is just a light curve across the whole
+# This also covers 29 Park St: a gradually curving sloping roof treated as
+# two planes when really it is a light curve across the whole
 # roof". A light curve is exactly a sequence of faces that differ by less than
 # a panel can bridge, so it now comes back as one face.
 BRIDGE_ANGLE_DEG = 5.0      # a fold shallower than this, a panel lies across

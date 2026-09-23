@@ -1,18 +1,18 @@
 """
-Did the rebuild actually ship the geometry Josh drew?
+Did the rebuild actually ship the drawn geometry?
 
 The agreement measurement (tools/measure_facet_agreement.py) runs the
 segmentation live. This checks the OPPOSITE end: what is in the built
 panel_layouts.geojson that is about to be deployed. A fix that measures well
 in isolation and does not survive the build is not a fix, and that gap is
-exactly what went unnoticed before -- his markup was computed correctly and
+exactly what went unnoticed before -- the markup was computed correctly and
 discarded downstream for weeks.
 
 Reports per region and overall:
-  MATCH      built facet count equals the usable faces he drew
+  MATCH      built facet count equals the usable faces drawn
   MEAN ERR   average absolute difference in facet count
   Anything not matching is listed, worst first, because a roof that ships 9
-  facets where he drew 2 is a different failure from one that ships 3.
+  facets where 2 were drawn is a different failure from one that ships 3.
 """
 import json
 import sys
@@ -58,10 +58,10 @@ def main():
     if bad:
         print(f"\n  worst mismatches:")
         for a, bid, w, g in bad[:12]:
-            print(f"    #{bid}  {a:22s} he drew {w:3d}  built {g:3d}")
+            print(f"    #{bid}  {a:22s} drawn {w:3d}  built {g:3d}")
     print("\n  Measured on the BUILT file, not by re-running segmentation: a fix")
     print("  that scores well in isolation and does not survive the build is")
-    print("  not a fix, and that is the gap his markup fell through for weeks.")
+    print("  not a fix, and that is the gap the markup fell through for weeks.")
     return 0
 
 

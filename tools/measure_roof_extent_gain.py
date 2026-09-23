@@ -9,7 +9,7 @@ only way to tell them apart is to run the real fitter both ways.
 
 That is what this does: the same segmentation and the same panel fitting, once
 with the LINZ outline and once with src.roof_extent.roof_region, on the roofs
-Josh has actually marked. No pipeline code is modified -- the boundary is
+actually marked. No pipeline code is modified -- the boundary is
 substituted per call -- so this can run while a district build is in flight.
 
 The number it prints is the one that decides whether a 16-hour rebuild is worth

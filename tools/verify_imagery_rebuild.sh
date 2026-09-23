@@ -4,7 +4,7 @@
 # Written before the rebuild finished, so that the checks are fixed in advance
 # rather than chosen once the numbers are visible. The prediction they test is
 # recorded in BACKLOG.md under PRE-REGISTERED PREDICTION: restoring imagery
-# should take the panel-crossing rate on Josh's labelled roofs from 23.8% to
+# should take the panel-crossing rate on the labelled roofs from 23.8% to
 # about 21.9%, leaving ~1.5 points unexplained.
 #
 # THE COMPARISON IS --no-model ON BOTH SIDES, and that is not a detail.
@@ -34,7 +34,7 @@ $PY src/compare_builds.py 2>/dev/null | head -40 \
 
 echo
 echo "=============================================================="
-echo " 3. THE PRE-REGISTERED NUMBER -- panels crossing Josh's lines"
+echo " 3. THE PRE-REGISTERED NUMBER -- panels crossing drawn lines"
 echo "    30 Aug build 20.4%  |  1 Sep build 23.8%  |  predicted ~21.9%"
 echo "=============================================================="
 $PY tools/triage_roofs.py --validate --no-model 2>/dev/null \

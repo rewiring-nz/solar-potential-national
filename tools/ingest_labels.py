@@ -56,7 +56,7 @@ def bundle_roofs(areas=()):
     WHY THIS IS NOT JUST THE CURRENT BUNDLE ANY MORE. It used to read
     mark_roofs.html, on the reasoning that labels should be checked against what
     the labeller was actually shown. That is right until the bundle is rebuilt:
-    on 5 Sep the 156-roof bundle was replaced by a 36-roof queue, and Josh's
+    on 5 Sep the 156-roof bundle was replaced by a 36-roof queue, and the
     next return was 18 roofs of real work rejected as "not one of the roofs in
     the bundle" -- including roofs from the bundle then live on Pages. The check
     was measuring which file happened to sit on disk, not whether the labels

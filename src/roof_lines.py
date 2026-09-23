@@ -41,8 +41,8 @@ warnings.filterwarnings("ignore")
 warnings.filterwarnings("default", category=DeprecationWarning)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# Canny + Hough was the first attempt and Josh's verdict on it was exact:
-# "you are drawing lines that are not in the underlying image, and then even
+# Canny + Hough was the first attempt, and its defect was exact: it drew
+# lines that are not in the underlying image, and then even
 # when there are clearly defined straight line ridges on the roof in the image,
 # you are missing them." Both halves of that have a cause.
 #

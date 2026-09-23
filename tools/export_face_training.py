@@ -1,15 +1,15 @@
 """
-Export Josh's roof FACES as training targets, not his lines.
+Export the drawn roof FACES as training targets, not the lines.
 
 WHY THE TARGET HAS TO CHANGE. The line detector works, in the narrow sense that
-it finds about as many creases per roof as Josh draws -- 19.2 against 18.0 over
+it finds about as many creases per roof as a person draws -- 19.2 against 18.0 over
 299 buildings. It is useless for geometry anyway, because of topology:
 
                         lines/roof   touching pairs   dangling ends
-    Josh's markup           18.0         24.3%            56.4%
+    manual markup           18.0         24.3%            56.4%
     model predictions       19.2          2.6%            98.5%
 
-He draws a ridge until it meets a hip, so his lines form a graph with real
+A person draws a ridge until it meets a hip, so drawn lines form a graph with real
 junctions and the faces between them are implied. The model activates along a
 crease and the stroke ends where the activation faded, so its output is a
 scatter that never closes anything. Merging, snapping and bridging those
@@ -21,20 +21,20 @@ disconnected face -- every pixel it labels belongs to some region, so the output
 is a partition by construction rather than by inference.
 
 THE TARGETS ALREADY EXIST. roof_labels.json carries a `faces` array per roof:
-rings the labelling tool derives from his lines in the browser, with an area and
+rings the labelling tool derives from the drawn lines in the browser, with an area and
 a usable flag. 85 completed roofs carry them, and nothing had read them until
-now. So this needs no new labelling work -- his existing markup, re-projected
+now. So this needs no new labelling work -- the existing markup, re-projected
 into the target a segmentation model wants.
 
 WHAT IS WRITTEN PER PATCH:
-    image     RGB from the same orthophoto he was looking at
+    image     RGB from the same orthophoto the labeller was looking at
     height    normalised DSM height plus its two gradient components, on the
               same grid -- a crease is a gradient discontinuity, and until now
               the model was never shown it
     faces     an integer instance mask, one id per face, 0 for not-roof
     edges     the face boundaries, 2 px wide -- a boundary-aware loss needs
               them and they are free to compute here
-    usable    a binary mask of faces he did NOT mark "no panels here"
+    usable    a binary mask of faces NOT marked "no panels here"
     weight    roof-only, so the loss ignores the street
 
 SPLIT BY ROOF, never by patch, for the same reason as the line exporter:
@@ -240,7 +240,7 @@ def main():
     print(f"\nwrote {OUT}")
     print("\nThese are REGION targets. A model trained on them cannot emit the")
     print("disconnected strokes the line detector does -- 98.5% of its endpoints")
-    print("dangle, against 56.4% of Josh's, which is why fragments could never be")
+    print("dangle, against 56.4% of the markup's, which is why fragments could never be")
     print("assembled into a roof.")
     return 0
 

@@ -7,12 +7,12 @@ lines MEET -- a hip runs into a ridge on nearly every pitched roof -- so the
 component containing a junction is L- or T-shaped, and the principal axis of an
 L is a diagonal through neither arm. Every junction therefore produced a line
 "slightly misaligned to the actual visible roof lines", which is, verbatim, the
-defect Josh reported seeing on a lot of rooftops. Weak spots in the activation
+defect seen on a lot of rooftops. Weak spots in the activation
 also split one crease into several components, which is where the stubs came
 from.
 
-Josh: "When lines are clearly visible on a rooftop, you should be drawing them
-exactly in the right spot."
+When lines are clearly visible on a rooftop they must be drawn exactly in
+the right spot.
 
 THE SHAPE OF THE FIX, stage by stage, each with a reason:
 
@@ -34,11 +34,11 @@ THE SHAPE OF THE FIX, stage by stage, each with a reason:
             probability stays warm. A hard threshold truncates a crease
             wherever confidence dips below it; the underlying ridge of
             activation usually continues, and following it is what turns a
-            1.5 m stub back into the 5 m fold Josh draws. Direction is never
+            1.5 m stub back into the 5 m fold a person draws. Direction is never
             invented -- only length, along the fitted line.
   JOIN      endpoints that nearly meet into shared junction points, so the
             output is a network with real T- and Y-junctions, like the one a
-            person draws -- 56% of Josh's endpoints touch another line against
+            person draws -- 56% of drawn endpoints touch another line against
             2.6% of the old extraction's.
 
 Coordinates are pixel-centre (+0.5) throughout: the old code passed raw column
@@ -282,11 +282,11 @@ def _seg_x(a, b, c, e, tol=1.0):
 def _junction_cleanup(segs):
     """End every line AT the junction, the way a person draws.
 
-    Josh, comparing the rebuilt lines with his own markup: "overlapping ends of
-    most lines which I don't have in what I gave you". The overshoot is FOLLOW's
+    Compared with the markup, the rebuilt lines had overlapping ends the
+    markup does not. The overshoot is FOLLOW's
     doing -- at a junction the crossing line's own activation keeps the
     probability warm, so an end runs a few pixels past the meeting point along
-    the other crease's glow. His hip stops ON the ridge; ours poked through it.
+    the other crease's glow. A drawn hip stops ON the ridge; ours poked through it.
 
     Two purely geometric repairs, no probabilities involved:
       TRIM  an end whose line crosses another line just inside the tip is cut
@@ -396,11 +396,11 @@ def extract(prob3, to_world, thr=THR):
         refined.append((a2, b2))
 
     # REJOIN THE PIECES OF ONE CREASE. The tracer splits at junctions, which is
-    # right for keeping a hip off the ridge's axis -- but Josh's ridge IS one
-    # line that hips meet at T-junctions, so after splitting, his single ridge
-    # exists here as collinear pieces that nothing put back together. He said
-    # it directly, comparing 7 Anderson Heights against his own markup: "many
-    # of the lines don't go their full length ... mine is much cleaner". Two
+    # right for keeping a hip off the ridge's axis -- but a drawn ridge IS one
+    # line that hips meet at T-junctions, so after splitting, the single ridge
+    # exists here as collinear pieces that nothing put back together: on 7
+    # Anderson Heights many lines did not run their full length where the
+    # markup is one clean line. Two
     # segments on the same line with at most a small gap are one crease.
     changed = True
     while changed:
@@ -453,8 +453,7 @@ def extract(prob3, to_world, thr=THR):
             continue
         sc = _line_mean(P, a, b)
         # a short line needs to be BELIEVED: fuzz branches are short and weak,
-        # real creases are long or strong. Josh: "still plenty of extra lines
-        # that shouldn't be there".
+        # real creases are long or strong; extra lines must not appear.
         floor = SCORE_FLOOR + (SHORT_PENALTY if L < SHORT_PX else 0.0)
         if sc < floor:
             continue

@@ -1,0 +1,11 @@
+{
+  "_readme": "Copy this file to my_area.json, set a name and bbox, and run bash quickstart.sh <name>. The bbox is [west, south, east, north] in WGS84 degrees. Keep it small on a first run: ~0.005 x 0.005 degrees (~400 x 550 m) is a few dozen buildings and finishes in minutes. The survey-layer fields are OPTIONAL: the defaults cover the Queenstown Lakes district (2021 LiDAR, 2026 imagery). For any other part of NZ, find your district's DSM/DEM/imagery layer ids at data.linz.govt.nz (search e.g. 'Wellington LiDAR 1m DSM') and the matching OpenTopography pc-bulk dataset at opentopography.org; building outlines are national and need no change.",
+  "name": "my_test_area",
+  "bbox": [168.6600, -45.0330, 168.6650, -45.0290],
+  "dsm_layer": null,
+  "dem_layer": null,
+  "imagery_layer": null,
+  "lidar_tile_index_layer": null,
+  "pointcloud_bulk_url": null,
+  "pointcloud_tile_year": null
+}

@@ -27,17 +27,8 @@ SEL = Path("data/selected_faces")
 PY_ = sys.executable
 
 
-def fingerprint(bid):
-    p = SEL / f"{bid}.json"
-    if not p.exists():
-        return None
-    try:
-        d = json.loads(p.read_text())
-    except Exception:
-        return None
-    rings = [[(round(x, 2), round(y, 2)) for x, y in f] for f in d["faces"]]
-    return hashlib.md5(json.dumps([d.get("source"), sorted(rings)],
-                                  sort_keys=True).encode()).hexdigest()
+
+from src.region_build import all_areas as _all_regions
 
 
 def eligible(bid):
@@ -58,6 +49,7 @@ def eligible(bid):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip", nargs="*", default=[])
+    ap.add_argument("--regions", nargs="*", default=None)
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--predict-only", action="store_true")
     a = ap.parse_args()
@@ -66,7 +58,7 @@ def main():
     from src.region_build import area_paths
 
     work = []
-    for region in config.REGIONS:
+    for region in (a.regions or _all_regions()):
         if region in a.skip:
             continue
         op = area_paths(region)["outlines"]

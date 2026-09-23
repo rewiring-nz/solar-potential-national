@@ -22,9 +22,9 @@ REGIONS = {
     # Island Bay, Wellington. The first region outside Queenstown, chosen as
     # the portability test: different LiDAR survey (Wellington City 2019-20),
     # different imagery (0.075 m, 2021 -- sharper than Queenstown's 0.1 m),
-    # different housing stock. Deployed as its OWN build and page, per Josh:
-    # "I want the Queenstown build and the national build to be separate in
-    # case of any problems."
+    # different housing stock. Deployed as its OWN build and page, so the
+    # Queenstown build and the national build stay separate in case of any
+    # problems.
     "island_bay": [174.7660, -41.3480, 174.7840, -41.3280],
 }
 
@@ -34,20 +34,23 @@ REGIONS = {
 # Real buildings whose top surface is not a usable roof (rooftop car decks,
 # etc.) -- kept on the map, but no panels placed.
 NON_ROOF_BUILDING_IDS = {
-    4744271,  # 19 Industrial Pl -- rooftop parking deck (Josh, 23 Aug)
+    4744271,  # 19 Industrial Pl -- rooftop parking deck
 }
 
 DEMOLISHED_BUILDING_IDS = {
-    4735131,  # 61 Ballarat St -- now under the new road corridor (Josh, 23 Aug)
+    4735131,  # 61 Ballarat St -- now under the new road corridor
 }
-LINZ_LIDAR_TILE_INDEX_LAYER = 105025  # "Otago - Queenstown LiDAR Tile Index (2021)" -- maps a
+LINZ_LIDAR_TILE_INDEX_LAYER = 105025  # "Wellington LiDAR Tile Index (2019-2020)" -- maps a
 # bbox to the CL2_*.copc.laz point-cloud tile names, which are then fetched from OpenTopography's
 # public bulk store (LINZ hosts the derived DSM/DEM rasters but not the raw point cloud)
 
 # LINZ layer IDs (confirmed to exist and cover the pilot bbox)
 LINZ_BUILDING_OUTLINES_LAYER = 101290
-LINZ_DSM_LAYER = 105024  # "Otago - Queenstown LiDAR 1m DSM (2021)"
-LINZ_DEM_LAYER = 105023  # "Otago - Queenstown LiDAR 1m DEM (2021)" -- bare earth, for shading horizon
+LINZ_DSM_LAYER = 105024  # "Wellington LiDAR 1m DSM (2019-2020)"
+LINZ_DEM_LAYER = 105023  # "Wellington LiDAR 1m DEM (2019-2020)" -- bare earth, for shading horizon
+# National 8m DEM for distant terrain horizons. src/fetch_dem_wide.py derives
+# the extent it needs from REGIONS, so this is the only per-deployment part.
+LINZ_WIDE_DEM_LAYER = 51768  # "NZ 8m Digital Elevation Model (2012)"
 LINZ_IMAGERY_LAYER = 105744  # "Wellington 0.075m Urban Aerial Photos (2021)"
 # NOTE the comment here used to name the Queenstown layer -- a stale copy from
 # the fork. The id was always right; the description was not. Island Bay builds
@@ -58,7 +61,7 @@ LINZ_IMAGERY_LAYER = 105744  # "Wellington 0.075m Urban Aerial Photos (2021)"
 # (both still 2021) -- worth revisiting if that skew ever shows up as a real building-outline/roof
 # misalignment, but the two are already independently-sourced datasets with their own tolerances.
 
-# Trina Vertex S+ TSM-500NEG18R.25 -- the panel Josh picked as representative
+# Trina Vertex S+ TSM-500NEG18R.25 -- the panel chosen as representative
 # of what is actually installed in NZ now (Lightforce, 2025). N-type i-TOPCon,
 # 1961 x 1134 mm, 500 W, which works out at 22.5% module efficiency.
 #
@@ -68,7 +71,8 @@ LINZ_IMAGERY_LAYER = 105744  # "Wellington 0.075m Urban Aerial Photos (2021)"
 # longer and 13 cm wider than the placeholder.
 PANEL_WIDTH_M = 1.134
 PANEL_HEIGHT_M = 1.961
-PANEL_EDGE_SETBACK_M = 0.3  # clearance from the roof's own outer edge (eave/verge) -- common
+PANEL_EDGE_SETBACK_M = 0.1  # edge and ridge setbacks are 0.1 m (22 Sep); measured on the bench in the commit.
+# History below is why it was 0.3 for a while. Previously: clearance from the roof's own outer edge (eave/verge) -- common
 # fire-code convention. Lowered to 0.1 earlier per explicit request after it was found strangling
 # narrow facets (a real ~1.4m-wide strip loses 0.6m total, under the panel's own 1m minimum
 # dimension, so it fit zero panels despite real usable area, on #5371143) -- but that traded away
@@ -78,19 +82,18 @@ PANEL_EDGE_SETBACK_M = 0.3  # clearance from the roof's own outer edge (eave/ver
 PANEL_EDGE_SETBACK_FALLBACK_M = 0.1  # retried only for a facet that fits zero panels at the
 # primary setback above -- keeps narrow facets panelable without loosening the default for
 # everything else.
-RIDGE_SETBACK_M = 0.25  # extra clearance specifically along a boundary shared with another real
+RIDGE_SETBACK_M = 0.1  # was 0.25 until 22 Sep. Extra clearance specifically along a boundary shared with another real
 # roof plane on the same building (a real ridge, hip, or valley) -- separate from, and on top of,
 # PANEL_EDGE_SETBACK_M's outer-edge clearance. Two adjacent facets each erode this far back from
 # their shared boundary, so the real join between two differently-angled roof sections reads as
 # an actual visible gap (like real ridge cap flashing) instead of two panel grids butting flush
 # against each other with no visual break between them.
-# Was 45, which was cutting off real roofs rather than unusable ones. Josh, on
-# 1/5 Sydney St -- a twelve-unit terrace whose facets are ALL 44-50 degrees, so
-# the cap silently excluded the entire building and left it with 6 panels:
-# "I also don't know why there is a panel cut off at 45 degree, even 90 degree
-# panels can be economic if facing the right direction."
+# Was 45, which was cutting off real roofs rather than unusable ones: 1/5
+# Sydney St, a twelve-unit terrace whose facets are ALL 44-50 degrees, so the
+# cap silently excluded the entire building and left it with 6 panels. Even a
+# 90-degree panel can be economic if it faces the right way.
 #
-# He is right that steepness alone does not make a panel uneconomic -- the solar
+# Steepness alone does not make a panel uneconomic -- the solar
 # model already prices slope and aspect, and the per-panel ROI bands already show
 # a badly-oriented panel as red. A hard slope cut is doing that job twice, and
 # worse.
@@ -104,11 +107,10 @@ RIDGE_SETBACK_M = 0.25  # extra clearance specifically along a boundary shared w
 # admitted walls too, and the cost is not spread evenly -- it is concentrated
 # and total on the buildings it hits.
 #
-# Josh spotted it on the map at 9 Henry Street (#5371115, footprint 85 m2). Its
+# It showed on the map at 9 Henry Street (#5371115, footprint 85 m2). Its
 # four facets were 2.1, 5.6, 67.1 and 67.3 degrees, and ALL 44 PANELS -- the
 # entire 19.4 kW the dashboard claimed -- sat on the two 67-degree faces. The
-# actual roof got nothing. The panels also LOOK wrong there, which is what drew
-# his eye: a panel on a 67-degree wall foreshortens to 39% of its length in plan
+# actual roof got nothing. The panels also LOOK wrong there: a panel on a 67-degree wall foreshortens to 39% of its length in plan
 # view, so it draws as a squat rectangle in the wrong place.
 #
 # District-wide this is small in aggregate and severe per building:
@@ -117,7 +119,7 @@ RIDGE_SETBACK_M = 0.25  # extra clearance specifically along a boundary shared w
 #     slope > 60 deg     506 panels  0.1%
 # 55 removes 0.3% of district panels while fixing the class of building where
 # the error is 100% of the claim. It stays clear of the genuinely ambiguous
-# 42-50 degree band, where Josh's own truth data has both real steep roofs and
+# 42-50 degree band, where the markup has both real steep roofs and
 # the stepped-house risers at 26 Panorama Terrace that are also walls -- that
 # band needs evidence, not a threshold, and is still open.
 # Best-of-N panel placement. Empty = off, which is the default.
@@ -156,7 +158,7 @@ PV_ASSUMPTIONS = {
     "panel_area_m2": PANEL_WIDTH_M * PANEL_HEIGHT_M,
     "panel_efficiency_pct": 22.5,  # STC efficiency implied by 500W / 2.2238m2 / 1000W/m2
     "inverter_efficiency_pct": 97.0,  # typical string/micro-inverter conversion efficiency
-    # TOTAL system losses are 14%, INCLUDING the inverter (Josh, 1 Sep).
+    # TOTAL system losses are 14%, INCLUDING the inverter.
     #
     # Read this with inverter_efficiency_pct above: the two multiply, and the
     # product is what matters.
@@ -208,3 +210,51 @@ PV_ASSUMPTIONS = {
 # recorded in data/roof_truth notes.
 POINTCLOUD_BULK_URL = "https://opentopography.s3.sdsc.edu/pc-bulk/NZ19_Wellington"
 POINTCLOUD_TILE_YEAR = "2019"
+
+# See src/surveys.py and the Queenstown repo's copy of this block: the right
+# LiDAR layer is a property of the PLACE, and hard-coding it is what pointed
+# this deploy at the OTAGO point-cloud store until 31 August -- every download
+# 404'd and regions fell back silently to the 1 m DSM. A region covered by no
+# listed survey is now an error that names what is known.
+SURVEYS = [
+    {
+        "name": "wellington-2019",
+        "bbox": [174.6, -41.42, 175.15, -40.95],
+        "dsm_layer": LINZ_DSM_LAYER,
+        "dem_layer": LINZ_DEM_LAYER,
+        "imagery_layer": LINZ_IMAGERY_LAYER,
+        "lidar_tile_index_layer": LINZ_LIDAR_TILE_INDEX_LAYER,
+        "pointcloud_bulk_url": POINTCLOUD_BULK_URL,
+        "pointcloud_tile_year": POINTCLOUD_TILE_YEAR,
+    },
+]
+# ---------------------------------------------------------------- my area
+# QUICKSTART: an optional user-defined area for open-source verification.
+# Drop a my_area.json next to this file (see my_area.example.json) and every
+# tool in the repo -- fetching, the build stages, the previews -- treats it
+# exactly like a first-class region. Nothing about the methodology changes:
+# that is the point. The optional survey overrides exist because LINZ layer
+# ids are per-survey; the defaults above cover the Queenstown Lakes 2021
+# LiDAR + 2026 imagery captures.
+import json as _json
+import os as _os
+_MY_AREA = _os.path.join(_os.path.dirname(__file__), "my_area.json")
+if _os.path.exists(_MY_AREA):
+    try:
+        _ma = _json.load(open(_MY_AREA))
+        _name = str(_ma["name"]).strip()
+        _bbox = [float(v) for v in _ma["bbox"]]
+        assert len(_bbox) == 4 and _name and _name not in REGIONS
+        REGIONS[_name] = _bbox
+        for _key, _var in (("dsm_layer", "LINZ_DSM_LAYER"),
+                           ("dem_layer", "LINZ_DEM_LAYER"),
+                           ("imagery_layer", "LINZ_IMAGERY_LAYER"),
+                           ("lidar_tile_index_layer",
+                            "LINZ_LIDAR_TILE_INDEX_LAYER"),
+                           ("pointcloud_bulk_url", "POINTCLOUD_BULK_URL"),
+                           ("pointcloud_tile_year", "POINTCLOUD_TILE_YEAR")):
+            if _ma.get(_key):
+                globals()[_var] = _ma[_key]
+        print(f"[config] my_area.json loaded: region '{_name}' {_bbox}")
+    except Exception as _exc:
+        print(f"[config] my_area.json IGNORED ({_exc!r})")

@@ -85,8 +85,8 @@ def derive(region):
     panel_kw = config.PV_ASSUMPTIONS["panel_rated_power_w"] / 1000.0
     features = []
     # EVERY building in the outlines gets a feature, including ones we could
-    # not model. Josh: "The buildings should stay. We should have a marking on
-    # the building saying why it is not estimated." A building that is simply
+    # not model. The buildings stay, marked with why they are not estimated.
+    # A building that is simply
     # absent is indistinguishable, to someone searching their address, from a
     # broken site -- and it is the one case where they most want an answer.
     for bid, row in gdf_wgs.iterrows():

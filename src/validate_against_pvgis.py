@@ -5,7 +5,7 @@ Every internal check this project has -- the truth scorecard, the layout
 audits, compare_builds -- measures us against ourselves. None of them can see
 a systematic bias in the irradiance model: if the whole POA table were 10%
 high, every internal number would agree with every other internal number and
-the map would be confidently wrong. Josh asked for an outside opinion.
+the map would be confidently wrong. This is the outside opinion.
 
 PVGIS (European Commission JRC) is the reference free tool: global coverage
 including New Zealand via ERA5 reanalysis, no API key, and -- unusually -- it

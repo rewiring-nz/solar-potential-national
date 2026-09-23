@@ -26,6 +26,10 @@ def main():
     ap.add_argument("ids", nargs="+", type=int)
     ap.add_argument("--area", default="pilot")
     ap.add_argument("--push", action="store_true")
+    # See the solar-map copy: a district-wide post-process does not belong
+    # inside a 60-building chunk. patch_stale_selected bakes once at the end.
+    ap.add_argument("--skip-bake", action="store_true",
+                    help="do not re-bake density deciles (caller will)")
     ap.add_argument("--skip-tiles", action="store_true",
                     help="patch the geojson only (for chained invocations; run tiles once at the end)")
     a = ap.parse_args()
@@ -72,13 +76,9 @@ def main():
     region = area_paths(a.area)["panel_layouts"]
     patch(region)
     # gate just this area's new panels (in place, cheap for a handful of ids)
-    import rasterio
     from src.gate_panels import gate_area
     from src.pointcloud_source import PointCloudSource
-    with rasterio.open(DATA / "dem_wide_mosaic.tif") as ds:
-        dem = ds.read(1)
-        dem_inv = ~ds.transform
-    gate_area(a.area, PointCloudSource(), dem, dem_inv, only_ids=ids)
+    gate_area(a.area, PointCloudSource(), only_ids=ids)
     # re-copy region layouts into the merged district file
     patch(DATA / "panel_layouts.geojson")
 
@@ -94,6 +94,7 @@ def main():
     sp_path = DATA / "solar_potential.geojson"
     if sp_path.exists():
         import config
+        from src.derive_solar_potential import _facet_area_m2
         reg = json.load(open(region))
         agg = {}
         for f in reg["features"]:
@@ -106,7 +107,11 @@ def main():
             k = p["kind"]
             if k == "facet":
                 b["facet_count"] += 1
-                area = p.get("area_m2") or 0.0
+                # Same fix as the solar-map copy: the layout emitter does
+                # not write area_m2 on a facet, so reading it directly gave
+                # every patched building facet_area_m2 = 0 and Heat Map mode
+                # showed the roof as 0.0 kW.
+                area = _facet_area_m2(f)
                 b["facet_area_m2"] += area
                 b["poa_w"] += area * (p.get("poa_kwh_m2_yr") or 0.0)
             elif k == "obstruction":
@@ -143,22 +148,21 @@ def main():
         print(f"  solar_potential: updated {n_upd} buildings", flush=True)
         # density deciles (fill_*) for the patched buildings come from the
         # merged layouts; bake refreshes them (writes solar_potential in place)
-        subprocess.run([sys.executable, "src/bake_density_deciles.py"], check=True, cwd=ROOT)
+        if not a.skip_bake:
+            subprocess.run([sys.executable, "src/bake_density_deciles.py"],
+                           check=True, cwd=ROOT)
 
     if not a.skip_tiles:
-        subprocess.run([sys.executable, "src/shrink_panels_for_tiles.py"], check=True, cwd=ROOT)
-        subprocess.run(
-            ["tippecanoe", "-o", "data/panel_layouts.pmtiles", "--force", "-l", "layout",
-             "-Z13", "-z16", "--drop-densest-as-needed", "--detect-shared-borders",
-             "-y", "kind", "-y", "building_id", "-y", "fill_rank", "-y", "fill_order",
-             "-y", "array_id", "-y", "array_size", "-y", "ac_kwh_year", "-y", "slope_deg",
-             "-y", "aspect_deg", "-y", "roof_confidence", "-y", "poa_kwh_m2_yr",
-             "-y", "panel_count", "data/panel_layouts.geojson"],
-            check=True, cwd=ROOT)
-        print(f"  tiles rebuilt ({time.time()-t0:.0f}s total)", flush=True)
+        # Re-emit this region and recombine (docs/scale-architecture.md): the
+        # merged file is no longer what the map serves.
+        subprocess.run([sys.executable, "src/emit_region.py", a.area], check=True, cwd=ROOT)
+        subprocess.run([sys.executable, "src/combine_regions.py"], check=True, cwd=ROOT)
+        print(f"  region re-emitted and tiles recombined ({time.time()-t0:.0f}s total)", flush=True)
 
     if a.push:
-        subprocess.run(["git", "add", "data/panel_layouts.pmtiles"], cwd=ROOT, check=True)
+        subprocess.run(["git", "add", "data/panel_layouts.pmtiles", "data/buildings.pmtiles",
+                        "data/building_cells.pmtiles", "data/summaries", "data/build_summary.json",
+                        "data/building_detail"], cwd=ROOT, check=True)
         subprocess.run(["git", "-c", "user.name=Josh", "-c", "user.email=josh@ideatious.com",
                         "commit", "-q", "-m",
                         f"Patch buildings {' '.join(map(str, a.ids))} with current code"],

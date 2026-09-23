@@ -22,7 +22,7 @@ scorecard -- run it after a build, before pushing.
 
 The panel-coverage check earns its place by history. On 1 Sep, 9 Henry Street
 was claiming 44 panels -- 19.4 kW -- with every one of them on two 67-degree
-faces that were walls, not roof. Josh spotted it by eye on the map. This check
+faces that were walls, not roof. It was visible by eye on the map. This check
 finds it, and 58 others like it, in about a second.
 
 Usage:
@@ -106,7 +106,7 @@ def _physical_yield_ceiling():
 # nothing noticed. District-wide the dashboard was quoting 750,672 panels while
 # the map drew 774,642.
 #
-# Josh found it by counting panels on one roof: 15 Kent Street read "25 panels"
+# Found by counting panels on one roof: 15 Kent Street read "25 panels"
 # against 79 actually placed. Re-running bake_density_deciles fixed every one,
 # so the failure is ORDERING, not arithmetic -- which is exactly the kind of
 # thing a build does silently and a check catches in a second.

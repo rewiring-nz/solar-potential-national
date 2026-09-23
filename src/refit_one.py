@@ -3,7 +3,7 @@ Re-fit ONE building through the real pipeline, for any area, and report what
 changed. The iteration loop for placement work.
 
 src/live_server.py can already do this, but only for the pilot and only over
-HTTP. Josh's reports land all over the district, and a full rebuild is hours,
+HTTP. Reports land all over the district, and a full rebuild is hours,
 so tuning placement without this means changing a constant and waiting.
 
 Usage:

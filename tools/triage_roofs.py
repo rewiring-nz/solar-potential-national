@@ -1,9 +1,8 @@
 """
 Find the roofs the build got wrong, without anyone having to look at them.
 
-Josh: "It would be good if there was an easy way to find failed rooftops, which
-I can then mark up for you to fix. So we can have a loop that gets every rooftop
-fixed."
+An easy way to find failed rooftops to mark up, so there is a loop that gets
+every rooftop fixed.
 
 The loop only closes if the FINDING step is automatic. There are ~15,000 roofs
 in the district and 114 labelled ones; scrolling for failures is the bottleneck,
@@ -16,9 +15,9 @@ like; it knows where the build contradicts itself or its own vision model.
 
 WHY THIS TOOL VALIDATES ITSELF. A ranked list of roofs is trivial to produce and
 almost as easy to get silently wrong: any weighted sum of plausible-sounding
-signals yields a confident ordering, including one that is pure noise. Josh's
+signals yields a confident ordering, including one that is pure noise. Markup
 time is the scarce resource in this loop, and a triage that ranks noise spends
-all of it. So --validate scores every signal against the roofs he has marked
+all of it. So --validate scores every signal against the marked roofs
 complete, where truth is known: panels from THIS build measured against the
 lines HE drew. A signal that does not predict real failure is dropped from the
 score and said so out loud, rather than quietly carried.
@@ -50,7 +49,7 @@ Three of those findings were not what was expected going in:
   crossing a ridge is a boundary-PLACEMENT error, and a roof can fit its planes
   beautifully while the folds between them are in the wrong place. Tested against
   what it should predict, it earns its keep: -0.26 against the share of roof left
-  carrying no panels, and roofs Josh flagged average 0.879 against 0.927 for
+  carrying no panels, and flagged roofs average 0.879 against 0.927 for
   unflagged. It is dropped from THIS score and left alone everywhere else.
 
   CROSS_FACET IS A NON-EVENT, AND MEASURED THE WRONG THING AT FIRST. Expected to
@@ -65,7 +64,7 @@ Three of those findings were not what was expected going in:
   The overlap itself is now reported as its own thing, because it is a real if
   minor defect: on a random sample of 400 multi-facet roofs, 2.2% have
   overlapping facets covering 0.65% of facet area. Worth watching, not worth
-  alarm -- and emphatically not worth telling Josh that 75 roofs have
+  alarm -- and emphatically not worth reporting that 75 roofs have
   unplaceable panels when 3 do.
 
 FACETS/100M2 SCORED HIGHER BUT IS NOT USED. Its median is 7.85 on roofs under
@@ -161,7 +160,7 @@ def _model_lines(bid):
 
 
 def _drawn_lines(lab):
-    """Josh's drawn lines for one roof as segments, in NZTM metres."""
+    """The drawn lines for one roof as segments, in NZTM metres."""
     segs = []
     for l in lab.get("lines", []):
         pts = l.get("points")
@@ -368,12 +367,12 @@ def compute_signals(facets_gdf, panels_gdf, potential, use_model=True):
 
 
 def truth_crossings(panels_gdf, labels):
-    """Real failure rate on the roofs Josh has finished, for validation only.
+    """Real failure rate on the finished roofs, for validation only.
 
-    Truth is this build's panels measured against the lines he drew. Roofs
+    Truth is this build's panels measured against the drawn lines. Roofs
     flagged absent / not_building / unclear carry no geometry anyone believes
     and are excluded; roofs not marked complete are excluded too, because a
-    partially drawn roof produces false crossings where he simply stopped.
+    partially drawn roof produces false crossings where drawing simply stopped.
     """
     from shapely.geometry import LineString
     from shapely.ops import unary_union
@@ -678,8 +677,8 @@ def main():
         done = {int(k) for k, v in labels.items() if v.get("complete")}
         ranked = [r for r in ranked if r["building_id"] not in done]
 
-    # A 7 m2 shed is not worth a markup session. The queue is a claim on Josh's
-    # attention, so anything too small to carry a worthwhile array is dropped
+    # A 7 m2 shed is not worth a markup session. The queue is a claim on the
+    # labeller's attention, so anything too small to carry a worthwhile array is dropped
     # from it rather than ranked and then ignored.
     ranked = [r for r in ranked if r["roof_area_m2"] >= a.min_area]
 

@@ -1,4 +1,4 @@
-"""What the pipeline produces for one building, in the terms Josh marks in.
+"""What the pipeline produces for one building, in the terms the markup uses.
 
 Run this the moment a marked roof comes back: it prints the faces with their
 own fit, the obstructions, and how much roof falls outside the footprint, all

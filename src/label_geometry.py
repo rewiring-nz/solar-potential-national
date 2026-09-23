@@ -1,8 +1,8 @@
 """
 Turn drawn roof lines into closed roof faces.
 
-Josh: "my lines might need to extend further to create an 'area'. They are in
-general mark ups of the roof lines in the actual image, not relating as much to
+Drawn lines mark the roof lines visible in the image and may need extending
+to enclose an area; they do not relate as much to
 the outline provided ... some 'sealing' of areas might be needed."
 
 That is exactly right, and it is the difference between having line labels and

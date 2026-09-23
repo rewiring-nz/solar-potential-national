@@ -19,8 +19,8 @@ TWO THINGS DECIDE WHETHER THIS IS HONEST.
   weighted BCE, and the reported metric is per-kind F1 at a matched threshold,
   never accuracy.
 
-THE LEARNING CURVE IS THE POINT OF --curve. Josh asked whether all 156 roofs are
-needed or whether 100 would do. That is answerable rather than guessable: train
+THE LEARNING CURVE IS THE POINT OF --curve: are all 156 roofs needed, or
+would 100 do? That is answerable rather than guessable: train
 on 20, 40, 60... roofs against a FIXED validation set and look at the shape. If
 validation F1 is still climbing steeply at the largest size, more labels help;
 if it has flattened, they will not, and the labelling effort is better spent
@@ -74,7 +74,7 @@ def load_split(manifest, split, keep_buildings=None):
 def load_dir(path):
     """Extra patch directory (e.g. the RID2 pretraining corpus): every .npz
     joins training with its own per-patch channel weights -- RID has no
-    heights, so its cliff channel is unsupervised (cw[2]=0) while Josh's
+    heights, so its cliff channel is unsupervised (cw[2]=0) while the marked
     patches keep all four channels."""
     import numpy as np
     from pathlib import Path as _P
@@ -264,9 +264,8 @@ def train_once(train, val, device, epochs, seed=0, quiet=False,
             wb = w[idx].to(device).float() / 255.0
             cwb = cwall[idx].to(device).view(len(idx), -1, 1, 1)
             # SCALE AND COLOUR JITTER, for the country beyond Queenstown.
-            # Josh: "Make sure when we are building this training, it's
-            # scaleable to many other households. Our goal is to scale to all
-            # of NZ." Every label so far is one district at one survey's
+            # The training must scale to the whole of NZ. Every label so far
+            # is one district at one survey's
             # 0.1 m/px and one summer's colour balance; national imagery runs
             # 0.075-0.3 m/px across surveys and seasons. A detector that has
             # only ever seen one look will fail quietly on the next region, so
@@ -330,7 +329,7 @@ def main():
                          "fine-tune)")
     ap.add_argument("--lr", type=float, default=2e-3)
     ap.add_argument("--oversample-base", type=int, default=1,
-                    help="repeat the base (Josh) training patches N times "
+                    help="repeat the base (marked) training patches N times "
                          "when joining an --extra-dir corpus, so 59k Dutch "
                          "patches cannot swamp 1k NZ ones (98%% Dutch mix "
                          "measured: better typing, union F1 0.52 vs 0.72)")

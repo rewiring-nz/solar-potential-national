@@ -1,7 +1,7 @@
 """One small area, rebuilt and scored in minutes, so a change can be judged now.
 
-Josh: "Is it possible to just do one small section? And keep iterating till its
-perfect? Rebuilding is taking a long time and there are still many bad rooftops
+Iterate on one small section until it is right, instead of rebuilding the
+district: rebuilding takes a long time and there are still many bad rooftops
 in every build."
 
 Yes. A district rebuild is 4.5 hours and answers one question per day, which is
@@ -12,15 +12,15 @@ hours, and the set never changes, so two runs are always comparable.
 
 WHAT IT SCORES, worst-to-best-understood:
 
-  PANELS ACROSS A LINE   panels overlapping a ridge or valley Josh drew. This is
-                         the actual visible failure -- the thing he points at in
+  PANELS ACROSS A LINE   panels overlapping a drawn ridge or valley. This is
+                         the actual visible failure -- the thing flagged in
                          a screenshot -- and no aggregate above it can see it.
-  FACES EXACT            for roofs he has drawn, built facets that equal his
+  FACES EXACT            for drawn roofs, built facets that equal the drawn
                          rings (IoU > FACE_MATCH_IOU). Deliberately strict: a face
                          clipped by 9% scores as a miss, which is how
                          drop_roof_features was caught silently carving 1,312 m2
-                         off his markup while every softer metric passed.
-  INVENTED EDGES         facet boundaries he never drew.
+                         off the markup while every softer metric passed.
+  INVENTED EDGES         facet boundaries never drawn.
   FACETS / ROOF          fragmentation, the complaint that started this.
 
 THE TRAP THIS TOOL IS BUILT AROUND. "Iterate until perfect on a small area" is
@@ -51,7 +51,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tools"))
 
-# HOW CLOSE COUNTS AS "the face Josh drew".
+# HOW CLOSE COUNTS AS "the drawn face".
 #
 # This was 0.999 for its first three runs and that was measuring serialisation,
 # not geometry: preview_sample rounds facet rings to 2 dp for file size, and on
@@ -61,7 +61,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 # score jumped from 44% to 81% purely on the threshold.
 #
 # 0.99 is still strict where it matters: drop_roof_features was carving 9-30%
-# off faces Josh drew, which scores 0.71-0.89 and fails cleanly.
+# off drawn faces, which scores 0.71-0.89 and fails cleanly.
 FACE_MATCH_IOU = 0.99
 
 SET_PATH = ROOT / "data" / "bench_set.json"
@@ -75,7 +75,7 @@ def make_set(seed_bid, n, include=()):
     Seeded at the densest cluster of drawn roofs rather than anywhere pretty:
     the benchmark is only as good as the truth inside it, and a hundred roofs
     with five drawn ones cannot tell a real improvement from noise. `include`
-    forces specific buildings in -- the ones Josh has pointed at, which are the
+    forces specific buildings in -- the flagged ones, which are the
     cases the loop exists to fix and must never fall out of the set.
     """
     import geopandas as gpd
@@ -103,7 +103,7 @@ def make_set(seed_bid, n, include=()):
 
 
 def _panels_across_lines(roof):
-    """Panels overlapping a line Josh drew, with a hand's width of tolerance."""
+    """Panels overlapping a drawn line, with a hand's width of tolerance."""
     from shapely.geometry import LineString, Polygon
     drawn = roof.get("drawn") or []
     if not drawn:
@@ -134,10 +134,9 @@ def score(rows, labels):
     out = {"roofs": 0, "facets": 0, "panels": 0,
            "labelled_roofs": 0, "faces_exact": 0, "faces_total": 0,
            "panels_across": 0, "panels_on_labelled": 0, "errors": 0,
-           # Josh: "How can you make sure you are not drawing any extra lines
-           # compared to what I've now marked on those exact rooftops?"
-           # faces_exact answers "did it reproduce what he drew"; it does not
-           # answer "and nothing else". A roof can reproduce all 8 of his faces
+           # extra lines drawn beyond what the markup has on those roofs
+           # faces_exact answers "did it reproduce what was drawn"; it does not
+           # answer "and nothing else". A roof can reproduce all 8 drawn faces
            # and add a 9th, and score 8/8.
            "extra": 0, "missing": 0, "mismatched_roofs": []}
     for r in rows:
@@ -151,10 +150,15 @@ def score(rows, labels):
         lab = labels.get(str(r["id"]))
         if not lab or not lab.get("complete"):
             continue
+        # A "no panels here" face IS a drawn face, and since 19 Sep the
+        # build keeps it as geometry that simply takes no panels -- that is
+        # how #4735623 got back its missing valley line.
+        # Excluding them here made every restored line count as an INVENTED
+        # one: extra jumped 5 -> 16 and fidelity appeared to fall six points
+        # on a change that did exactly what was asked. The target has to
+        # be the roof as drawn, not the part of it that takes panels.
         drawn = []
         for f in lab.get("faces") or []:
-            if not f.get("usable", True):
-                continue
             try:
                 drawn.append(Polygon([(p[0], p[1]) for p in f["ring"]]))
             except Exception:

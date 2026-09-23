@@ -21,7 +21,7 @@ import rasterio
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.preflight import preflight
 from src.building_horizon import (compute_building_horizon, encode_horizon,
-                                  beam_visible_fraction)
+                                  beam_visible_fraction, load_far_dem)
 from src.region_build import area_paths, area_centroid_wgs84, write_json_atomic
 from src.solar_model import SolarModel
 
@@ -37,10 +37,12 @@ def bake(region):
         return
     gdf = gpd.read_file(paths["outlines"]).set_index("building_id", drop=False)
 
-    dem_ds = rasterio.open(DEM_WIDE)
-    dem_band = dem_ds.read(1)
     dsm_ds = rasterio.open(paths["dsm"])
     dsm_band = dsm_ds.read(1)
+    # Only the slice this region's rays reach (building_horizon.load_far_dem).
+    # The whole mosaic is 1.12 GB once it spans Kingston to Hawea, and a
+    # region uses about a tenth of it.
+    dem_band, dem_transform, dem_nodata = load_far_dem(DEM_WIDE, dsm_ds.bounds)
 
     c = area_centroid_wgs84(region)
     model = SolarModel(*c) if c else SolarModel()
@@ -54,7 +56,7 @@ def bake(region):
             skipped += 1
             continue
         geom = gdf.loc[bid].geometry
-        profile, far = compute_building_horizon(dem_band, dem_ds.transform, dem_ds.nodata,
+        profile, far = compute_building_horizon(dem_band, dem_transform, dem_nodata,
                                                 dsm_band, dsm_ds.transform, dsm_ds.nodata,
                                                 geom)
         if profile is None:

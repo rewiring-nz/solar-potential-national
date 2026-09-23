@@ -56,9 +56,17 @@ ASPECT_STEP = 30  # varies slowly with orientation, and this keeps the JSON smal
 SEASONS = {"summer": (12, 1, 2), "autumn": (3, 4, 5), "winter": (6, 7, 8), "spring": (9, 10, 11)}
 
 
-def main():
-    preflight("build_seasonal_curves")
-    model = SolarModel()  # pilot location; calibrated factors + terrain horizon come along
+def curves_for(lat=None, lon=None):
+    """The curve set for one location, as the document the frontend reads.
+
+    A FUNCTION OF LATITUDE. The curves carry what varies with slope and aspect
+    at ONE sun -- and the sun is a function of where you are. Queenstown's set
+    was the only set, which was right while the district was Queenstown.
+    combine_regions calls this once per degree of latitude the build spans, so
+    Invercargill and Whangarei each get their own sky and the whole country
+    costs about thirteen calls.
+    """
+    model = SolarModel() if lat is None else SolarModel(lat, lon)
     location = pvlib.location.Location(model.lat, model.lon, tz="Pacific/Auckland", altitude=310)
     times = pd.date_range("2023-01-01", "2023-12-31 23:00", freq="1h", tz="Pacific/Auckland")
     clearsky = location.get_clearsky(times, model="ineichen")
@@ -156,9 +164,15 @@ def main():
                     entry[key].append([round(v, 3) for v in d.groupby(d.index.hour).mean().reindex(range(24), fill_value=0)])
             curves[f"{slope}_{aspect}"] = entry
 
-    out = {"slope_step": SLOPE_STEP, "aspect_step": ASPECT_STEP,
-           "max_slope": config.MAX_ROOF_SLOPE_DEG,
-           "seasons": list(SEASONS), "curves": curves}
+    return {"slope_step": SLOPE_STEP, "aspect_step": ASPECT_STEP,
+            "max_slope": config.MAX_ROOF_SLOPE_DEG, "lat": round(model.lat, 3),
+            "lon": round(model.lon, 3), "seasons": list(SEASONS), "curves": curves}
+
+
+def main():
+    preflight("build_seasonal_curves")
+    out = curves_for()
+    curves = out["curves"]
     path = DATA_DIR / "seasonal_curves.json"
     path.write_text(json.dumps(out))
     print(f"Saved {path} ({path.stat().st_size / 1e3:.0f}KB, {len(curves)} orientation bins)")

@@ -1,11 +1,10 @@
 """
 How far is the LINZ building outline from the roof the LiDAR actually sees?
 
-Josh: "There are a lot of errors where the building outline is not aligned with
-the rooftop... you might cut off a lot of edges if the building outline is the
-limit."
+Many building outlines are not aligned with the rooftop, and using the outline
+as the limit can cut off roof edges.
 
-He is describing two different things and they need separating, because only one
+That describes two different things and they need separating, because only one
 of them costs panels:
 
   IMAGERY LEAN is a display artefact. An aerial photo is taken at an angle, so a

@@ -2,7 +2,7 @@
 Golden tests: pin what the segmentation currently produces for real buildings.
 
 These are REGRESSION tests, not correctness tests. score_all_marked.py already
-measures us against Josh's ground truth and answers "is this roof right?".
+measures us against the markup and answers "is this roof right?".
 This file answers a different and, for refactoring, more urgent question:
 "did anything change that I did not mean to change?"
 

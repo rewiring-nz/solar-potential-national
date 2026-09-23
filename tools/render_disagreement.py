@@ -1,8 +1,8 @@
 """
 Draw what the segmenter thinks against what the labeller drew, on one roof.
 
-The scorecard says 19 Camp Street agrees with Josh on 0% of its lines and flags
-60 m2 of obstruction where he marked none. A number like that says something is
+The scorecard says 19 Camp Street agrees with the markup on 0% of its lines and
+flags 60 m2 of obstruction where none is marked. A number like that says something is
 wrong but not what, and the difference between "it found a different roof",
 "it found the right roof and mislabelled it" and "the labels are in the wrong
 place" is not recoverable from a percentage.

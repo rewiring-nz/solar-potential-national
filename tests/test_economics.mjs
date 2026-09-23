@@ -1,7 +1,7 @@
 /**
  * Tests for the money maths in economics.js.
  *
- * These exist because Josh spotted a building reading "$1,000 yearly, $12,000
+ * These exist because a building read "$1,000 yearly, $12,000
  * lifetime, -$8,600 net loss" on 13 MWh/yr of generation, and nothing in the
  * codebase could check whether that was right. Running the same model on the
  * same inputs gives $2,407 / $55,083 / +$34,563 -- a factor of 2.4 that flips
@@ -36,7 +36,7 @@ function close(a, b, tol, msg) {
 }
 
 // A representative house: 11.4 kW, 13 MWh/yr, 234 m2 of roof. This is the
-// building Josh was looking at (105 Arrowtown-Lake Hayes Road).
+// building where the bug was found (105 Arrowtown-Lake Hayes Road).
 const HOUSE = [11.4, 13000, 234.4];
 
 check("a house is not classified as a business", () => {
@@ -71,7 +71,7 @@ check("self-consumption is capped by the daytime load, not the roof", () => {
 });
 
 check("raising household consumption raises self-consumption", () => {
-  // Josh, 1 Sep: changing 7,000 -> 10,000 kWh used to change nothing at all,
+  // Changing 7,000 -> 10,000 kWh used to change nothing at all,
   // because the kW ceiling always bound first.
   const base = E.economicsFor(...HOUSE, { useKwh: 7000 });
   const more = E.economicsFor(...HOUSE, { useKwh: 10000 });
@@ -140,6 +140,79 @@ check("the export rate declines and never goes negative", () => {
 check("zero or negative inputs return nothing rather than nonsense", () => {
   assert(E.economicsFor(0, 13000, 200) === null, "0 kW should return null");
   assert(E.economicsFor(11.4, 0, 200) === null, "0 kWh should return null");
+});
+
+
+// ---- hourly engine: battery and time-of-use plans -----------------------
+// These exist because both features are invisible at annual resolution: a
+// battery only moves energy between hours, and a plan only differs from
+// another by pricing hours differently. If the hourly engine were wrong,
+// the annual assertions above would all still pass.
+
+function flatGen(kw) {
+  // one representative day per season, sun from 8 to 17
+  const row = new Array(24).fill(0);
+  for (let h = 8; h < 17; h++) row[h] = kw;
+  return [row, row, row, row];
+}
+
+check("a battery lifts self-consumption and cuts export", () => {
+  const gen = flatGen(4), days = [91.25, 91.25, 91.25, 91.25];
+  const no = E.economicsHourlyFor(5, gen, days, 150,
+    { battery: { enabled: false }, useKwh: 7000 });
+  const yes = E.economicsHourlyFor(5, gen, days, 150,
+    { battery: { enabled: true, kwh: 10, kw: 5 }, useKwh: 7000 });
+  assert(yes.selfKwh > no.selfKwh, "battery did not raise self-consumption");
+  assert(yes.exportKwh < no.exportKwh, "battery did not reduce export");
+  // and it cannot invent energy
+  const tol = 1;
+  assert(Math.abs((no.selfKwh + no.exportKwh) - no.genKwh) < tol,
+    `energy not conserved without battery: ${no.selfKwh + no.exportKwh} vs ${no.genKwh}`);
+  assert(yes.selfKwh + yes.exportKwh <= no.genKwh + tol,
+    "battery output exceeds generation");
+});
+
+check("a battery costs money and is replaced inside the system life", () => {
+  const gen = flatGen(4), days = [91.25, 91.25, 91.25, 91.25];
+  const no = E.economicsHourlyFor(5, gen, days, 150, { battery: { enabled: false } });
+  const yes = E.economicsHourlyFor(5, gen, days, 150,
+    { battery: { enabled: true, kwh: 10, cost_per_kwh: 1000 } });
+  assert(yes.cost > no.cost, "battery added no capital cost");
+  assert(yes.batteryReplaceCost > 0, "battery replacement not charged");
+});
+
+check("a time-of-use plan values the same generation differently", () => {
+  const gen = flatGen(4), days = [91.25, 91.25, 91.25, 91.25];
+  const flat = E.RETAIL_PLANS.find(p => p.id === "flat");
+  const peak = E.RETAIL_PLANS.find(p => p.id === "peak_offpeak");
+  const a = E.economicsHourlyFor(5, gen, days, 150, { plan: flat });
+  const b = E.economicsHourlyFor(5, gen, days, 150, { plan: peak });
+  assert(Math.abs(a.annual - b.annual) > 1,
+    "plan structure made no difference at all");
+  assert(a.genKwh === b.genKwh, "the roof changed with the plan");
+});
+
+check("no sun means no savings, with or without a battery", () => {
+  const dark = [0, 1, 2, 3].map(() => new Array(24).fill(0));
+  const e = E.economicsHourlyFor(5, dark, [91.25, 91.25, 91.25, 91.25], 150,
+    { battery: { enabled: true, kwh: 10 } });
+  assert(e.selfKwh === 0 && e.exportKwh === 0, "energy from nowhere");
+  assert(e.annual === 0, `annual ${e.annual} on a dark roof`);
+});
+
+
+check("council zoning decides use, not roof size", () => {
+  // a big house in a residential zone is still a house
+  assert(E.isBusiness(40, 900, "home") === false,
+    "a 900 m2 building in a residential zone was called a business");
+  // a small shop in a town centre is still a shop
+  assert(E.isBusiness(5, 120, "business") === true,
+    "a 120 m2 building in a town centre was called a home");
+  // no zoning available: fall back to the old geometry test rather than
+  // refusing to answer
+  assert(E.isBusiness(5, 900, undefined) === true, "fallback lost");
+  assert(E.isBusiness(5, 120, undefined) === false, "fallback lost");
+  assert(E.isBusiness(5, 900, "mixed") === true, "mixed should fall back");
 });
 
 console.log(`\n${pass}/${pass + failures.length} passed`);

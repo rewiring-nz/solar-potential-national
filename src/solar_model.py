@@ -254,6 +254,80 @@ SOLARVIEW_MEASURED_GHI_KWH_M2_DAY = {
 }
 
 
+# A CLOUD FACTOR CANNOT EXCEED THIS. Measured GHI over clear-sky GHI is the
+# share of the clear sky that got through the weather; a value above one says
+# the two sides of the ratio are not describing the same sky. On 22 Sep the
+# Wanaka curve band came out at JUN 2.94 / JUL 2.18 and a 7.5 kW roof showed
+# a 12.1 kW winter afternoon. The guard is a hard error rather than a cap so
+# that a wrong denominator can never again ship as a number.
+MONTHLY_FACTOR_MAX = 1.05
+
+_SOLARVIEW_DENOMINATOR = None
+
+
+def _solarview_denominator(tz="Pacific/Auckland", year=2023):
+    """Mean daily clear-sky GHI per month AT THE CALIBRATION POINT, with THAT
+    point's terrain horizon applied -- the one denominator the SolarView
+    record can honestly be divided by.
+
+    WHY THIS IS FIXED TO THE PILOT AND NOT THE POINT BEING MODELLED. The
+    SolarView GHI was exported at the pilot centre and physically includes
+    the pilot's mountains. Dividing it by a clear sky cut by the pilot's
+    horizon isolates the CLOUD; dividing it by a clear sky cut by some other
+    point's horizon does not -- it yields cloud x (pilot horizon loss / that
+    point's horizon loss), which explodes wherever the local horizon is
+    deeper than the pilot's. That is exactly what happened on 22 Sep: the
+    Wanaka latitude band's centroid fell in the Crown Range, 0.27 degrees
+    from the pilot and so inside this calibration's reach, and its winter
+    factors came out at 2.94 and 2.18. Every region within 0.30 degrees had
+    the same flaw at a smaller scale since the wide DEM first reached it.
+
+    So the cloud factor is derived once, here, and each modelled point's own
+    horizon enters only through the beam-blocking in build_poa_lookup_table
+    and the per-building tshade masks -- once, not twice.
+    """
+    global _SOLARVIEW_DENOMINATOR
+    if _SOLARVIEW_DENOMINATOR is not None:
+        return _SOLARVIEW_DENOMINATOR
+    # pilot_location(), NOT SOLARVIEW_CAL_LOCATION. They are 600 m apart
+    # (-45.035, 168.665 against -45.03, 168.66) and in this valley that is a
+    # 15% difference in the June clear sky behind the horizon (1522 against
+    # 1297 Wh/m2/day), i.e. June factors of 0.72 against 0.84. Which of the
+    # two NIWA's export truly describes is not knowable from here; what IS
+    # known is that the pilot has shipped on the pilot_location() denominator
+    # since the calibration was added and its annual figure was checked
+    # against SolarView's. So that stays the one cloud factor, unchanged for
+    # Queenstown, and now the same everywhere within the calibration's reach.
+    # The 15% sensitivity is a reason to re-calibrate against the Queenstown
+    # Aero station normal (open ground, no horizon term at all) -- BACKLOG.
+    lat, lon = pilot_location()
+    location = pvlib.location.Location(lat, lon, tz=tz, altitude=310)
+    times = pd.date_range(f"{year}-01-01", f"{year}-12-31 23:00", freq="1h", tz=tz)
+    clearsky = location.get_clearsky(times, model="ineichen")
+    solpos = location.get_solarposition(times)
+    prof = _pilot_horizon_profile(lat, lon)
+    if prof is not None:
+        horizon_at_az = horizon_angle_at(prof, solpos["azimuth"].to_numpy())
+        blocked = solpos["apparent_elevation"].to_numpy() < horizon_at_az
+        ghi = clearsky["ghi"].where(~blocked, clearsky["dhi"])
+    else:
+        ghi = clearsky["ghi"]
+    daily = ghi.resample("1D").sum()
+    month_abbr_by_num = dict(enumerate(MONTH_NAMES, start=1))
+    _SOLARVIEW_DENOMINATOR = {month_abbr_by_num[m]: daily[daily.index.month == m].mean()
+                              for m in range(1, 13)}
+    return _SOLARVIEW_DENOMINATOR
+
+
+def _check_factors(factors, where):
+    bad = {k: round(v, 2) for k, v in factors.items() if v > MONTHLY_FACTOR_MAX or v <= 0}
+    if bad:
+        raise ValueError(f"monthly cloud factors out of range at {where}: {bad} -- "
+                         f"a factor above {MONTHLY_FACTOR_MAX} means the calibration and "
+                         f"the clear sky describe different skies; refusing to build a model on it")
+    return factors
+
+
 def solarview_calibrated_monthly_factors(lat, lon, clearsky_daily_mean_horizon_adj):
     """Returns dict {month_abbr: factor} such that clearsky * factor, with the
     terrain-horizon DNI zeroing already reflected in the denominator,
@@ -270,8 +344,11 @@ def solarview_calibrated_monthly_factors(lat, lon, clearsky_daily_mean_horizon_a
     dist = np.hypot(lat - SOLARVIEW_CAL_LOCATION[0], lon - SOLARVIEW_CAL_LOCATION[1])
     if dist > SOLARVIEW_CAL_MAX_DIST_DEG:
         return None
+    # The argument is ignored on purpose -- see _solarview_denominator. It is
+    # kept so the call site reads as it always did.
+    denom = _solarview_denominator()
     return {
-        month: SOLARVIEW_MEASURED_GHI_KWH_M2_DAY[month] * 1000.0 / clearsky_daily_mean_horizon_adj[month]
+        month: SOLARVIEW_MEASURED_GHI_KWH_M2_DAY[month] * 1000.0 / denom[month]
         for month in MONTH_NAMES
     }
 
@@ -404,6 +481,7 @@ def build_poa_lookup_table(lat, lon, tz="Pacific/Auckland", year=2023, horizon_p
         monthly_factor = fetch_niwa_derived_monthly_factors(lat, lon, clearsky_daily_mean)
     if monthly_factor is None:  # no NIWA station close enough to trust -- portable fallback
         monthly_factor = fetch_nasa_power_monthly_factors(lat, lon)
+    _check_factors(monthly_factor, f"({lat:.3f}, {lon:.3f})")
     factor_series = times.month.map(lambda m: monthly_factor[month_abbr_by_num[m]])
     factor_series = pd.Series(factor_series, index=times)
 

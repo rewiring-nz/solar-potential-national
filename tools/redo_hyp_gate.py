@@ -29,32 +29,8 @@ SEL = Path("data/selected_faces")
 PY = sys.executable
 
 
-def candidates(region):
-    import geopandas as gpd
-    from src.region_build import area_paths
-    outlines = area_paths(region)["outlines"]
-    if not Path(outlines).exists():
-        return []
-    gdf = gpd.read_file(outlines)
-    if gdf.crs is None or gdf.crs.to_epsg() != 2193:
-        gdf = gdf.to_crs(2193)
-    out = []
-    for _, row in gdf.iterrows():
-        bid = int(row["building_id"] if "building_id" in row else row["id"])
-        area = float(row.geometry.area)
-        if not (450.0 < area <= 2000.0):
-            continue
-        p = SEL / f"{bid}.json"
-        if not p.exists():
-            continue                       # deferred/refused: leave alone
-        d = json.loads(p.read_text())
-        if d.get("source") == "hypothesis":
-            continue
-        if max(d.get("score_sam", 0), d.get("score_line", 0),
-               d.get("score_lidar", 0)) >= 0.50:
-            continue                       # hypothesis barred anyway
-        out.append(bid)
-    return out
+
+from src.region_build import all_areas as _all_regions
 
 
 def main():
@@ -63,7 +39,7 @@ def main():
     ap.add_argument("--patch", action="store_true")
     a = ap.parse_args()
     import config
-    regions = a.regions or list(config.REGIONS)
+    regions = a.regions or _all_regions()
 
     total_changed = []
     for region in regions:

@@ -89,11 +89,12 @@ REQUIRED = {
         "optional_region": ["imagery"],
     },
     "gate_panels": {
-        # The incident. gate_area opens the wide DEM in the worker initializer,
-        # so a missing file kills every worker at once and the pool error says
-        # nothing about DEMs.
+        # No wide DEM any more: the gate stopped reading it when the
+        # height-above-DEM test was removed, and the worker load went with the
+        # parameters on 22 September. The stage that made this a preflight
+        # entry -- a missing file killing every worker at once, with a pool
+        # error that said nothing about DEMs -- can no longer happen here.
         "region": ["panel_layouts"],
-        "root": ["dem_wide_mosaic.tif"],
     },
     "rerank_layouts":        {"region": ["panel_layouts"]},
     "derive_solar_potential": {"region": ["panel_layouts", "outlines"]},
@@ -103,6 +104,11 @@ REQUIRED = {
         "root": ["dem_wide_mosaic.tif"],
     },
     "add_addresses":          {"region": ["solar_potential"]},
+    # Per-building image-vs-LiDAR offset; emit moves the drawing by it.
+    "register_imagery":       {"region": ["outlines", "dsm"], "optional_region": ["imagery"]},
+    # The region's own tiles, cells, detail and summary (docs/scale-architecture.md).
+    "emit_region":            {"region": ["solar_potential", "panel_layouts"],
+                               "optional_region": ["heatmap_png"]},
     "build_heatmap_raster":   {"region": ["solar_potential", "outlines", "dsm"]},
     # merge_regions REGENERATES the district files from the region files, so a
     # full merge run while most regions are missing their outputs replaces a
@@ -125,10 +131,8 @@ REQUIRED = {
 # whole point is that the message arrives before hours of compute, not after.
 HOW_TO_GET = {
     "dem_wide_mosaic.tif":
-        "NO script in this repo builds it -- copy it from a machine that has "
-        "one (it is gitignored, so it does NOT travel with a clone). This is "
-        "exactly how the ungated-panel incident happened: a fresh VM had every "
-        "other input and silently lacked this one.",
+        "python src/fetch_dem_wide.py (requires LINZ_API_KEY; fetches layer "
+        "51768 for the configured district plus a 10 km buffer)",
     "outlines":  "python src/fetch_regions.py <region>",
     "dsm":       "python src/fetch_regions.py <region>  (pass 1: LiDAR/DSM)",
     "imagery":   "python src/fetch_regions.py <region>  (pass 2: aerial imagery)",

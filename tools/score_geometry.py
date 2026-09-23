@@ -1,10 +1,10 @@
 """
-Score predicted roof geometry against roofs Josh has drawn.
+Score predicted roof geometry against drawn roofs.
 
 Track B of the vision pathway, and the piece that decides whether any of it
 worked. Without this, "the new model looks better" is an opinion formed by
 looking at renders -- which is how this project has judged geometry so far, and
-why a wall-as-roof bug survived until Josh happened to click that building.
+why a wall-as-roof bug survived until someone happened to click that building.
 
 WHAT IT MEASURES, and why not pixel accuracy. A model can score 95% IoU on
 "roof line" pixels and still produce geometry that does not close into usable
@@ -19,8 +19,8 @@ planes. So the metrics here are geometric and in metres:
                known to both miss real objects and invent others, and a single
                count hides that -- 8 found against 3 marked can be 3 right and 5
                invented, or 0 right and 8 invented.
-  FACETS       count error against Josh's own count, kept because it is the one
-               number he has already given for every marked roof.
+  FACETS       count error against the marked count, kept because it is the one
+               number recorded for every marked roof.
 
 WHAT COUNTS AS A PREDICTED LINE. For a planar partition, the roof lines are the
 shared edges between adjacent facets -- but that is not the whole story, and
@@ -32,7 +32,7 @@ obstruction, in which case they do not. For a dormer, carving is arguably the
 better choice -- you cannot usefully panel its sides and you must avoid it --
 but a labeller draws its edges as cliff lines either way.
 
-Measured on Josh's first 46 roofs: 61% of MISSED cliff lines, 55% of missed
+Measured on the first 46 marked roofs: 61% of MISSED cliff lines, 55% of missed
 valleys and 48% of missed ridges had a detected obstruction sitting within a
 metre. Most "missed" lines were being found and simply represented the other
 way. So obstruction boundaries count as predicted lines too. This costs
@@ -136,8 +136,8 @@ def line_scores(pred_lines, true_lines, tol):
 def obstruction_scores(pred_rings, true_rings, iou_min=OBS_IOU):
     """Overlap by AREA, deliberately not by count.
 
-    Josh: "numbers are a bad way to measure obstructions because I combine
-    lots of items into one obstruction sometimes." Exactly right, and it
+    Counts are a bad way to measure obstructions because the markup sometimes
+    combines many items into one obstruction, and it
     breaks one-to-one matching outright: draw a single polygon over a cluster
     of five vents, have the detector find five separate blobs, and a matcher
     pairs one of them and calls the other four false positives. The detector
@@ -213,7 +213,7 @@ def predicted_lines_from_facets(facets, footprint, edge_tol=0.35):
 
     Anything lying on the building outline is an eave or verge, not a ridge, so
     it is dropped -- otherwise every prediction scores well simply by tracing
-    the footprint, which Josh did not draw as a roof line."""
+    the footprint, which the markup does not draw as a roof line."""
     out = []
     boundary = footprint.exterior if hasattr(footprint, "exterior") else None
     for f in facets:
@@ -407,7 +407,7 @@ def main():
         am = f"{os_['pred_area_m2']:.0f}/{os_['true_area_m2']:.0f}" if os_ else "—"
         print(f"{bid:>10} {lp:>8}{lr:>8}{f1:>7}{op:>7}{orr:>7}{am:>14}{len(facets):>8}")
         if ls:
-            # PRECISION NEEDS A COMPLETE ROOF. Measured on Josh's first 42:
+            # PRECISION NEEDS A COMPLETE ROOF. Measured on the first 42 marked:
             # marking density correlates with precision at r = +0.394, and the
             # densely-marked half scores 63.0% against 43.2% for the sparse
             # half -- same segmenter, 20 points apart. A line the labeller did

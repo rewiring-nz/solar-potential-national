@@ -1,17 +1,17 @@
-"""Export Josh's drawn FACES as a dense region-learning target.
+"""Export the drawn FACES as a dense region-learning target.
 
-WHY THIS EXISTS. His markup already trains a detector -- but only to light
+WHY THIS EXISTS. The markup already trains a detector -- but only to light
 up thin LINE pixels, which a long chain then has to close into polygons.
 That chain is where the inventions come from: a line that fails to close
-into a cell is silently dropped (#4735237: 264 panels laid across ridges he
-drew), and when the polygons come out badly a parametric shape vocabulary
+into a cell is silently dropped (#4735237: 264 panels laid across drawn
+ridges), and when the polygons come out badly a parametric shape vocabulary
 guesses instead, which is how #4735292 got a flat top it does not have.
 
-Josh, 18 Sep: "Maybe your trying to match simple shapes to buildings is the
-wrong approach now that you have my markup dataset... you could just do that
-instead of trying to fit shapes."
+Matching simple shapes to buildings may be the wrong approach now that a
+markup dataset exists: the model could just learn the markup instead of
+trying to fit shapes.
 
-His faces are ground-truth POLYGONS. Learning them as REGIONS removes both
+The drawn faces are ground-truth POLYGONS. Learning them as REGIONS removes both
 failure modes at once: a region cannot fail to close, and there is no
 vocabulary to invent from.
 
@@ -28,8 +28,8 @@ model has to see the whole roof):
               5,6  sin/cos of aspect -- the signal that reads a pyramid
                    unambiguously (see the aspect map on #4735292) and that
                    the imagery-only detector keeps missing
-    target  2 channels -- BOUNDARY (his face edges, a few px wide) and CORE
-            (his faces eroded). Scale-tolerant, unlike a raw distance
+    target  2 channels -- BOUNDARY (the drawn face edges, a few px wide) and CORE
+            (the drawn faces eroded). Scale-tolerant, unlike a raw distance
             transform, which saturates near zero on narrow faces and trains
             badly; and between them they define a watershed exactly: cores
             are the seeds, boundaries the barriers. Still dense supervision,
@@ -112,7 +112,7 @@ def roof_sample(geom, faces, img_ds, pc):  # noqa: C901
         z[dist.reshape(SIZE, SIZE) > 2.5] = np.nan
     base = np.nanpercentile(z, 5) if np.isfinite(z).any() else 0.0
     zf = np.nan_to_num(z - base, nan=0.0)
-    # SMOOTH BEFORE DIFFERENTIATING. The survey is ~1.7 returns/m2, so a
+    # SMOOTH BEFORE DIFFERENTIATING. The survey is ~4.9 returns/m2, so a
     # nearest-neighbour grid at 0.1 m/px is a staircase and its per-pixel
     # gradient is confetti (visible in the first preview). Blur at roughly
     # the sample spacing first -- the same 1.5 m-ish neighbourhood a local
@@ -143,7 +143,7 @@ def roof_sample(geom, faces, img_ds, pc):  # noqa: C901
     # to one, so training on them spends the capacity of a 96-roof dataset
     # on the one boundary that needs no learning. Measured 18 Sep: with
     # eaves in the target the model returned the outline and little else
-    # (#4734678 one face where Josh drew three, #4735104 two where he drew
+    # (#4734678 one face where three were drawn, #4735104 two where
     # eight). Erasing them leaves only the interior creases -- the actual
     # unknown -- and the watershed gets the outline from the roof mask.
     ed = ImageDraw.Draw(bim)

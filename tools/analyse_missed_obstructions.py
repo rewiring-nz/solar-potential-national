@@ -6,8 +6,8 @@ Area-weighted obstruction recall is 22.7% -- 476 m2 agreed out of 2096 m2
 marked. That reads as a bad detector, but three quite different things produce
 it and they need separating before anyone tunes anything:
 
-  GENEROUS MARKING   Josh: "I combine lots of items into one obstruction
-                     sometimes". One polygon over a cluster of vents covers the
+  GENEROUS MARKING   The markup sometimes combines many items into one
+                     obstruction. One polygon over a cluster of vents covers the
                      roof between them too. That roof is not equipment, the
                      detector is right to leave it, and the miss is an artefact
                      of how the truth was drawn.
@@ -22,7 +22,7 @@ LiDAR separates them. For every marked area the detector did not find, measure
 how far the returns there sit above the facet's own plane. No height means
 either roof-between-objects or something flush; clear height means a real miss.
 
-ANSWER over Josh's first 46 labelled roofs (2 Sep 2026). Of 1622 m2 missed:
+ANSWER over the first 46 labelled roofs (2 Sep 2026). Of 1622 m2 missed:
 
     standing clear (>=0.30 m)     116 m2    7.2%
     low relief (0.15-0.30 m)       83 m2    5.1%

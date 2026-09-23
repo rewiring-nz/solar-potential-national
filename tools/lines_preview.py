@@ -1,8 +1,6 @@
-"""Show WHERE the detector puts its lines, so Josh can judge placement by eye.
+"""Show WHERE the detector puts its lines, so placement can be judged by eye.
 
-Josh: "Visually present me your work as a way to check it is right, don't
-measure arbitrary things like number of panels. I can visually check if it is
-right or not."
+Placement is checked visually, not by proxies like the number of panels.
 
 So this renders no metrics at all. Per roof, side by side on the same crop:
 
@@ -10,10 +8,10 @@ So this renders no metrics at all. Per roof, side by side on the same crop:
              live build currently sees
   REBUILT    the chosen model through the skeleton-traced, junction-split,
              peak-snapped extraction (src/line_extract)
-  JOSH       the lines he drew, where the roof is labelled -- the standard the
+  DRAWN      the drawn lines, where the roof is labelled -- the standard the
              other two panels are aiming at
 
-Line colours match his markup tool exactly (ridge green, valley blue, cliff
+Line colours match the markup tool exactly (ridge green, valley blue, cliff
 red), so a wrong KIND is as visible as a wrong position.
 
 Usage:
@@ -72,7 +70,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ids", nargs="*", type=int, default=None)
     ap.add_argument("--flagged", action="store_true",
-                    help="the roofs Josh has flagged (data/flagged_ids.txt)")
+                    help="the flagged roofs (data/flagged_ids.txt)")
     ap.add_argument("--model-old", default="data/models/roof_lines_v1.pt")
     ap.add_argument("--model-new", default="data/models/roof_lines_v4.pt")
     ap.add_argument("--out", default="lines_check.html")
@@ -90,12 +88,11 @@ def main():
     from src.line_extract import (extract, clip_to, _line_mean, _bilinear,
                                   _junction_cleanup, _colinear_merge, _refine)
 
-    # THE ARCHETYPE PANEL. Josh, on a clean hip roof the detector fumbled:
-    # "This is a clear shaped roof and yet the failure is very bad so clearly
-    # not the right process" -- and on the residual small errors: "These small
+    # THE ARCHETYPE PANEL. A clean hip roof the detector fumbled showed the
+    # process was wrong for clear shapes -- and the residual small errors ("these small
     # errors here might have big impacts across a large dataset."
     #
-    # He is right about the process. Bottom-up extraction can only clean up
+    # The process is the problem. Bottom-up extraction can only clean up
     # what the model fired on, and its errors -- a line stopping short, a spur
     # -- are exactly the kind that scale badly. A hip roof's line network is
     # already implied by its outline: the constructive skeleton gives one
@@ -154,8 +151,8 @@ def main():
     def _rect_parts(geom, depth=0):
         """Split at reflex corners into near-rectangular parts.
 
-        The archetype was drawn for the whole outline at once, and Josh's
-        verdict on the first compound building was "Super wrong" -- because it
+        The archetype was drawn for the whole outline at once, and on the
+        first compound building it was plainly wrong -- because it
         is not ONE roof: a flat section and two pitched wings share the
         footprint. A hypothesis per PART can be judged per part.
         """
@@ -344,8 +341,8 @@ def main():
                     arch = skeleton_lines(bid, geom, pts_top)
                     # CLIFF CANDIDATES: the boundaries between footprint parts.
                     # A cliff is a height BREAK, so its evidence is LiDAR, not
-                    # imagery -- the model's weakest channel, and Josh's "misses
-                    # cliff line here" was exactly a step the imagery barely
+                    # imagery -- the model's weakest channel, and a missed
+                    # cliff line was exactly a step the imagery barely
                     # shows. The geometry is already known: where the outline
                     # steps, the part cut runs along the break.
                     from shapely.ops import unary_union
@@ -372,7 +369,7 @@ def main():
             except Exception:
                 arch = []
 
-            # FUSED, third design, after two Josh rejected. Line-level and
+            # FUSED, third design, after two rejected on review. Line-level and
             # chunk-level surgery both failed the same way: evidence is judged
             # where the model happens to be loud, so a true ridge dies in the
             # shadowed half of a roof ("Fused makes this one worse") and a
@@ -384,7 +381,7 @@ def main():
             #   B  hip archetype -- medial axis per pitched blob
             #   C  gable archetype -- one full-length ridge per pitched blob
             #   D  truncated pyramid -- inner rectangle + corner hips, for
-            #      near-square blobs; the "square on top" Josh keeps seeing
+            #      near-square blobs; the square on top that keeps appearing
             #      and no other candidate could say
             # Each is scored WHOLE: sum over lines of length x (support-0.25),
             # so a junk line subtracts and a true line in shadow merely fails
@@ -551,7 +548,7 @@ def main():
                 panels.append(("ARCHETYPE", render(rgb, arch, b, geom)))
             panels.append(("FUSED", render(rgb, fused, b, geom)))
             if drawn:
-                panels.append(("JOSH", render(rgb, drawn, b, geom)))
+                panels.append(("DRAWN", render(rgb, drawn, b, geom)))
             rows.append({"id": bid,
                          "addr": lab.get("address", ""),
                          "panels": panels})
@@ -583,7 +580,7 @@ def main():
 </style>
 <h1>Where the detector puts its lines</h1>
 <div class=sub>DEPLOYED is what the live build sees. REBUILT is the retrained
-model through the new extraction. JOSH is your drawing, where it exists.</div>
+model through the new extraction. DRAWN is the markup, where it exists.</div>
 <div class="sub leg">
  <span><i style="background:#1fff7a"></i>ridge</span>
  <span><i style="background:#35b6ff"></i>valley</span>

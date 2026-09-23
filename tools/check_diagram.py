@@ -1,7 +1,7 @@
 """
 Verify that the architecture diagram still describes the code.
 
-Josh: "the diagram should always accurately match the code." A diagram that can
+The diagram must always match the code. A diagram that can
 drift is worse than no diagram, because a reviewer trusts it and then reads the
 code expecting to find what it promised. This file is what stops that.
 
@@ -86,8 +86,8 @@ VALUES = {
     "config.MAX_ROOF_SLOPE_DEG": 55,
     "config.PANEL_WIDTH_M": 1.134,
     "config.PANEL_HEIGHT_M": 1.961,
-    "config.PANEL_EDGE_SETBACK_M": 0.3,
-    "config.RIDGE_SETBACK_M": 0.25,
+    "config.PANEL_EDGE_SETBACK_M": 0.1,
+    "config.RIDGE_SETBACK_M": 0.1,
     "config.PV_ASSUMPTIONS.panel_rated_power_w": 500,
     "config.PV_ASSUMPTIONS.panel_efficiency_pct": 22.5,
     "config.PV_ASSUMPTIONS.inverter_efficiency_pct": 97.0,

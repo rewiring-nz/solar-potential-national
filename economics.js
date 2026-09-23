@@ -1,10 +1,10 @@
 // Solar economics: cost, self-consumption, savings, payback.
 //
 // Pulled out of preview.html on 1 Sep so the money maths is ONE implementation
-// that both the map and a test runner can call. Josh: "We need to be able to
-// check the economics calculations" -- which was impossible while every
+// that both the map and a test runner can call, so the economics can be
+// checked -- which was impossible while every
 // function was a closure inside a 4,000-line page, and is how a 2.4x error in
-// the yearly figure survived long enough for him to spot it on the map.
+// the yearly figure survived long enough to be spotted on the map.
 //
 // Loaded as a plain script by preview.html (so it shares the page's scope, no
 // build step) and required by tests/test_economics.mjs under Node.
@@ -33,10 +33,10 @@ const ECON_DEFAULTS = {
   // setting -- so using it as a threshold meant a house FLIPPED to business
   // pricing when the coverage slider went up, which is nonsense: a building
   // does not change what it is because we modelled more panels on it. That
-  // is the bug Josh hit, "a home that is being treated as a business".
+  // is the bug: a home treated as a business.
   //
   // The kW test is kept only as a backstop for the case roof area would miss
-  // (a genuinely industrial system on a modest footprint), at Josh's 100kW.
+  // (a genuinely industrial system on a modest footprint), at 100kW.
   // NZ households are 3-12kW, and even a 300 m2 house fully covered lands
   // near 48kW, so nothing residential reaches it.
   //
@@ -45,24 +45,22 @@ const ECON_DEFAULTS = {
   // rather than a house. LINZ outlines carry no building-use attribute.
   biz_min_roof_m2: 400,
   biz_min_kw: 100,
-  // Export earns less over time. Anchors are Josh's; this interpolates
-  // between them and holds flat past the last.
-  // Export falls at a steady rate rather than via dated anchors (Josh:
-  // "just starting at 14 cents and dropping by some percentage each year").
+  // Export earns less over time: it falls at a steady rate from 14c rather
+  // than via dated anchors.
   //
   // 2%/yr from 14c: 12.9c in 2030, 11.7c in 2035, 10.5c in 2040, 8.6c in
-  // 2050. Above the 12c/9c Josh first sketched, and deliberately so -- at 3%
+  // 2050. Above the 12c/9c first sketched, and deliberately so -- at 3%
   // a compound decline reaches 5.6c by the end of a 30-year system, and
   // unlike the old anchored schedule it never levels off. 2% keeps the tail
   // from doing more work than a buyback forecast can honestly carry.
   export_decline_pct: 2.0,
-  // Self-consumption is a LOAD, not a share of output (Josh, 26 Aug). A
+  // Self-consumption is a LOAD, not a share of output. A
   // house drawing 1.2kW through the day soaks up the same ~8kWh whether the
   // array is 5kW or 40kW, so the kWh self-consumed is flat and the SHARE
   // falls as the system grows. The old fixed-percentage model did the
   // opposite -- every extra panel earned the retail price -- which is why
   // big roofs on small houses looked implausibly good.
-  home_daytime_kw: 1.5,   // average daytime draw of a house (Josh's figure)
+  home_daytime_kw: 1.5,   // average daytime draw of a house
   biz_daytime_kw: 6.0,    // weekday-daytime business, ~49% of biz_use_kwh
   profile: "home_typ",
   // Hours a day the daytime load actually meets useful sun. 1.5kW x 6.7h is
@@ -77,10 +75,10 @@ const ECON_DEFAULTS = {
   biz_use_kwh: 30000,     // placeholder, varies enormously -- editable
   life_years: 30,
   degradation_pct: 0.5, // per year
-  // Retail electricity rises; the export rate does NOT (Josh). Buyback is
+  // Retail electricity rises; the export rate does NOT. Buyback is
   // already on a declining schedule, and inflating it as well would have the
   // two assumptions fighting each other.
-  elec_inflation_pct: 4.0,   // Josh
+  elec_inflation_pct: 4.0,
   // An inverter does not last the life of the panels. Standard practice
   // includes replacing it; leaving it out flatters every system equally.
   inverter_replace_year: 15,
@@ -89,7 +87,7 @@ const ECON_DEFAULTS = {
   // years of nominal dollars and calls it savings, which overstates the
   // result badly -- and adding 5% inflation without it would overstate it
   // further still. Editable; set to 0 for an undiscounted view.
-  // 3% (Josh). Lower than the ~5% a private householder would use, which is a
+  // 3%. Lower than the ~5% a private householder would use, which is a
   // defensible public-good framing -- and it is on screen and adjustable, so
   // the choice is visible rather than buried.
   discount_rate_pct: 3.0,
@@ -123,8 +121,27 @@ function systemCost(kwp) { return kwp * costPerKw(kwp); }
 // discount rate or price inflation -- two assumptions that mostly cancel and
 // that nobody can check, and their absence is easier to explain than a
 // number picked to make payback look good.
-// Business or home? Either signal is enough -- see biz_min_* above.
-function isBusiness(kwp, roofM2) {
+// Business or home?
+//
+// THE COUNCIL ALREADY ANSWERED THIS. Some homes were misclassified as
+// businesses; the district plan is the building data for it. A zone is a statement about what may legally be built
+// on the land, from the authority that decides it, and tools/fetch_zoning.py
+// joins it onto every building as `zone_class`.
+//
+// Roof area was never a use signal and could not become one -- a 450 m2
+// house in a suburb and a 450 m2 small business look identical from above,
+// so the old rule mislabelled large houses by construction. Measured on the
+// pilot: 205 of 1,066 buildings disagree with the zoning, in both
+// directions. 66 homes were being billed as businesses (including six
+// apartment blocks in High Density Residential), and 139 small buildings in
+// the Queenstown Town Centre were being billed as homes.
+//
+// Zoning leads; where a zone genuinely holds both uses (Business Mixed Use,
+// Settlements) or no zoning is available, the old geometry test still
+// decides, because a blunt answer beats no answer.
+function isBusiness(kwp, roofM2, zoneClass) {
+  if (zoneClass === "business") return true;
+  if (zoneClass === "home") return false;
   return (roofM2 || 0) >= econ.biz_min_roof_m2 || (kwp || 0) >= econ.biz_min_kw;
 }
 // Export rate in a calendar year: today's rate declining at a steady
@@ -138,7 +155,9 @@ function sellRate(year, startCents) {
 
 function economicsFor(kwp, kwhYear, roofM2, override) {
   if (!(kwp > 0) || !(kwhYear > 0)) return null;
-  const biz = isBusiness(kwp, roofM2);
+  const biz = (override && override.biz != null)
+    ? override.biz
+    : isBusiness(kwp, roofM2, override && override.zoneClass);
   const buy = biz ? econ.biz_buy_c : econ.home_buy_c;
   const sellNow = biz ? econ.biz_sell_c : econ.home_sell_c;
   // The decline schedule is anchored on today's rate, so editing the
@@ -157,9 +176,8 @@ function economicsFor(kwp, kwhYear, roofM2, override) {
   // is a second ceiling, for the case where someone enters a very low yearly
   // figure -- a site cannot self-consume more than it uses. Whichever binds
   // first, binds; generation past it is exported.
-  // Josh, 1 Sep: "if you change the consumption of a home from 7000 to
-  // 10,000 kWh, then the self consumption kW should go up higher, not stay
-  // the same". He is right, and the old code could not do that: the ceiling
+  // Raising a home's consumption from 7,000 to 10,000 kWh must raise its
+  // self-consumption, and the old code could not do that: the ceiling
   // was min(daytime kW load, annual use), and for a typical home the kW side
   // always bound -- 1.5 kW x 6.7 h x 365 = 3,668 kWh against 7,000 used --
   // so editing annual use moved nothing at all until it dropped below 3,668.
@@ -237,8 +255,8 @@ if (typeof module !== "undefined" && module.exports) {
 //
 // WHY AN HOUR IS THE UNIT NOW. Everything above works on annual kWh with
 // self-consumption capped by an average daytime load. That is enough to
-// answer "is solar worth it", and it cannot answer either of the two
-// questions Josh asked for on 19 Sep:
+// answer "is solar worth it", and it cannot answer either of two
+// questions:
 //
 //   * a RETAIL PLAN only differs from another if it prices electricity
 //     differently at different times -- day/night, peak/off-peak, a free
@@ -441,7 +459,7 @@ function simulateYear(genByHour, seasonDays, dailyKwh, shape, batt) {
 function economicsHourlyFor(kwp, genByHour, seasonDays, roofM2, override) {
   if (!(kwp > 0) || !genByHour || !genByHour.length) return null;
   const o = override || {};
-  const biz = (o.biz != null) ? o.biz : isBusiness(kwp, roofM2);
+  const biz = (o.biz != null) ? o.biz : isBusiness(kwp, roofM2, o.zoneClass);
   const plan = o.plan || RETAIL_PLANS.find(p => !!p.biz === !!biz) || RETAIL_PLANS[0];
   const buyRates = o.buyRates || plan.buy();
   const sellStart = (o.sell_c != null) ? o.sell_c : plan.sell_c;
@@ -509,7 +527,7 @@ function economicsHourlyFor(kwp, genByHour, seasonDays, roofM2, override) {
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = Object.assign(module.exports || {}, {
-    LOAD_SHAPES, RETAIL_PLANS, BATTERY_DEFAULTS,
+    LOAD_SHAPES, RETAIL_PLANS, BATTERY_DEFAULTS, isBusiness,
     simulateDay, simulateYear, economicsHourlyFor,
   });
 }

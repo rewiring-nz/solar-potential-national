@@ -4,7 +4,7 @@ Score the shipped segmenter and the reconstruction against the labelled roofs.
 This exists because every automatic metric available rewards cutting a roof
 into more pieces -- off-plane residual always falls when you add a plane -- so
 tuning against one trades roofs against each other indefinitely. These labels
-are what is actually right, given by Josh.
+are what is actually right.
 
 Two kinds of label, because a count is not always honest:
   count       how many distinct PLANES the roof has. Scored as absolute error
@@ -89,7 +89,7 @@ def main():
         elif lab.get("n") is not None:
             row["truth"] = lab["n"]
             # Some roofs have a genuine near-tie -- 34 Belfast Terrace has two
-            # faces so nearly coplanar that Josh said 4 would not be wrong
+            # faces so nearly coplanar that 4 would not be wrong
             # either. Scoring that as a full miss would punish the right answer.
             row["alt"] = lab.get("n_alt")
             row["uncertain"] = bool(lab.get("uncertain"))

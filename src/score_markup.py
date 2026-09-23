@@ -1,4 +1,4 @@
-"""Score our faces against Josh's TRACED markup, not against a face count."""
+"""Score our faces against the TRACED markup, not against a face count."""
 import sys, json, warnings; sys.path.insert(0,"."); sys.path.insert(0,"src")
 warnings.filterwarnings("ignore")
 import numpy as np, geopandas as gpd, shapely
@@ -23,8 +23,8 @@ m2 = np.array(T["middle_section_corners"][1]); m4 = np.array(T["middle_section_c
 axis = m2 - m4; axis = axis / np.linalg.norm(axis)      # runs across the roof
 normal = np.array([-axis[1], axis[0]])                   # runs ALONG the roof
 
-print(f"faces: {len(faces)}  (Josh: 8)")
-print(f"\nJosh's structure: 2 hips + 4 slope quarters + 2 middle-section faces")
+print(f"faces: {len(faces)}  (markup: 8)")
+print(f"\nMarked structure: 2 hips + 4 slope quarters + 2 middle-section faces")
 print(f"decisive test -- no face may span the middle section:\n")
 straddlers = 0
 for f in sorted(faces, key=lambda x:-x["area_m2"]):
@@ -39,5 +39,5 @@ for f in sorted(faces, key=lambda x:-x["area_m2"]):
     print(f"  {gg.area:6.1f} m2  aspect {f['aspect_deg']:6.1f}  "
           f"overlap with band {crosses:5.1f} m2{flag}")
 inband = [f for f in faces if f["geometry"].intersection(band).area > 0.4 * band.area]
-print(f"\nfaces covering the middle section: {len(inband)}  (Josh: 2)")
-print(f"faces spanning across it:          {straddlers}  (Josh: 0)")
+print(f"\nfaces covering the middle section: {len(inband)}  (markup: 2)")
+print(f"faces spanning across it:          {straddlers}  (markup: 0)")

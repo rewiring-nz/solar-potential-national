@@ -1,8 +1,8 @@
 """
 How many panels straddle a roof line they should not?
 
-Josh, on what actually matters: "amount of panels overlapping ridges, and amount
-of faces on rooftops that have clear panel placement should improve a lot. On
+What actually matters: the number of panels overlapping ridges, and the
+number of faces with clear panel placement, should improve a lot. On
 some faces this will add more panels, on others it will reduce them because you
 were previously overlapping things."
 
@@ -12,7 +12,7 @@ obviously wrong on the roof. A panel bridging a fold sits on two planes at once,
 so it is not installable at all -- the count is a lie about capacity, not a
 small inaccuracy.
 
-Measured against the lines Josh drew, which are the only description of where
+Measured against the drawn lines, which are the only description of where
 the folds really are:
 
   CROSSING PANELS   a placed panel whose footprint is cut by a drawn ridge,

@@ -4,7 +4,7 @@ The selector (src/face_candidates + the scorer) needs SAM and torch, which
 live in .venv-sam and have no business inside the build environment. So faces
 are computed here, ahead of time, one JSON per building -- exactly the seam
 vision_lines already uses -- and roof_partition reads them behind a flag, the
-same way it reads Josh's drawn faces.
+same way it reads the drawn faces.
 
 Written per building: the winning candidate's face rings (NZTM), which reading
 won, its evidence score, and both candidates' scores, so the build can apply
@@ -37,6 +37,14 @@ def main():
     ap.add_argument("--bench", action="store_true",
                     help="every roof in the benchmark set")
     ap.add_argument("--limit", type=int, default=0)
+    # SHARDING, because one process is 5 s a building and the district is
+    # 13,400 of them -- 18 hours serial. Deterministic by index, so N shards
+    # partition the region exactly once with no coordination and no shared
+    # state; each writes its own files under data/selected_faces.
+    ap.add_argument("--shard", default=None,
+                    help="i/n -- this process takes every nth building from i")
+    ap.add_argument("--skip-existing-newer-than", default=None,
+                    help="ISO date; skip a building whose prediction is newer")
     a = ap.parse_args()
 
     import numpy as np
@@ -94,6 +102,16 @@ def main():
     pc = PointCloudSource(max_cached_tiles=3)
     if not ids:
         ids = [int(x) for x in gdf["building_id"]]
+    if a.shard:
+        i, n = (int(x) for x in a.shard.split("/"))
+        ids = [b for k, b in enumerate(ids) if k % n == i]
+    if a.skip_existing_newer_than:
+        import datetime
+        cut = datetime.datetime.fromisoformat(
+            a.skip_existing_newer_than).timestamp()
+        ids = [b for b in ids
+               if not ((OUT / f"{b}.json").exists()
+                       and (OUT / f"{b}.json").stat().st_mtime > cut)]
     if a.limit:
         ids = ids[:a.limit]
 
@@ -130,8 +148,8 @@ def main():
             return (b[0] + px2 / w * (b[2] - b[0]),
                     b[1] + (1 - py2 / h) * (b[3] - b[1]))
 
-        # NEAR-FLAT ROOFS ARE NOT THE SELECTOR'S TO SHIP. Josh, on the first
-        # region render: the flat, obstruction-heavy commercials came out as
+        # NEAR-FLAT ROOFS ARE NOT THE SELECTOR'S TO SHIP. On the first
+        # region render the flat, obstruction-heavy commercials came out as
         # arbitrary webs -- the line net polygonises plant edges, and the
         # scorer cannot tell, because a flat plane fits every partition of
         # itself. The proven LiDAR path already handles these acceptably on
@@ -216,7 +234,7 @@ def main():
             with torch.no_grad():
                 pr = torch.sigmoid(lm(x2.to(device)))[0].cpu().numpy()[:, :h, :w]
         # evidence = the calibrated v5 landscape PLUS the one thing v5
-        # cannot see: v6's dedicated hip channel (activation along Josh's
+        # cannot see: v6's dedicated hip channel (activation along the
         # drawn hips 0.16-0.24 -> 0.74-0.79). Swapping the whole map to v6
         # cost 0.021 of picked agreement -- its hotter statistics
         # mis-calibrate the edge term -- so only the new signal joins.
@@ -251,10 +269,10 @@ def main():
             if f_lid else 0.0
         if not f_sam and not f_line and not f_lid:
             continue
-        # Josh: "If you are not detecting clear lines you should not just
-        # randomly draw them." A line-winner must stand on clear lines --
+        # A line that is not clearly detected must not be drawn. A
+        # line-winner must stand on clear lines --
         # length-weighted activation along its interior edges >= 0.5.
-        # Calibrated on his verdicts: the two webs he flagged sit at 0.43 and
+        # Calibrated on review verdicts: the two flagged webs sit at 0.43 and
         # 0.47, Anderson at 0.87. A roof that fails falls to SAM if SAM earned
         # a score, else to no file and the old pipeline -- deferring a decent
         # roof costs little, shipping a web costs a flag.
@@ -290,15 +308,14 @@ def main():
             dark = _lum.mean() < 110 or (_lum < 70).mean() > 0.08
         except Exception:
             dark = False
-        # SIMPLE FORMS FOR SIMPLE ROOFS. Josh on the side-by-side panel
-        # (14 Sep): "Neither are great. but hypothesis is slightly better...
-        # at least the lines are simpler and there are less extra
-        # unnecessary lines." Ships for the weak class only: residential
+        # SIMPLE FORMS FOR SIMPLE ROOFS. On the side-by-side review the
+        # hypothesis form was slightly better: simpler lines, fewer
+        # unnecessary ones. Ships for the weak class only: residential
         # scale, no incumbent reading scoring >= 0.50, and the form itself
         # decisive (conf >= 0.55, with aspect agreement in the score so a
         # pyramid claim needs four tilt directions in the LiDAR).
         # Area cap raised 450 -> 2000 (17 Sep). The 450 fence made #4735292
-        # (a ~550 m2 textbook pyramid Josh flagged) fall to a 6-fragment SAM
+        # (a ~550 m2 textbook pyramid, flagged) fall to a 6-fragment SAM
         # reading; hypothesis, once allowed, won the score contest and
         # produced the 4 correct faces. Bench A/B 450 vs 2000: every markup
         # metric identical, +147 panels. The conf/incumbent gates below are
@@ -316,10 +333,10 @@ def main():
         # the selection would silently fall through to the old path.
         sc_hyp = score_candidate(f_hyp, geom, P, to_px, pts, inv_px) \
             if f_hyp else 0.0
-        # WHEN NOTHING READS CLEARLY, GUESS SIMPLE (Josh, 14 Sep). A
+        # WHEN NOTHING READS CLEARLY, GUESS SIMPLE. A
         # reading scoring 0.33 is not knowledge, and shipping it ships a
         # jagged 15-vertex guess: #4734994 (sam 0.33) and #4735106 (lidar
-        # 0.37) are the two roofs on his flagged sheet whose boundaries
+        # 0.37) are the two flagged roofs whose boundaries
         # follow nothing visible. Below 0.45 no detector has earned the
         # roof, so a merely plausible simple form (0.40) is preferred to
         # a confident-looking mess. Above that the old bar stands.
@@ -327,8 +344,8 @@ def main():
         # does make these roofs simpler -- #4734994's 15-vertex sam blob
         # becomes 3 straight faces -- but rendered against the imagery
         # they are simpler AND still wrong, and the bench cannot see the
-        # change at all (its roofs are Josh's, where his markup governs).
-        # Simplicity is his instruction; shipping an unmeasurable
+        # change at all (its roofs are marked, and the markup governs).
+        # Simplicity is the instruction; shipping an unmeasurable
         # behaviour change across 15k buildings is how five regressions
         # reached a deploy. It waits for evidence, not for agreement.
         _weak = (os.environ.get("SOLAR_HYP_WEAK") == "1"
@@ -360,9 +377,9 @@ def main():
         elif (_hyp := hypothesis_faces(pts, geom, P, to_px)) and \
                 score_candidate(_hyp, geom, P, to_px, pts, inv_px) >= 0.28:
             # last resort before the old path's webs: the SIMPLEST roof form
-            # consistent with the evidence. Josh, 14 Sep: "Roofs are simpler
-            # shapes that you are seeming to guess" -- when nothing reads
-            # clearly, guess simple, not elaborate.
+            # consistent with the evidence. Roofs are simpler shapes than
+            # the guesses: when nothing reads clearly, guess simple, not
+            # elaborate.
             pick, faces = "hypothesis", _hyp
             score = score_candidate(_hyp, geom, P, to_px, pts, inv_px)
         elif f_sam:
@@ -384,8 +401,8 @@ def main():
         # cost 4.5 hours of build time once and shipped the roof DARK
         # twice; it is not a roof, and no downstream stage should have to
         # cope with it. Refuse to write it and let the proven LiDAR path
-        # own the building. Josh: "you are inventing places to put lines
-        # that are clearly not right in the visual imagery."
+        # own the building, rather than invent lines the imagery does
+        # not show.
         _verts = sorted(len(f.exterior.coords) - 1 for f in faces)
         if _verts and (_verts[-1] > 40 or _verts[len(_verts) // 2] > 12):
             try:

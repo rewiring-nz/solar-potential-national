@@ -1,7 +1,7 @@
 """RID2's roof-centred segment masks as face-region pretraining.
 
 The face-region model (tools/train_face_regions.py) is limited by data:
-96 of Josh's roofs. RID2 ships 1,819 roof-centred 512px images with a
+96 marked roofs. RID2 ships 1,819 roof-centred 512px images with a
 per-pixel SEGMENT mask, which is the same supervision in the same format
 -- roof centred, one sample per roof, faces as regions.
 
@@ -12,7 +12,7 @@ masks are the target directly, so the supervision is exact.
 
 WHAT RID2 GIVES AND WHAT IT DOES NOT. Mask values are azimuth CLASSES, not
 instance ids, so two adjacent faces pointing the same way merge into one --
-an under-count this cannot fix, and a reason to fine-tune on Josh rather
+an under-count this cannot fix, and a reason to fine-tune on the markup rather
 than trust RID alone. There is no LiDAR: the four LiDAR channels are fed as
 the neutral value they take on flat ground, so the network learns to read
 imagery first and the fine-tune teaches it what the LiDAR channels add.
@@ -65,7 +65,7 @@ def main():
         b[:, :-1] |= (m[:, :-1] != m[:, 1:])
         b &= roof
         b = binary_dilation(b, np.ones((BOUNDARY_PX, BOUNDARY_PX), bool))
-        # erase the eave, exactly as for Josh's roofs: the outline is known
+        # erase the eave, exactly as for the marked roofs: the outline is known
         edge = roof & ~binary_erosion(
             roof, np.ones((3, 3), bool), iterations=EAVE_ERASE_PX)
         b &= ~edge

@@ -8,23 +8,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.preflight import preflight
 from src.region_build import write_json_atomic
-GAP_M = 0.04  # was 0.07 -- Josh: gaps a touch smaller
+GAP_M = 0.04  # was 0.07; gaps a touch smaller
 # The buffer is applied in DEGREES using the longitude scale at the panel's
 # latitude, so the north-south shrink is ~1/cos(lat) larger than east-west
 # (~5.7cm vs 4cm at -45). Cosmetically invisible at panel size and this is the
 # look that was signed off; noted so it isn't rediscovered as a mystery.
 DATA = Path(__file__).resolve().parent.parent / "data"
-def main():
-    preflight("shrink_panels_for_tiles")
-    path = DATA / "panel_layouts.geojson"
-    d = json.loads(path.read_text())
-    # NOT idempotent: a second pass shrinks the already-shrunk polygons again
-    # (0.04m -> 0.08m gaps, and small panels vanish entirely). This runs inside
-    # a chain that is routinely re-run from a middle step, so mark the file.
+def shrink(d):
+    """Shrink the panels of a panel_layouts document in place. Returns how
+    many were shrunk, or -1 if the document says it already was.
+
+    NOT idempotent: a second pass shrinks the already-shrunk polygons again
+    (0.04m -> 0.08m gaps, and small panels vanish entirely). This runs inside
+    a chain that is routinely re-run from a middle step, so the document is
+    marked. emit_region shrinks a COPY it feeds to tippecanoe and never writes
+    it back, so the region file keeps real panel geometry for the gate and the
+    patch tools.
+    """
     if d.get("panels_shrunk_m"):
         print(f"already shrunk by {d['panels_shrunk_m']}m -- skipping "
               f"(delete the key to force a re-shrink)")
-        return
+        return -1
     from shapely.geometry import shape, mapping
     n = 0
     for f in d["features"]:
@@ -37,6 +41,16 @@ def main():
             f["geometry"] = mapping(g)
             n += 1
     d["panels_shrunk_m"] = GAP_M
+    return n
+
+
+def main():
+    preflight("shrink_panels_for_tiles")
+    path = DATA / "panel_layouts.geojson"
+    d = json.loads(path.read_text())
+    n = shrink(d)
+    if n < 0:
+        return
     write_json_atomic(path, d)
     print(f"shrunk {n} panels by {GAP_M}m for tile gaps")
 if __name__ == "__main__":

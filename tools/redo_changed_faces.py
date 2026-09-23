@@ -16,18 +16,8 @@ SEL = Path("data/selected_faces")
 PY_ = sys.executable
 
 
-def fingerprint(bid):
-    p = SEL / f"{bid}.json"
-    if not p.exists():
-        return None
-    try:
-        d = json.loads(p.read_text())
-    except Exception:
-        return None
-    rings = [[(round(x, 2), round(y, 2)) for x, y in f] for f in d["faces"]]
-    return hashlib.md5(
-        json.dumps([d.get("source"), sorted(rings)], sort_keys=True).encode()
-    ).hexdigest()
+
+from src.region_build import all_areas as _all_regions
 
 
 def main():
@@ -40,7 +30,7 @@ def main():
     from src.region_build import area_paths
 
     total = 0
-    for region in (a.regions or list(config.REGIONS)):
+    for region in (a.regions or _all_regions()):
         op = area_paths(region)["outlines"]
         if not Path(op).exists():
             continue

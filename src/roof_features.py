@@ -12,8 +12,8 @@ A hip is several cuts forming a closed shape, and each one alone barely improves
 anything. On 7 Anderson Heights the central hip sits inside a single 75 m2 face
 with 11% of its points more than half a metre off plane; the first cut into it
 gains 1.5% and costs 2.8 m2 of setback against 2.0 allowed, so it is refused and
-the hip Josh drew stays paved over. Four different attempts to force it through
-were measured against the four roofs he has marked up, and every one made the
+the drawn hip stays paved over. Four different attempts to force it through
+were measured against the four marked roofs, and every one made the
 whole worse:
 
     imagery-guided cuts   1 of 4 face counts exact (4 of 4 without)
@@ -26,8 +26,8 @@ an economic test, and no sequence of individually-marginal cuts survives that.
 
 So stop searching for cuts. Work out how many ways the surface turns inside a
 face, from the points themselves, and then CONSTRUCT the boundaries: two planes
-that meet do so along their exact intersection line. That is Josh's own
-description of what a roof is -- "big flat planes... trim those planes by either
+that meet do so along their exact intersection line. That is what a roof is
+-- big flat planes, trimmed by either
 the edge of the building or another plane" -- applied inside a face rather than
 across a whole building, which is where an earlier attempt at it went wrong.
 
@@ -208,7 +208,7 @@ def extract_features(face_poly, pts, plane):
         # sides surround. On 7 Anderson Heights the steep points alone come to
         # 4.2 m2 -- just the sides -- while what they enclose is 12.2 m2 sitting
         # 0.77 m BELOW the roof with 2.79 m of height spread. That is the
-        # recessed valley Josh drew in the middle of that roof, and panels were
+        # recessed valley drawn in the middle of that roof, and panels were
         # being laid across it.
         pos = inside[g][:, :2]
         # Hull the steep points TOGETHER. Hulling each buffered blob separately

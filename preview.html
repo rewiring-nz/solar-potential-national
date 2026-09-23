@@ -110,13 +110,17 @@
   .rate-band { display: flex; justify-content: space-between; align-items: center;
     gap: var(--s2); font-size: var(--fs-label); padding: 1px 0; }
   .rate-input { width: 52px; text-align: right; }
+  /* The 3D toggle sits with the zoom buttons and reads as one of them. */
+  #btn-3d { font: 700 12px/1 system-ui, sans-serif; width: 29px; height: 29px;
+    background: #fff; border: 0; cursor: pointer; color: #333; }
+  #btn-3d.active { background: var(--accent, #ffd24a); color: #111; }
   .panel-caveat { font-size: var(--fs-meta); color: var(--warn); margin-top: var(--s2); line-height: 1.4; }
   /* Economics reads as four plain statements rather than a table of rows: the
      label carries the weight and the figure sits under it light, so the eye
      lands on what the number IS before what it says. */
   /* One series at a time: eight lines at once was a lot to read, and the
      comparison people want is between seasons, not between a typical and a
-     sunny day of the same season (Josh). */
+     sunny day of the same season. */
   .curve-toggle { display: flex; gap: var(--s1); margin-top: var(--s4); }
   .curve-btn { flex: none; padding: 4px 11px; font-size: var(--fs-label); font-weight: 650;
     font-family: inherit; cursor: pointer; border-radius: 6px;
@@ -142,7 +146,7 @@
     font-variant-numeric: tabular-nums; }
   .econ-value.econ-pos { color: var(--good); }
   .econ-value.econ-neg { color: #ff6b60; }
-  /* Net sits alongside lifetime rather than under it (Josh): it is a reading OF
+  /* Net sits alongside lifetime rather than under it: it is a reading OF
      that figure -- what is left after the install -- not a separate result. */
   .econ-net-inline { font-size: 14px; font-weight: 500; margin-left: 8px;
     font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -163,17 +167,21 @@
   .panel-econ-btn .sw { width: 9px; height: 9px; border-radius: 2px; flex: none; }
   .panel-econ-note { font-size: var(--fs-meta); color: var(--ink-3); margin-top: 4px;
     line-height: 1.45; }
-  /* The whole block carries the band's colour (Josh), so the legend IS the
+  /* The whole block carries the band's colour, so the legend IS the
      control -- no separate swatch to map back to the map. */
   /* width:100% because the row is a flex container justified to flex-end --
-     without it both of these get pushed to the right-hand edge (Josh). The
+     without it both of these get pushed to the right-hand edge. The
      same reason .est-title already carries it. */
   .inview-heading { width: 100%; font-size: var(--fs-body); font-weight: 300; color: #fff;
     margin: var(--s2) 0 var(--s1); letter-spacing: 0.01em; text-align: left; }
   #econ-bands-global { width: 100%; }
-  .econ-bands { display: flex; gap: 6px; margin-top: var(--s2); width: 100%; }
-  .econ-band { flex: 1; display: flex; flex-direction: column; gap: 2px; align-items: center;
-    padding: 8px 4px 6px; border: 1px solid transparent; border-radius: 5px;
+  .econ-bands { display: flex; gap: 4px; margin-top: var(--s2); width: 100%; }
+  /* Four bands, not three, so the widest label -- "2x and
+     over" -- has about 10px less room than it used to. Narrow side padding and
+     min-width:0 keep it on one line instead of clipping it. */
+  .econ-band { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+    align-items: center;
+    padding: 8px 2px 6px; border: 1px solid transparent; border-radius: 5px;
     font: inherit; cursor: pointer; }
   .econ-band:hover { filter: brightness(1.12); }
   .econ-band .cnt { color: #fff; font-weight: 700; font-size: 17px; line-height: 1.05;
@@ -184,6 +192,15 @@
      control you use to bring the band back. */
   .econ-band.off { opacity: 0.32; }
   .econ-band.off .cnt { text-decoration: line-through; }
+  /* Building-type chips: a hidden type stays legible, it is the control that
+     brings it back. */
+  .btype-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .btype-row:empty { display: none; }
+  .btype-chip { font: inherit; font-size: var(--fs-meta); padding: 3px 8px; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.10); color: inherit;
+    cursor: pointer; line-height: 1.3; }
+  .btype-chip:hover { background: rgba(255,255,255,0.18); }
+  .btype-chip.off { opacity: 0.38; text-decoration: line-through; }
   .econ-basis { font-size: var(--fs-meta); color: var(--ink-3); line-height: 1.45; margin-top: var(--s2); }
   /* Layout details table: same rhythm and alignment as .kv rows. */
   .popup #layout-details table { width: 100%; font-size: var(--fs-label); margin: 0; }
@@ -194,7 +211,7 @@
   .popup td { padding: 2px 8px 2px 0; }
   .popup td.val { font-weight: 600; text-align: right; padding-right: 0; }
   .popup .assumptions { font-size: 11px; color: #555; border-top: 1px solid #ddd; padding-top: 6px; max-width: 260px; }
-  /* Standing disclaimer (Josh): red pill at the top of the map, dismissible.
+  /* Standing disclaimer: red pill at the top of the map, dismissible.
      Above every other overlay on purpose -- it is the one thing a first-time
      visitor should read before believing a number. */
   .ai-banner {
@@ -268,7 +285,7 @@
     display: flex; align-items: baseline; justify-content: center; gap: var(--s3); }
   /* Panel count sits beside the capacity at the SAME size, carrying the
      difference in weight rather than in scale -- they are two readings of one
-     system, so neither should look subordinate (Josh). Only where panels are
+     system, so neither should look subordinate. Only where panels are
      actually placed; Heat Map mode places none, so it has no count. */
   .rsp-statbox .rsp-count { font-size: var(--fs-hero); font-weight: 250; letter-spacing: -0.5px;
     color: rgba(22,24,29,0.72); padding-left: var(--s3);
@@ -574,6 +591,7 @@
 </div>
 <div id="corner-actions">
   <button class="corner-btn" id="toggle-outlines"><span class="dot"></span>Building outlines</button>
+  <button class="corner-btn" id="toggle-markup"><span class="dot"></span>My roof markup</button>
   <button class="corner-btn" id="toggle-obstructions"><span class="dot"></span>Avoided obstructions</button>
   <button class="corner-btn" id="toggle-panel-econ"><span class="dot"></span>Panel economics</button>
   <button class="corner-btn" id="open-settings">&#9881;&#65039; Assumptions &amp; pricing</button>
@@ -623,6 +641,7 @@
       </div>
       <div id="coverage-options" style="display:none;"></div>
       <div class="rsp-subtitle" style="margin: 8px 0 0;">For buildings in map view (<span id="inview-count">0</span>)</div>
+      <div id="btype-toggles" class="btype-row"></div>
       <div id="layout-disclaimer" style="margin:10px 0 0;padding:8px 10px;background:rgba(255,80,80,0.10);
            border:1px solid rgba(255,110,110,0.25);border-radius:8px;font-size:10px;line-height:1.45;
            color:#f2c6c6;">
@@ -901,21 +920,174 @@ const map = new maplibregl.Map({
   ...startView()
 });
 
-map.addControl(new maplibregl.NavigationControl());
+// Exposed for diagnosis. Debugging a camera that ends up inside a hillside
+// without being able to read its pitch, zoom and centre is guesswork.
+window.__map = map;
+
+map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }));
+
+// ---- 3D -----------------------------------------------------------------
+// A 3D view of terrain, trees and the building.
+//
+// All three come from ONE surface. The terrain tiles encode the DSM -- the
+// top of whatever the LiDAR hit, so ground where there is ground, canopy
+// where there are trees and roof where there is a roof. That is also the
+// exact surface the shading model reads, so tilting the map shows what the
+// estimates were computed from rather than a decorative extrusion sitting
+// next to it. tools/build_terrain_tiles.py writes them.
+//
+// Off by default: it is a different way of looking, not a better one, and
+// the flat view is what the numbers are read on.
+let terrain3d = false;
+// THE PITCH CEILING HAS TO FALL AS YOU ZOOM IN. MapLibre does not stop the
+// camera entering the terrain: the closer you are, the less ground there is
+// between the camera and the slope behind it, and once it is inside you see
+// nothing at all. Measured on the Queenstown Gardens hilltop (374 m): at
+// z17.3 a 55 degree pitch renders a blank screen and 40 degrees renders the
+// scene perfectly. This keeps a usable tilt when looking across a suburb
+// and eases off over a single roof.
+// 3D TERRAIN NEEDS A WHOLE-NUMBER ZOOM. Measured on the Queenstown Gardens
+// hilltop, asking MapLibre for the ground height under the camera:
+//   z15  350 m     z16  368 m     z17  374 m     z18  376 m   (all correct)
+//   z16.5  0       z17.2  0       z17.5  0                    (fails)
+// At a fractional zoom the DEM lookup returns nothing, so the camera is
+// placed as if the ground were at sea level -- and on a 374 m hill that
+// puts it underneath the terrain, which is the blank screen. It is not a
+// pitch problem and not a zoom-depth problem: 3D works fine at z18 once the
+// zoom is a whole number, which is what looking at a roof needs.
+//
+// So while terrain is on, the zoom snaps to integers. The cost is that
+// zooming steps rather than glides; the alternative was no close 3D at all.
+function snapZoom3D() {
+  const z = map.getZoom();
+  const r = Math.round(z);
+  if (Math.abs(z - r) > 0.001) map.setZoom(r);
+  return r;
+}
+
+function maxPitchFor(zoom) {
+  // A gentle ceiling only. The steep-pitch failures were the elevation bug
+  // above, not the tilt, so this no longer has to be severe.
+  return Math.max(45, Math.min(60, 60 - (zoom - 17) * 3));
+}
+
+
+function setTerrain3D(on) {
+  terrain3d = on;
+  try {
+    if (on && !map.getSource("dsm-terrain")) {
+      map.addSource("dsm-terrain", {
+        type: "raster-dem", tiles: [`${DATA_BASE}data/terrain/{z}/{x}/{y}.png?v=${DATA_VERSION}`],
+        tileSize: 256, encoding: "mapbox", minzoom: 13, maxzoom: 17,
+      });
+    }
+    map.setTerrain(on ? { source: "dsm-terrain", exaggeration: 1 } : null);
+    const hint = document.getElementById("map-3d-hint");
+    if (hint) hint.style.display = on ? "" : "none";
+    // KEEP THE CAMERA ABOVE THE GROUND. With terrain on, a fly-to at high
+    // zoom and a steep pitch can put the camera inside the hillside and the
+    // screen goes blank -- which is what the address search did in 3D, the
+    // way anyone would navigate to their own house. A shallower ceiling and
+    // a re-frame after each move keeps it outside the terrain.
+    if (on) snapZoom3D();
+    const cap = maxPitchFor(map.getZoom());
+    map.setMaxPitch(on ? cap : 60);
+
+    // THE BUTTON BEFORE THE CAMERA. The terrain is already on by this point,
+    // so if a camera move throws -- and one has been reported doing exactly
+    // that, a null read inside jumpTo when no terrain tile has decoded yet --
+    // the old order left the button unlit while 3D was running, and the next
+    // click "turned on" a mode that was already on. State first, movement
+    // after, and the movement gets its own guard so it cannot take the state
+    // with it.
+    const b = document.getElementById("btn-3d");
+    if (b) b.classList.toggle("active", on);
+
+    try {
+      if (on) {
+        // a frame flat, at a whole-number zoom, so the ground height resolves
+        // before the camera is tilted
+        map.jumpTo({ pitch: 0 });
+        setTimeout(() => { if (terrain3d) map.easeTo({ pitch: cap, duration: 700 }); }, 350);
+      } else {
+        map.easeTo({ pitch: 0, duration: 700 });
+      }
+    } catch (e) {
+      // 3D itself is fine -- say what actually failed, because "3D
+      // unavailable" sent someone looking for a missing terrain source.
+      console.warn("3D is on; the camera move failed", e);
+    }
+  } catch (e) {
+    console.warn("3D unavailable", e);
+  }
+}
+// Say where the heat map went, rather than leaving a reader to wonder.
+(function addHint() {
+  const d = document.createElement("div");
+  d.id = "map-3d-hint";
+  d.style.cssText = "display:none;position:absolute;left:50%;transform:translateX(-50%);" +
+    "bottom:86px;z-index:5;background:rgba(0,0,0,0.72);color:#e8edf2;" +
+    "font:600 11px/1.3 system-ui,sans-serif;padding:5px 10px;border-radius:6px;" +
+    "pointer-events:none;text-align:center;max-width:82vw;";
+  d.textContent = "3D — the surface is the LiDAR itself, so terrain, trees and roofs are measured.";
+  const attach = () => (document.getElementById("map") || document.body).appendChild(d);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", attach);
+  else attach();
+})();
+
+// After any programmatic move (the address search flies), re-seat the
+// camera: if a move left it steeper than the 3D ceiling, ease it back.
+// MOVE FLAT, THEN TILT. Arriving somewhere with the pitch already applied
+// puts the camera inside the hill -- measured: jumping to the Gardens
+// hilltop at z17.3 with pitch 31 renders nothing, while jumping there flat
+// and THEN tilting to the same 31 renders correctly. MapLibre needs a frame
+// at pitch 0 to resolve the terrain under the camera before it is tilted.
+// So every move in 3D lands flat and the tilt is re-applied afterwards.
+let reseating = false;
+map.on("moveend", () => {
+  if (!terrain3d || reseating) return;
+  reseating = true;
+  const z = map.getZoom();
+  const r = Math.round(z);
+  // Snap first (the DEM only resolves at whole-number zooms), then tilt --
+  // sequenced here rather than waiting for the snap's own moveend, which
+  // this guard would swallow and leave the map flat.
+  if (Math.abs(z - r) > 0.001) map.setZoom(r);
+  setTimeout(() => {
+    const cap = maxPitchFor(map.getZoom());
+    map.setMaxPitch(cap);
+    if (Math.abs(map.getPitch() - cap) > 0.5) {
+      map.easeTo({ pitch: cap, duration: 350 });
+    }
+    setTimeout(() => { reseating = false; }, 450);
+  }, 180);
+});
+
+class ThreeDControl {
+  onAdd() {
+    const d = document.createElement("div");
+    d.className = "maplibregl-ctrl maplibregl-ctrl-group";
+    d.innerHTML = `<button id="btn-3d" type="button" title="3D view — terrain, trees and roofs from the LiDAR surface">3D</button>`;
+    d.addEventListener("click", e => { e.preventDefault(); setTerrain3D(!terrain3d); });
+    this._c = d;
+    return d;
+  }
+  onRemove() { this._c.remove(); }
+}
+map.addControl(new ThreeDControl());
 // Box zoom OWNS shift+drag in MapLibre, and it swallows the shift+click that
 // multi-select needs before any layer handler sees it (verified: the
 // buildings-fill click handler never fired while it was on). Nobody has asked
 // for drag-a-box-to-zoom; the +/- buttons, scroll and double-click all still
-// zoom. Josh asked for shift-select, so shift belongs to selection.
+// zoom. Shift belongs to selection.
 map.boxZoom.disable();
 
 let selectedBuildingId = -1;
 // MULTI-SELECT (shift-click). selectedIds is the authoritative set; the
 // single-selection variables around it still carry the REPRESENTATIVE building
 // (the largest by roof area), so every existing code path -- live tuning, the
-// econ-band hook, the mobile box -- keeps working untouched. Josh asked for a
-// site-wide total: "shift-select multiple buildings ... show as one building
-// in the dashboard, results as the sum of all selected".
+// econ-band hook, the mobile box -- keeps working untouched. Shift-selected
+// buildings show as one building in the dashboard, with the results summed.
 let selectedIds = [];
 let selectedPropsById = {};
 let selectedGeomById = {};
@@ -926,8 +1098,8 @@ let layoutReady = false;
 // that blue was the heatmap, still on underneath. 'none' | 'heatmap' | 'layout'.
 let mode = "heatmap";
 const LAYOUT_LAYERS = ["facets-outline", "obstructions-fill", "obstructions-outline", "panels-fill", "panels-outline"];
-let obstructionsOn = false;  // default hidden (Josh)
-let outlinesOn = false;      // building outlines, default hidden (Josh)
+let obstructionsOn = false;  // default hidden
+let outlinesOn = false;      // building outlines, default hidden
 // Base filter per layout layer -- always shows every building's facets/
 // panels/obstructions at once. Previously selectBuilding() replaced this
 // with a single building_id filter on click, which meant Panel Layout mode
@@ -935,6 +1107,61 @@ let outlinesOn = false;      // building outlines, default hidden (Josh)
 // building (however well segmented) looked completely blank until clicked.
 // That is almost certainly the dominant cause of "large areas of the roof
 // have no panels" reports made against wide, multi-building screenshots.
+// BUILDING TYPES: a toggle for homes, schools, hospitals, businesses. Every
+// building, panel and aggregate cell
+// carries `btype` (src/building_types.py), so hiding a type is one attribute
+// filter on each layer and the in-view sums simply skip it. All on by default;
+// the last one on cannot be turned off, for the same reason as the economics
+// bands: there is no useful "show nothing" state.
+let btypesAll = [];                 // [[key, label], ...] from assumptions.json
+const btypesOff = new Set();
+function btypeExpr() {
+  if (!btypesOff.size) return null;
+  return ["!", ["in", ["coalesce", ["get", "btype"], "home"], ["literal", [...btypesOff]]]];
+}
+function withBtype(base) {
+  const b = btypeExpr();
+  if (!b) return base || null;
+  return base ? ["all", base, b] : b;
+}
+function applyBtypeFilters() {
+  if (!map) return;
+  const base = { "buildings-fill": null, "buildings-outline": null,
+                 "buildings-noestimate": ["has", "no_estimate_reason"],
+                 "buildings-noestimate-outline": ["has", "no_estimate_reason"] };
+  for (const [id, f] of Object.entries(base)) {
+    if (map.getLayer(id)) map.setFilter(id, withBtype(f));
+  }
+  (typeof CELL_BANDS !== "undefined" ? CELL_BANDS : []).forEach(([lod]) => {
+    for (const id of [`cells-fill-${lod}`, `cells-heat-${lod}`]) {
+      if (map.getLayer(id)) map.setFilter(id, withBtype(["==", ["get", "lod"], lod]));
+    }
+  });
+  if (typeof LAYOUT_LAYERS !== "undefined") {
+    LAYOUT_LAYERS.forEach(id => { if (map.getLayer(id)) map.setFilter(id, panelLayerFilter(id)); });
+  }
+}
+function buildBtypeToggles(list) {
+  const box = document.getElementById("btype-toggles");
+  if (!box || !Array.isArray(list) || !list.length) return;
+  btypesAll = list;
+  box.innerHTML = list.map(([k, label]) =>
+    `<button type="button" class="btype-chip${btypesOff.has(k) ? " off" : ""}" data-t="${k}">${label}</button>`).join("");
+  box.querySelectorAll(".btype-chip").forEach(btn => btn.addEventListener("click", () => {
+    const k = btn.dataset.t;
+    if (btypesOff.has(k)) btypesOff.delete(k);
+    else {
+      if (btypesOff.size >= btypesAll.length - 1) return;   // last one stays on
+      btypesOff.add(k);
+    }
+    btn.classList.toggle("off", btypesOff.has(k));
+    applyBtypeFilters();
+    inViewProps = null;
+    if (typeof refreshDerived === "function") refreshDerived();
+    else if (typeof recomputeInViewSummary === "function") recomputeInViewSummary();
+  }));
+}
+
 const LAYOUT_KIND_FILTER = {
   "facets-outline": ["==", ["get", "kind"], "facet"],
   "obstructions-fill": ["==", ["get", "kind"], "obstruction"],
@@ -963,9 +1190,9 @@ let selectedPanelBuildingId = -1;
 const SELECTED_NONE = ["==", ["get", "building_id"], -1];
 
 // --- Focus spotlight -------------------------------------------------------
-// Josh: darken everything except the clicked building, "a quick gradient at
-// the edge to go from completely visible building at the outline, to then a
-// quick gradient, to 30% opacity overlay for the rest of the map", fading in
+// Darken everything except the clicked building: fully visible at the
+// outline, a quick gradient at the edge, then a dimming overlay for the rest
+// of the map, fading in
 // rather than snapping.
 //
 // Built as ONE world-covering polygon with the building as an interior ring,
@@ -974,7 +1201,7 @@ const SELECTED_NONE = ["==", ["get", "building_id"], -1];
 // with no per-frame work. The soft edge is a blurred line following the same
 // ring, offset outward, so the ramp lives OUTSIDE the building and the roof
 // itself stays completely clear.
-const FOCUS_DIM_OPACITY = 0.48;   // 0.30 first, too weak to separate the roof (Josh)
+const FOCUS_DIM_OPACITY = 0.48;   // 0.30 first, too weak to separate the roof
 const FOCUS_FADE_MS = 420;
 const FOCUS_GAP_M = 2.5;      // clear margin before the ramp starts
 const FOCUS_RAMP_PX = 26;     // width of the blurred edge band
@@ -1090,7 +1317,7 @@ function mergeBuildingProps(list) {
     out["fill_kwh_" + d] = sum("fill_kwh_" + d);
   }
   ["avg_poa_kwh_m2", "roof_confidence"].forEach(k => { out[k] = areaWeighted(k); });
-  [5, 10, 25, 50, 100].forEach(c => {
+  COVERAGE_POA_STEPS.forEach(c => {
     const k = "cov_poa_" + c;
     if (list.some(p => p[k] !== undefined)) out[k] = areaWeighted(k);
   });
@@ -1110,15 +1337,14 @@ function densityOpacityExpr(baseOpacity) {
   // Filtering by band rides on OPACITY, not setFilter: setFilter re-evaluates
   // and re-uploads the geometry of every loaded tile, which is far too heavy
   // for a control meant to be flicked on and off (see setLayoutExclusion).
-  const shown = panelBandExpr(panelEconShow.low, panelEconShow.mid,
-                              panelEconShow.high, true);
+  const shown = panelBandExpr(b => panelEconShow[b.key], true);
   return ["case", ["all", dense, shown], baseOpacity, 0];
 }
 const PANEL_FILL_OPACITY = 0.72, PANEL_LINE_OPACITY = 0.5;
 const PANEL_BASE_COLOUR = "#081e3f";
-// Which panels earn back their own share of the install. Josh: "it would be
-// good to know if south facing panels are not economic ... account for how much
-// electricity a specific panel would generate itself, and applying the
+// Which panels earn back their own share of the install: whether a south-
+// facing panel is economic depends on how much electricity that panel itself
+// would generate, applying the
 // assumptions on cost, self consumption etc, to see if the individual panel
 // pays back its proportion of the cost (the total cost divided by number of
 // panels)".
@@ -1129,26 +1355,37 @@ const PANEL_BASE_COLOUR = "#081e3f";
 // which a panel exactly repays cost/count over the system life, and the map
 // paints each panel against it. No per-feature computation, no extra data.
 let panelEcon = null;   // null = off, else { buildingId, breakEvenKwh }
-// Three bands rather than pass/fail (Josh): a panel that merely repays its
+// Three bands rather than pass/fail: a panel that merely repays its
 // share is a different proposition from one that returns twice it, and the
 // middle band is where most panels actually land.
-// Where the top band starts, as a multiple of break-even (Josh). One constant,
-// because the paint expression and the chip tally must not be able to disagree
-// about where the line is.
-const PANEL_ECON_HIGH_MULT = 1.5;
+// Where the bands sit, as multiples of break-even: 2.0x and over dark green,
+// 1.1x-2x light green, 0.9x-1.1x yellow, below 0.9x red.
+//
+// `max` is the EXCLUSIVE top of each band and the last one is open-ended. This
+// is one ordered list rather than a threshold constant per band because four
+// separate callers read it -- the paint expression, the on-screen chip tally,
+// the per-building chips and the decile-based filtered totals -- and the last
+// arrangement, which spelled the rule out in each of them, is exactly how the
+// seasonal curve came to describe panels that were no longer on the map.
 const PANEL_ECON_BANDS = [
-  { key: "low",  colour: "#c0392b", label: "0x \u2013 1x ROI" },
-  { key: "mid",  colour: "#86d98d", label: "1x \u2013 1.5x ROI" },
-  { key: "high", colour: "#12703f", label: "1.5x + ROI" },
+  { key: "poor", max: 0.9,      colour: "#c0392b", label: "under 0.9\u00d7" },
+  { key: "even", max: 1.1,      colour: "#e0b93a", label: "0.9\u00d7 \u2013 1.1\u00d7" },
+  { key: "good", max: 2.0,      colour: "#86d98d", label: "1.1\u00d7 \u2013 2\u00d7" },
+  { key: "best", max: Infinity, colour: "#12703f", label: "2\u00d7 and over" },
 ];
-let panelEconShow = { low: true, mid: true, high: true };
+const PANEL_ECON_KEYS = PANEL_ECON_BANDS.map(b => b.key);
+let panelEconShow = Object.fromEntries(PANEL_ECON_KEYS.map(k => [k, true]));
+const emptyBandTally = () => Object.fromEntries(PANEL_ECON_KEYS.map(k => [k, 0]));
+// The band a panel returning `ratio` times its share of the install falls in.
+const bandForRatio = ratio =>
+  (PANEL_ECON_BANDS.find(b => ratio < b.max) || PANEL_ECON_BANDS[PANEL_ECON_BANDS.length - 1]).key;
 // "blended" spreads the building's average value over every panel, which is
-// what Josh first specified. "marginal" asks the harder question -- is it worth
+// the original specification. "marginal" asks the harder question -- is it worth
 // adding THIS panel -- and answers it at the export rate, because the
 // self-consumption a blended rate credits it with is already spoken for.
 // Back to blended by default. Marginal is still the sharper question for "is
 // one more panel worth it", but defaulting to it made the panel and the map
-// contradict each other, which Josh caught: 17/60 Hallenstein showed every
+// contradict each other: 17/60 Hallenstein showed every
 // panel red while the building itself reported $20,900 net profit.
 //
 // Both were right and that is the problem. The headline prices the
@@ -1166,7 +1403,7 @@ let panelEconBasis = "blended";
 // no break-even yet and falls back to the baked deciles. One guarded re-run
 // settles it; the guard stops that becoming a loop.
 let panelEconSettling = false;
-// Josh: the bands should apply to EVERY building, not only the clicked one,
+// The bands apply to EVERY building, not only the clicked one,
 // with the controls on the left dashboard. Break-even is per building -- it is
 // that roof's cost-per-panel over the lifetime value of a kWh -- so going
 // global means one threshold per building, carried as a MapLibre match on
@@ -1186,7 +1423,7 @@ const PANEL_ECON_FALLBACK_KWH = 250;   // for a building not in the current view
 // expression, the chip tallies and the filtered totals, and the seasonal curves
 // did not know about it at all -- so switching a band off changed the map and the
 // economics but left the generation curve describing panels that were no longer
-// there (Josh). Three copies of a rule is three chances to forget the fourth
+// there. Three copies of a rule is three chances to forget the fourth
 // caller. Two of those copies were also still using the single-building
 // break-even after the mode went district-wide, so they disagreed with the map.
 function breakEvenFor(buildingId) {
@@ -1208,16 +1445,16 @@ function panelBandOf(props) {
   const m = panelEconMerit && panelEconMerit.get(props.building_id);
   if (m && props.fill_order != null) {
     const be = props.fill_order <= m.cutoff ? m.retailBE : m.exportBE;
-    return k < be ? "low" : k < PANEL_ECON_HIGH_MULT * be ? "mid" : "high";
+    return bandForRatio(k / Math.max(be, 1e-9));
   }
   const be = breakEvenFor(props.building_id);
-  return k < be ? "low" : k < PANEL_ECON_HIGH_MULT * be ? "mid" : "high";
+  return bandForRatio(k / Math.max(be, 1e-9));
 }
 
 // Switching the LAST band off leaves a building with no panels, which made
 // economicsFor return null, which hid the whole economics block -- and the
 // in-panel band toggles live inside it, so the controls needed to undo it
-// disappeared with it (Josh). The state also survived reselecting a building,
+// disappeared with it. The state also survived reselecting a building,
 // so every roof then read 0 kW with nothing on screen explaining why.
 //
 // Simplest honest fix: a band can always be turned ON, and the last one ON
@@ -1258,20 +1495,24 @@ function panelBreakEvenExpr() {
   return panelEcon ? panelEcon.breakEvenKwh : PANEL_ECON_FALLBACK_KWH;
 }
 
-function panelBandExpr(lowVal, midVal, highVal, otherVal) {
+// `valueFor(band)` is what to paint/return for each band, so colour and
+// visibility share one ladder and cannot drift apart.
+function panelBandExpr(valueFor, otherVal) {
   const kwh = ["coalesce", ["get", "ac_kwh_year"], 0];
   const be = panelBreakEvenExpr();
-  const bands = [
-    ["<", kwh, be], lowVal,
-    ["<", kwh, ["*", PANEL_ECON_HIGH_MULT, be]], midVal,
-    highVal];
+  const last = PANEL_ECON_BANDS.length - 1;
+  const bands = [];
+  PANEL_ECON_BANDS.forEach((b, i) => {
+    if (i < last) bands.push(["<", kwh, ["*", b.max, be]]);
+    bands.push(valueFor(b));
+  });
   if (panelEconGlobal) return ["case", ...bands];
   return ["case", ["!=", ["get", "building_id"], panelEcon.buildingId], otherVal, ...bands];
 }
 
 function panelColourExpr() {
   if (!panelEcon) return PANEL_BASE_COLOUR;
-  return panelBandExpr("#c0392b", "#86d98d", "#12703f", PANEL_BASE_COLOUR);
+  return panelBandExpr(b => b.colour, PANEL_BASE_COLOUR);
 }
 
 function applyPanelDensityPaint() {
@@ -1298,37 +1539,61 @@ function panelLayerFilter(id, excludeBuildingId) {
   if (excludeBuildingId !== undefined) {
     parts.push(["!=", ["get", "building_id"], excludeBuildingId]);
   }
+  const bt = btypeExpr();
+  if (bt) parts.push(bt);
   return parts.length === 1 ? parts[0] : ["all", ...parts];
 }
 
 // Clicking the ACTIVE mode turns it off, leaving neither overlay drawn, so the
-// roof itself can be seen (Josh). These buttons briefly did not toggle: with
+// roof itself can be seen. These buttons briefly did not toggle: with
 // only two of them, switching both off looked like a broken map, especially on
 // a phone where a tap can register twice. What makes it safe now is that both
 // buttons visibly go unlit in that state, on desktop and mobile, so "nothing
 // is selected" reads as a state rather than a failure.
+// TOGGLE, and the earlier objection to toggling is fixed rather than dodged.
+//
+// Both heat map mode and panel layout mode can be toggled off: in 3D it is
+// often useful to see the clear roof imagery alone.
+//
+// This was select-only because toggling used to fall through to a third state,
+// "none", which hid both overlays AND switched the numbers off with them: a
+// blank map with the building panel still captioned "at the current panel
+// density" over a coverage estimate.
+//
+// The mistake there was conflating two things. WHICH OVERLAY IS DRAWN and
+// WHICH ESTIMATE IS SHOWN are separate questions, and only the first one has a
+// sensible "off". So `mode` keeps meaning heatmap-or-layout and keeps driving
+// every number, caption and control; `overlayOn` says whether its layers are
+// painted. Turning the overlay off gives bare imagery -- which in 3D is the
+// whole point -- and the panel keeps reading exactly as it did.
+let overlayOn = true;
+
 function setMode(newMode) {
-  // SELECT, not toggle. Clicking the button for the mode you are ALREADY in
-  // used to fall through to "none", which hides both overlays: a blank map,
-  // with the building panel still captioned "at the current panel density"
-  // over a coverage estimate. Josh had the mobile buttons changed to
-  // select-not-toggle for exactly this reason; the dashboard pair was missed.
-  mode = newMode;
+  // the zoomed-out surface weights by placed panels in layout mode, by coverage otherwise
+  setTimeout(() => { if (typeof refreshHeatWeights === "function") refreshHeatWeights(); }, 0);
+  if (newMode === mode && overlayOn) {
+    overlayOn = false;            // clicking the on button turns it off
+  } else {
+    mode = newMode;               // the other button always switches and turns on
+    overlayOn = true;
+  }
   applyToggles();
 }
 
 function syncToggleButtons() {
   const globalBtn = document.getElementById("toggle-heatmap-global");
   if (globalBtn) {
-    globalBtn.classList.toggle("active", mode === "heatmap");
-    globalBtn.textContent = mode === "heatmap" ? "On" : "Off";
+    globalBtn.classList.toggle("active", overlayOn && mode === "heatmap");
+    globalBtn.textContent = overlayOn && mode === "heatmap" ? "On" : "Off";
   }
   const lf = document.querySelector(".legend-facet");
-  if (lf) lf.style.display = mode === "heatmap" ? "" : "none";
+  if (lf) lf.style.display = overlayOn && mode === "heatmap" ? "" : "none";
   const dashHeat = document.getElementById("toggle-heatmap-dash");
   const dashLayout = document.getElementById("toggle-layout-dash");
-  if (dashHeat) dashHeat.classList.toggle("active", mode === "heatmap");
-  if (dashLayout) dashLayout.classList.toggle("active", mode === "layout");
+  // Active only while it is actually painting something, so the pair reads as
+  // two independent on/off switches that happen to be mutually exclusive.
+  if (dashHeat) dashHeat.classList.toggle("active", overlayOn && mode === "heatmap");
+  if (dashLayout) dashLayout.classList.toggle("active", overlayOn && mode === "layout");
   const coverageControl = document.getElementById("coverage-control");
   if (coverageControl) coverageControl.style.display = mode === "heatmap" ? "block" : "none";
   // The layer toggles moved to the corner cluster; keep their state in step
@@ -1340,7 +1605,7 @@ function syncToggleButtons() {
   if (tb) tb.classList.toggle("active", obstructionsOn);
   // Obstructions only mean anything in Panel Layout.
   if (tb) tb.style.display = mode === "layout" ? "" : "none";
-  // Nor does panel economics (Josh): the heat map places no panels, so there is
+  // Nor does panel economics: the heat map places no panels, so there is
   // nothing to price. Switch the mode off with it rather than just hiding the
   // button, or it would come back on invisibly when Panel Layout returns.
   const tp = document.getElementById("toggle-panel-econ");
@@ -1360,7 +1625,8 @@ function applyToggles() {
   if (window.__syncHeatmapRasters) window.__syncHeatmapRasters();  // attach/detach for this mode
   (window.__heatmapLayers || ["heatmap-raster"]).forEach(id => {
     if (map.getLayer(id)) {
-      map.setLayoutProperty(id, "visibility", mode === "heatmap" ? "visible" : "none");
+      map.setLayoutProperty(id, "visibility",
+        overlayOn && mode === "heatmap" ? "visible" : "none");
     }
   });
   if (layoutReady) {
@@ -1368,10 +1634,10 @@ function applyToggles() {
       // facets-outline is the dotted line drawn around each roof plane. It used
       // to be on permanently in Panel Layout, so toggling "Building outlines"
       // looked like it did nothing except add a SECOND dotted outline on top --
-      // Josh: "the dotted building outline stays on either way, just another
-      // one is turned on". It now rides the same toggle, so the default view is
+      // the dotted building outline stayed on either way. It now rides the
+      // same toggle, so the default view is
       // panels on the bare roof and the toggle brings back both outlines.
-      const vis = mode === "layout" && (
+      const vis = overlayOn && mode === "layout" && (
         id.startsWith("obstructions") ? obstructionsOn :
         id === "facets-outline" ? outlinesOn : true);
       map.setLayoutProperty(id, "visibility", vis ? "visible" : "none");
@@ -1428,7 +1694,7 @@ function clearSelection() {
   // Via the window hook, not directly: clearSelection is top-level while
   // renderGlobalEconBands is inside a closure, so calling it by name threw a
   // ReferenceError and aborted this function -- which is exactly how the
-  // overlay got stuck on (Josh).
+  // overlay got stuck on.
   if (window.__refreshDerived) window.__refreshDerived();
   clearLiveTuning();
   applyToggles();
@@ -1514,13 +1780,21 @@ function wireTuningControls(popupEl, buildingId) {
 // on 3 Sep while Wellington was still on 33 -- and preview.html is meant
 // to be byte-identical between them, which this line was quietly breaking.
 const DATA_VERSION = (window.SITE && window.SITE.dataVersion) || "1";
+// Where the data lives. Empty = beside the page (GitHub Pages, as today).
+// A bucket URL ending in "/" moves every tile, detail and index fetch there
+// without touching the page: Pages caps a file at 100 MB and Auckland's
+// panel tiles alone are ~1.5 GB (docs/scale-architecture.md).
+const DATA_BASE = (window.SITE && window.SITE.dataBase) || "";
 let coveragePct = 100;
 const COVERAGE_OPTIONS = [5, 10, 15, 25, 50, 75, 100];
+// Mirrors src/bake_density_deciles.COVERAGE_STEPS. Values between
+// them are interpolated; outside them, clamped.
+const COVERAGE_POA_STEPS = [5, 10, 15, 25, 50, 75, 100];
 
 function fmtPower(kwp) {
   // Precision follows magnitude. A house is the case where the decimal earns
   // its place -- 9 kW vs 9.4 kW is a real difference in system size to someone
-  // pricing one (Josh). Past ~100 kW the decimal is false precision against a
+  // pricing one. Past ~100 kW the decimal is false precision against a
   // model carrying several percent of uncertainty, and on a district total it
   // is just noise.
   if (kwp >= 1000) return (kwp / 1000).toFixed(1) + " MW";
@@ -1545,26 +1819,50 @@ map.on("load", async () => {
   // Adding the vector source here starts the PMTiles range requests
   // immediately -- its layers are still added further down, in the right
   // stacking order, by which point the tiles are already in flight.
-  map.addSource("layout", { type: "vector", url: `pmtiles://data/panel_layouts.pmtiles?v=${DATA_VERSION}` });
+  // EVERY PMTILES SOURCE NEEDS THE RETRY, not just this one.
+  //
   // GitHub Pages' CDN sometimes answers a cold-cache Range request with a
   // plain 200 and no content-length; the pmtiles library errors out and the
   // source stays permanently empty -- a blank map until a manual reload.
-  // Retry with a fresh URL: it gives pmtiles a clean instance (it caches the
+  // Retrying with a fresh URL gives pmtiles a clean instance (it caches the
   // failed header read per-URL) and by then the CDN edge is warm.
-  let layoutRetries = 0;
+  //
+  // That was written for the panel layouts and wired only to them. When
+  // buildings and the aggregate cells became PMTiles their edges were stone
+  // cold -- brand new files -- and both stayed empty on the live site while
+  // working perfectly against a local server: the dashboard read 0.0 kW and
+  // no building was clickable. The page itself recorded the evidence, in the
+  // layout source's own URL: it had already been rewritten to `&retry=2`.
+  const pmtilesRetries = {};
+  function addPmtilesSource(id, path, extra) {
+    map.addSource(id, Object.assign(
+      { type: "vector", url: `pmtiles://${path}?v=${DATA_VERSION}` },
+      extra || {}));
+    pmtilesRetries[id] = { path, n: 0 };
+  }
   map.on("error", (e) => {
     const msg = String((e && e.error && e.error.message) || "");
-    const fromLayout = e && e.sourceId === "layout";
     const byteServing = /Byte Serving|content-length/i.test(msg);
-    if (!(fromLayout || byteServing) || layoutRetries >= 5) return;
-    layoutRetries += 1;
-    setTimeout(() => {
-      const src = map.getSource("layout");
-      if (src && src.setUrl) {
-        src.setUrl(`pmtiles://data/panel_layouts.pmtiles?v=${DATA_VERSION}&retry=${layoutRetries}`);
-      }
-    }, 1000 * layoutRetries);
+    // A byte-serving failure does not always name its source, so when one is
+    // reported without an id every pmtiles source that has not loaded is a
+    // candidate -- retrying a healthy one costs a header read.
+    const ids = e && e.sourceId && pmtilesRetries[e.sourceId]
+      ? [e.sourceId]
+      : (byteServing ? Object.keys(pmtilesRetries) : []);
+    for (const id of ids) {
+      const r = pmtilesRetries[id];
+      if (!r || r.n >= 5) continue;
+      if (map.getSource(id) && map.isSourceLoaded(id) && id !== e.sourceId) continue;
+      r.n += 1;
+      setTimeout(() => {
+        const src = map.getSource(id);
+        if (src && src.setUrl) {
+          src.setUrl(`pmtiles://${r.path}?v=${DATA_VERSION}&retry=${r.n}`);
+        }
+      }, 1000 * r.n);
+    }
   });
+  addPmtilesSource("layout", `${DATA_BASE}data/panel_layouts.pmtiles`);
   // Adding the SOURCE alone downloads nothing -- MapLibre only requests tiles
   // for a source some layer actually uses (verified in the network waterfall:
   // with just the source, the PMTiles range requests still waited for the
@@ -1582,29 +1880,55 @@ map.on("load", async () => {
     source: "layout",
     paint: { "fill-opacity": 0 }
   });
-  const heatmapManifestPromise = fetch(`data/heatmaps/manifest.json?v=${DATA_VERSION}`)
-    .then(r => r.json()).catch(() => null);
 
-  const resp = await fetch(`data/solar_potential.geojson?v=${DATA_VERSION}`);
-  const data = await resp.json();
-  const assumptions = data.assumptions;
+  const assumptions = await fetch(`${DATA_BASE}data/assumptions.json?v=${DATA_VERSION}`)
+    .then(r => r.json());
 
-  // tolerance:0 matters more than it looks. MapLibre tiles a GeoJSON source
-  // internally with geojson-vt, which simplifies at low zoom and DROPS polygons
-  // whose area falls under a tolerance-derived threshold -- and a house is a
-  // very small polygon once you are a few zoom levels out. Measured: 11,968
-  // buildings in the source at z12, 819 at z10.5, which is what Josh saw as
-  // "10000 buildings in view to just 800, a sudden drop".
+  // BUILDINGS ARE TILES, AND THE TOTALS COME FROM SOMEWHERE ELSE.
   //
-  // That silently truncated the district totals too, not just the count: the
-  // dashboard sums whatever the source hands back, so the whole-town figure was
-  // quietly a sample once you zoomed out far enough to want it.
-  map.addSource("buildings", { type: "geojson", data, tolerance: 0 });
+  // The data must not download whole: fast for all of NZ, then more detail
+  // as the map zooms in.
+  //
+  // It used to be one 26 MB fetch of every building in the district. For New
+  // Zealand's 2.1 million that is about 3.4 GB, so the map would never open.
+  // Now it is data/buildings.pmtiles from z13 up, and the browser fetches the
+  // handful of tiles it is actually looking at.
+  //
+  // THE TOTALS CANNOT COME FROM THE TILES, and the reason is written in the
+  // bug this replaces. The old GeoJSON source was created with tolerance:0
+  // because MapLibre's internal geojson-vt DROPS polygons below an
+  // area threshold as you zoom out -- 11,968 buildings at z12, 819 at z10.5 --
+  // and the dashboard sums whatever the source hands back, so the whole-town
+  // figure quietly became a sample: 10,000 buildings in view dropped to 800.
+  //
+  // Real vector tiles have the same property and no tolerance:0 to turn it
+  // off: a byte budget per tile is what makes them fast. So the sums move to
+  // data/building_cells.pmtiles -- one feature per ~7 km cell, carrying the
+  // count and the summed kWp/kWh at every coverage step, computed per building
+  // from that building's own cov_poa_N before aggregation. Below z13 the
+  // dashboard adds up cells and is exact; from z13 it adds up buildings and is
+  // exact. Coarser as you zoom out, never wrong.
+  addPmtilesSource("buildings", `${DATA_BASE}data/buildings.pmtiles`);
+  // Mirrors CELL_BANDS / BUILDING_MIN_Z in src/build_building_tiles.py.
+  // Each band draws a grid three zooms finer than the zoom it is shown at, so
+  // the viewport always spans roughly eight cells: a cell clipped by the edge
+  // of the screen is counted whole, and with one coarse grid for every zoom
+  // that error was most of the answer (z12.9 read 7,839 buildings against
+  // z13.1's 2,267 for the same place).
+  const CELL_BANDS = [[9, 0, 6], [12, 6, 9], [16, 9, 13]];
+  const BUILDING_MIN_Z = 13;
+  const cellLodFor = (z) => {
+    for (const [lod, from, to] of CELL_BANDS) if (z >= from && z < to) return lod;
+    return CELL_BANDS[CELL_BANDS.length - 1][0];
+  };
+  addPmtilesSource("cells", `${DATA_BASE}data/building_cells.pmtiles`);
+  fetch(`${DATA_BASE}data/assumptions.json?v=${DATA_VERSION}`).then(r => r.ok ? r.json() : null)
+    .then(a => { if (a && a.btypes) buildBtypeToggles(a.btypes); }).catch(() => {});
 
   map.addLayer({
     id: "buildings-fill",
     type: "fill",
-    source: "buildings",
+    source: "buildings", "source-layer": "buildings",
     paint: {
       // Per-building kWp choropleth colour, kept defined but invisible
       // (opacity 0 below) -- the per-pixel heatmap-raster layer is the
@@ -1627,6 +1951,99 @@ map.on("load", async () => {
     }
   });
 
+  // THE ZOOMS ABOVE THE BUILDINGS. Below BUILDING_MIN_Z there are no building
+  // tiles at all -- there is one box per ~7 km cell, shaded by how much roof
+  // solar it holds. That is the "fast for all NZ, more accurate as you get
+  // closer" half: a national view is a few thousand boxes instead of two
+  // million polygons, and zooming past z13 swaps in the real roofs.
+  CELL_BANDS.forEach(([lod, from, to]) => {
+    map.addLayer({
+      id: `cells-fill-${lod}`,
+      type: "fill",
+      source: "cells", "source-layer": "cells",
+      filter: ["==", ["get", "lod"], lod],
+      minzoom: from, maxzoom: to,
+      paint: {
+        // Shaded by roof solar PER SQUARE KILOMETRE, not by cell total, so the
+        // colour means the same thing in every band -- a total would make the
+        // coarse grid look uniformly hotter simply for holding more land.
+        "fill-color": ["interpolate", ["linear"],
+          ["/", ["coalesce", ["get", "kwh_100"], 0],
+                ["max", ["coalesce", ["get", "km2"], 1], 0.01]],
+          0, "#2b1055", 2e5, "#7a1f6b", 1e6, "#d0435c",
+          5e6, "#f9a520", 2e7, "#ffe97a"],
+        // INVISIBLE. The cells still carry the exact sums the sidebar adds up
+        // (queryRenderedFeatures reads them regardless of opacity); what is
+        // drawn at these zooms is the density heat map below -- a
+        // traditional heat map rather than blocks.
+        "fill-opacity": 0,
+      }
+    });
+  });
+  // THE ZOOMED-OUT PICTURE: a kernel heat map of generation density. Each
+  // cell ships a centre point carrying kWh per km2 at every coverage step
+  // (combine_regions, layer "cellpts"); MapLibre blends them into a smooth
+  // surface. Weight is density over the build's 95th-percentile density, so
+  // the top of the ramp means "among the densest 5% of built land here".
+  const DENSITY_P95_FALLBACK = 2e7;
+  function densityKey() {
+    if (mode === "layout") return "dens_fit";
+    const steps = COVERAGE_POA_STEPS;
+    let best = steps[0];
+    for (const c of steps) if (Math.abs(c - coveragePct) < Math.abs(best - coveragePct)) best = c;
+    return `dens_${best}`;
+  }
+  // Each band has its own scale: a coarse cell averages its roofs over the
+  // empty land around them, so lod-12 densities run ~10x below lod-16 and
+  // lod-9 ~30x below that. One scale left the zoomed-out view nearly blank.
+  const DENSITY_LOD_FALLBACK = { 16: 1, 12: 0.045, 9: 0.0016 };
+  function heatWeightExpr(lod) {
+    const a = (typeof assumptions !== "undefined" && assumptions) || {};
+    const byLod = a.density_p95_kwh_km2_by_lod || {};
+    const p95 = byLod[String(lod)] ||
+      ((a.density_p95_kwh_km2 || DENSITY_P95_FALLBACK) * (DENSITY_LOD_FALLBACK[lod] || 1));
+    return ["min", 1, ["/", ["coalesce", ["get", densityKey()], 0], p95]];
+  }
+  CELL_BANDS.forEach(([lod, from, to]) => {
+    map.addLayer({
+      id: `cells-heat-${lod}`,
+      type: "heatmap",
+      source: "cells", "source-layer": "cellpts",
+      filter: ["==", ["get", "lod"], lod],
+      minzoom: from, maxzoom: to,
+      paint: {
+        "heatmap-weight": heatWeightExpr(lod),
+        // radius in pixels grows with zoom so the kernels of one band overlap
+        // the same amount at every zoom the band is shown at
+        "heatmap-radius": ["interpolate", ["linear"], ["zoom"],
+          from, 14, to, 46],
+        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], from, 0.9, to, 1.4],
+        // the roof heat map's own ramp, so the two views read as one scale
+        "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"],
+          0, "rgba(43,16,85,0)", 0.08, "rgba(43,16,85,0.55)", 0.25, "#7a1f6b",
+          0.5, "#d0435c", 0.75, "#f9a520", 1, "#ffe97a"],
+        "heatmap-opacity": 0.85,
+      }
+    }, `cells-fill-${lod}`);
+  });
+  function refreshHeatWeights() {
+    CELL_BANDS.forEach(([lod]) => {
+      if (map.getLayer(`cells-heat-${lod}`)) map.setPaintProperty(`cells-heat-${lod}`, "heatmap-weight", heatWeightExpr(lod));
+    });
+  }
+  // A build from before the point layer existed (a deploy whose data has not
+  // been recombined yet) has no cellpts: the heat map would draw nothing and
+  // the cells are invisible, so the zoomed-out view would be blank. Restore
+  // the block fills for that data set rather than show nothing.
+  new pmtiles.PMTiles(`${DATA_BASE}data/building_cells.pmtiles?v=${DATA_VERSION}`).getMetadata().then(meta => {
+    const layers = ((meta && meta.vector_layers) || []).map(l => l.id);
+    if (!layers.length || layers.includes("cellpts")) return;
+    CELL_BANDS.forEach(([lod]) => {
+      if (map.getLayer(`cells-fill-${lod}`)) map.setPaintProperty(`cells-fill-${lod}`, "fill-opacity",
+        ["interpolate", ["linear"], ["coalesce", ["get", "n"], 0], 0, 0, 5, 0.18, 60, 0.45, 400, 0.6]);
+    });
+  }).catch(() => {});
+
   // NOT ESTIMATED. These roofs used to vanish from the map entirely, which is
   // the one case where someone searching their own address most wants an
   // answer: absent is indistinguishable from broken. They now draw in a muted
@@ -1635,23 +2052,23 @@ map.on("load", async () => {
   map.addLayer({
     id: "buildings-noestimate",
     type: "fill",
-    source: "buildings",
+    source: "buildings", "source-layer": "buildings",
     filter: ["has", "no_estimate_reason"],
     paint: { "fill-color": "#6b7580", "fill-opacity": 0.45 }
   });
   map.addLayer({
     id: "buildings-noestimate-outline",
     type: "line",
-    source: "buildings",
+    source: "buildings", "source-layer": "buildings",
     filter: ["has", "no_estimate_reason"],
     paint: { "line-color": "#aab4be", "line-width": 1.2, "line-dasharray": [2, 2] }
   });
 
   map.addLayer({
     id: "buildings-outline",
-    layout: { visibility: "none" },  // off by default (Josh) -- toggle on the left dashboard
+    layout: { visibility: "none" },  // off by default -- toggle on the left dashboard
     type: "line",
-    source: "buildings",
+    source: "buildings", "source-layer": "buildings",
     paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.15, 15, 0.35, 17, 0.6], "line-opacity": 0.4 }
   });
 
@@ -1676,22 +2093,21 @@ map.on("load", async () => {
              "line-opacity-transition": { duration: FOCUS_FADE_MS, delay: 0 } }
   });
 
-  // Which building the figures on the right actually describe. Josh: "useful
-  // especially in dense areas where it's hard to tell where the building you
-  // are measuring stops and starts and where the neighbouring building is."
+  // Which building the figures on the right actually describe -- in dense
+  // areas it is hard to tell where one building stops and the next starts.
   // Always on when something is selected, independent of the white outlines
   // toggle -- that toggle answers "show me every footprint", this answers
   // "which one am I reading". Drawn wide-and-faint under narrow-and-solid so
   // it reads against both a dark roof and a pale one.
   map.addLayer({
     id: "buildings-selected-halo",
-    type: "line", source: "buildings",
+    type: "line", source: "buildings", "source-layer": "buildings",
     filter: SELECTED_NONE,
     paint: { "line-color": "#ffd166", "line-width": 5, "line-opacity": 0.28, "line-blur": 2 }
   });
   map.addLayer({
     id: "buildings-selected",
-    type: "line", source: "buildings",
+    type: "line", source: "buildings", "source-layer": "buildings",
     filter: SELECTED_NONE,
     paint: { "line-color": "#ffd166", "line-width": 1.8, "line-opacity": 0.95 }
   });
@@ -1711,7 +2127,7 @@ map.on("load", async () => {
   // them and then called setData(), which makes MapLibre re-parse and re-tile
   // the WHOLE buildings source. It ran on every coverage-slider tick and every
   // keystroke in the assumptions editor. Those two properties fed the
-  // per-building map labels, and those were removed at Josh's request -- so
+  // per-building map labels, and those were removed -- so
   // nothing had read either property for a while. Every number on screen is
   // computed on demand from facet_area_m2 / avg_poa_kwh_m2 by
   // buildingEstimate(), which is where the same arithmetic already lives.
@@ -1721,12 +2137,41 @@ map.on("load", async () => {
   // currently on screen at the single selected coverage level, queried
   // against buildings-fill (invisible but always rendered, so it is the
   // hit-test/query layer for everything on the map).
+  // THE SUNNIEST PART OF THE ROOF GETS COVERED FIRST: 25% coverage is the
+  // highest-producing 25% of the roof.
+  //
+  // That was already true of the coverage LADDER and not of the headline
+  // figure beside it, which is worse than either being wrong: the same panel
+  // showed a roof's 25% two different ways. cov_poa_N -- the mean irradiance
+  // over the sunniest N% of this roof -- has been baked by
+  // src/bake_density_deciles.py since the ladder was built; nothing else ever
+  // read it. So the estimate uses it here rather than gaining a second copy
+  // of the same idea, and the fallback keeps a pre-bake release reading
+  // exactly as it did.
+  function bestPoa(props, pct) {
+    const steps = COVERAGE_POA_STEPS.filter(c => props["cov_poa_" + c] != null);
+    if (!steps.length) return props.avg_poa_kwh_m2 || 0;
+    const p = Math.max(steps[0], Math.min(steps[steps.length - 1], pct));
+    for (let i = 0; i < steps.length; i++) {
+      if (p === steps[i]) return props["cov_poa_" + steps[i]];
+      if (p < steps[i]) {
+        const lo = steps[i - 1], hi = steps[i];
+        const vLo = props["cov_poa_" + lo], vHi = props["cov_poa_" + hi];
+        return vLo + (vHi - vLo) * (p - lo) / (hi - lo);
+      }
+    }
+    return props["cov_poa_" + steps[steps.length - 1]];
+  }
+
   function buildingEstimate(props, pct) {
     const kwp = (props.facet_area_m2 || 0) * (pct / 100) * panelDensityKw;
-    const kwhYear = kwp * (props.avg_poa_kwh_m2 || 0)
+    const kwhYear = kwp * bestPoa(props, pct)
       * (assumptions.inverter_efficiency_pct / 100) * (1 - assumptions.system_derate_pct / 100);
     return { kwp, kwhYear };
   }
+  // Exposed so the estimate can be checked from the console or a browser test
+  // without clicking through the UI. Pure functions, no state.
+  window.__estimate = { bestPoa, buildingEstimate };
 
   // queryRenderedFeatures over buildings-fill is the expensive half of this --
   // it hands back every in-view building with full geometry, thousands of them
@@ -1747,6 +2192,7 @@ map.on("load", async () => {
       const id = f.properties.building_id;
       if (seen.has(id)) return;
       seen.add(id);
+      if (btypesOff.has(f.properties.btype || "home")) return;
       out.push(f.properties);
     });
     inViewProps = out;
@@ -1764,9 +2210,8 @@ map.on("load", async () => {
       if (!(count > 0)) return;
       const kwhYear = decileInterp(pr, "fill_kwh", panelDensityPct) * bakedKwhScale();
       // A panel's own economics must not move when the density slider does
-      // (Josh): "other than the self consumption portion of panels, the number
-      // of panels should not change other panels ROIs, the ROI should be on a
-      // per panel basis".
+      // -- other than the self-consumption share, the number of panels must
+      // not change other panels' ROIs; ROI is per panel.
       //
       // The cost tiers were doing exactly that. cost/count is
       // costPerKw(kwp) x panel watts, and kwp follows the slider, so crossing a
@@ -1784,7 +2229,7 @@ map.on("load", async () => {
       if (!e) return;
       const basis = eFull || e;
       const basisCount = eFull ? fullCount : count;
-      // Merit order (Josh): panels are laid sunniest-first, and the site's
+      // Merit order: panels are laid sunniest-first, and the site's
       // daytime load is met by the ones that come first. So the earliest panels
       // sell into RETAIL and everything after them exports -- two panels of
       // identical output on the same face are worth different amounts purely by
@@ -1795,7 +2240,7 @@ map.on("load", async () => {
       // kWh. Below it, retail; above it, export.
       // The cutoff DOES still follow the slider, and should: how many panels the
       // site's daytime load can absorb genuinely depends on how many are there.
-      // That is the one dependence Josh called out as legitimate.
+      // That is the one legitimate dependence.
       const perPanelKwh = kwhYear / count;
       const cutoff = perPanelKwh > 0 ? Math.min(count, e.selfKwh / perPanelKwh) : 0;
       const costPerPanel = basis.cost / basisCount;
@@ -1818,9 +2263,9 @@ map.on("load", async () => {
       : null;
   }
 
-  // What the roof looks like once bands are switched off. Josh: hiding the red
-  // panels "does not adjust the size, cost, and general economics like it
-  // should" -- and it should, because excluding a panel is a decision to not
+  // What the roof looks like once bands are switched off. Hiding the red
+  // panels must adjust the size, cost and economics, because excluding a
+  // panel is a decision to not
   // install it, so the system genuinely gets smaller and cheaper.
   //
   // Read from the rendered tiles rather than the baked deciles, because the
@@ -1836,12 +2281,12 @@ map.on("load", async () => {
     // from the tiles, and hiding a band can only ever subtract.
     // queryRenderedFeatures only sees what is CURRENTLY DRAWN, so this count
     // moves with the viewport: pan a roof half off-screen and its panel count
-    // drops. Josh hit that on 15 Kent Street -- the panel read "25 panels"
+    // drops. On 15 Kent Street the panel read "25 panels"
     // where the tiles hold 54 at that density and 79 exist in the layout.
     //
     // So this path is now used ONLY when a band is actually hidden, which is
     // the one case a per-panel count is genuinely needed for. With every band
-    // shown -- the normal case, and the one Josh was looking at -- fall through
+    // shown -- the normal case -- fall through
     // to the baked deciles, which are per-building and do not care where the
     // map is pointing.
     if (Object.keys(panelEconShow).every(k => panelEconShow[k])) return null;
@@ -1877,7 +2322,7 @@ map.on("load", async () => {
       return;
     }
     box.style.display = "";
-    const tally = { low: 0, mid: 0, high: 0 };
+    const tally = emptyBandTally();
     let feats = [];
     try { feats = map.queryRenderedFeatures({ layers: ["panels-fill"] }); } catch (e) { feats = []; }
     // Per-panel tiles only exist at close zooms (the district's ~790k panels
@@ -1932,7 +2377,88 @@ map.on("load", async () => {
   }
   window.__refreshDerived = refreshDerived;
 
+  // Below BUILDING_MIN_Z the dashboard adds up CELLS, not buildings.
+  //
+  // This is the whole reason building_cells.pmtiles exists. A tiled source
+  // drops features to meet a per-tile byte budget, so summing what the map
+  // rendered is a sample -- and the old GeoJSON source had exactly this bug
+  // before tolerance:0 was added to it: 11,968 buildings at z12 and 819 at
+  // z10.5 -- 10,000 buildings in view dropping to 800. A cell carries the total for everything inside it, dropped or not,
+  // so the figure stays exact as you zoom out instead of quietly becoming a
+  // fraction of itself.
+  //
+  // Both sides use the same per-building numbers: the cell's kwh_N was summed
+  // at build time from each building's own cov_poa_N, the same ladder
+  // bestPoa() interpolates here, so the total does not jump at the handover.
+  function cellSummary() {
+    const lod = cellLodFor(map.getZoom());
+    const cells = map.queryRenderedFeatures({ layers: [`cells-fill-${lod}`] });
+    const seen = new Set();
+    let n = 0, kwp = 0, kwhYear = 0, fittedKwp = 0, fittedKwh = 0;
+    // The coverage ladder too: every step it lists is one the cells carry
+    // exactly, so the rows are sums, not interpolations.
+    const ladder = Object.fromEntries(COVERAGE_OPTION_STEPS.map(pct => [pct, { pct, kwp: 0, kwh: 0 }]));
+    for (const c of cells) {
+      // One feature per (cell, building type): key on both, or every type
+      // but the first would be dropped as a duplicate of the same cell.
+      const k = c.properties.cell + "|" + (c.properties.btype || "");
+      if (seen.has(k)) continue;         // one cell spans several tiles
+      seen.add(k);
+      if (btypesOff.has(c.properties.btype || "home")) continue;
+      n += c.properties.n || 0;
+      kwp += lerpCell(c.properties, "kwp", coveragePct);
+      kwhYear += lerpCell(c.properties, "kwh", coveragePct);
+      fittedKwp += c.properties.fitted_kwp || 0;
+      fittedKwh += c.properties.fitted_kwh || 0;
+      for (const pct of COVERAGE_OPTION_STEPS) {
+        ladder[pct].kwp += lerpCell(c.properties, "kwp", pct);
+        ladder[pct].kwh += lerpCell(c.properties, "kwh", pct);
+      }
+    }
+    return { n, kwp, kwhYear, fittedKwp, fittedKwh, ladder: COVERAGE_OPTION_STEPS.map(pct => ladder[pct]) };
+  }
+  function lerpCell(p, prefix, pct) {
+    const steps = COVERAGE_POA_STEPS.filter(c => p[`${prefix}_${c}`] != null);
+    if (!steps.length) return 0;
+    const q = Math.max(steps[0], Math.min(steps[steps.length - 1], pct));
+    for (let i = 0; i < steps.length; i++) {
+      if (q === steps[i]) return p[`${prefix}_${steps[i]}`];
+      if (q < steps[i]) {
+        const lo = steps[i - 1], hi = steps[i];
+        const vLo = p[`${prefix}_${lo}`], vHi = p[`${prefix}_${hi}`];
+        return vLo + (vHi - vLo) * (q - lo) / (hi - lo);
+      }
+    }
+    return p[`${prefix}_${steps[steps.length - 1]}`];
+  }
+
   function recomputeInViewSummary() {
+    // Panel Layout mode is only ever on at building zooms, so it always counts
+    // real panels; Heat Map mode is the one you can be looking at from orbit.
+    // BELOW THE BUILDING ZOOM THERE ARE NO BUILDINGS TO SUM, in either mode.
+    // This branch used to run only for the heat map; in Panel Layout the
+    // code fell through to the per-building sum, found nothing loaded, and
+    // the sidebar read "0.0 kW" over a whole town (Wanaka).
+    // Layout mode sums the cells' PLACED panels (fitted_kwp/fitted_kwh --
+    // every panel that fits, i.e. 100% density); the heat map sums the
+    // coverage ladder at the chosen percentage, as before.
+    if (map.getZoom() < BUILDING_MIN_Z) {
+      const c = cellSummary();
+      const layout = mode === "layout";
+      document.getElementById("inview-count").textContent = c.n;
+      document.getElementById("inview-power").textContent = fmtPower(layout ? c.fittedKwp : c.kwp);
+      document.getElementById("inview-energy").textContent = fmtEnergy(layout ? c.fittedKwh : c.kwhYear);
+      const mp0 = document.getElementById("m-all-power");
+      if (mp0) {
+        mp0.textContent = fmtPower(layout ? c.fittedKwp : c.kwp);
+        document.getElementById("m-all-energy").textContent = fmtEnergy(layout ? c.fittedKwh : c.kwhYear);
+      }
+      // The ladder is summed from the same cells as the headline, so it
+      // never reads "0.0 kW" under a real total (it did, until 23 Sep). The
+      // per-building economics still need buildings and stay off here.
+      renderCoverageRows(c.ladder);
+      return;
+    }
     const props = inViewBuildingProps();
     let kwp = 0, kwhYear = 0;
     document.getElementById("inview-count").textContent = props.length;
@@ -1957,7 +2483,7 @@ map.on("load", async () => {
     if (mp) { mp.textContent = fmtPower(kwp); document.getElementById("m-all-energy").textContent = fmtEnergy(kwhYear); }
 
     // Economics are deliberately NOT shown here, only on the individual
-    // building panel (Josh). A district-wide dollar figure invites being read
+    // building panel. A district-wide dollar figure invites being read
     // as a forecast for the town, which it is not -- it assumes every single
     // roof gets built. Per building it is a question someone can actually act
     // on. The whole per-building loop that summed it is gone with it rather
@@ -1984,17 +2510,25 @@ map.on("load", async () => {
         const area = pr.facet_area_m2 || 0;
         if (!area) return;
         const k = area * (pct / 100) * panelDensityKw;
-        // Falls back to the flat roof average on data built before cov_poa_*
-        // existed, so the panel still reads sensibly mid-rebuild.
-        const poa = pr[`cov_poa_${pct}`] || pr.avg_poa_kwh_m2 || 0;
+        // Through bestPoa, so the ladder and the headline figure above it can
+        // never disagree about the same roof at the same coverage -- which is
+        // what they did while only the ladder knew about cov_poa_*.
+        const poa = bestPoa(pr, pct);
         kwp += k;
         kwh += k * poa * derate;
       });
       return { pct, kwp, kwh };
     });
+    renderCoverageRows(rows, box);
+  }
+  function renderCoverageRows(rows, box) {
+    box = box || document.getElementById("coverage-options");
+    if (!box) return;
+    if (mode !== "heatmap") { box.style.display = "none"; return; }
+    box.style.display = "";
     // Only the first row is captioned. A bare "100%" says nothing on its own,
     // but repeating "of rooftop coverage" five times would turn a scannable
-    // ladder into a wall of the same three words (Josh).
+    // ladder into a wall of the same three words.
     box.innerHTML = rows.map((r, i) =>
       `<button class="cov-row${r.pct === coveragePct ? " active" : ""}" data-pct="${r.pct}">` +
       `<span class="cov-pct">${r.pct}%` +
@@ -2010,6 +2544,7 @@ map.on("load", async () => {
   // including the on-map kWp labels.
   function setCoverage(pct) {
     coveragePct = pct;
+    if (typeof refreshHeatWeights === "function") refreshHeatWeights();
     document.querySelectorAll(".coverage-select").forEach(sel => {
       // The slider can land on values the dropdown doesn't list (e.g. 55%);
       // keep a single synthetic option so the dropdown always shows the
@@ -2032,11 +2567,18 @@ map.on("load", async () => {
     if (mode !== "layout" && selectedPanelBuildingId !== -1) renderSeasonCurves(selectedPanelBuildingId);
     const bp = document.getElementById("bldg-power");
     if (bp && bp.dataset.area) {
-      const est = buildingEstimate({ facet_area_m2: +bp.dataset.area, avg_poa_kwh_m2: +bp.dataset.poa }, pct);
+      // The real property bag, not two numbers copied into data- attributes:
+      // rebuilding props from those dropped every cov_poa_*, so the one place
+      // a person actually reads their own roof's estimate was the one place
+      // still charging it the roof average.
+      const est = buildingEstimate(
+        selectedBuildingProps
+          || { facet_area_m2: +bp.dataset.area, avg_poa_kwh_m2: +bp.dataset.poa },
+        pct);
       bp.textContent = fmtPower(est.kwp);
       document.getElementById("bldg-energy").textContent = fmtEnergy(est.kwhYear);
       // Same coverage ladder as the map-view dashboard, but for this one roof
-      // (Josh). Its shape differs building to building: a roof that is all one
+      // Its shape differs building to building: a roof that is all one
       // good pitch barely bends between 10% and 100%, while one with a big
       // south face bends hard, and that difference is the whole point.
       if (selectedBuildingProps) {
@@ -2061,8 +2603,8 @@ map.on("load", async () => {
   mainSel.outerHTML = coverageSelectHtml("coverage-select-main");
   wireCoverageSelect(document.getElementById("coverage-select-main"));
 
-  // (Per-building kW/kWh map labels removed at Josh's request 23 Aug --
-  // the info lives in the click panel; on-map text cluttered the heat map.)
+  // (Per-building kW/kWh map labels removed -- the info lives in the click
+  // panel; on-map text cluttered the heat map.)
 
   document.getElementById("inview-collapse-btn").addEventListener("click", (e) => {
     const panel = document.getElementById("dashboard-inview");
@@ -2082,11 +2624,47 @@ map.on("load", async () => {
     // box. Same bug as the hardcoded DEFAULT_VIEW, in the other direction.
     const TOWNS = ((window.SITE && window.SITE.towns) || [])
       .map(([name, lng, lat, z]) => ({ addr: name + " (area)", lower: name.toLowerCase(), town: { lng, lat, z } }));
-    const searchable = TOWNS.concat(data.features
-      .filter(f => f.properties.address)
-      .map(f => ({ addr: f.properties.address, lower: f.properties.address.toLowerCase(), f })));
+    // With buildings tiled, the page can no longer see every address by
+    // reading the source -- it only has the tiles on screen. data/addresses.json
+    // is a flat [address, lng, lat, building_id] index, 0.7 MB for the
+    // district. That is the right size here and is NOT the right answer
+    // nationally: 2.1 million addresses is roughly 34 MB, so national search
+    // needs this sharded by prefix or replaced with a geocoder
+    // (docs/scaling-and-iteration.md). It is a separate problem from the one
+    // this change fixes, and a tenth of the size.
+    let searchable = TOWNS.slice();
+    const addrRow = ([addr, lng, lat, id]) => ({ addr, lower: addr.toLowerCase(), at: { lng, lat, id } });
+    // Flat file where the build is small; shards by the first two characters
+    // where it is not (combine_regions), fetched as they are typed.
+    let addrShards = null;
+    const addrShardLoaded = new Set();
+    fetch(`${DATA_BASE}data/addresses/index.json?v=${DATA_VERSION}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(idx => {
+        if (idx && idx.shards) { addrShards = new Set(idx.shards); return; }
+        return fetch(`${DATA_BASE}data/addresses.json?v=${DATA_VERSION}`)
+          .then(r => r.ok ? r.json() : [])
+          .then(rows => { searchable = TOWNS.concat(rows.map(addrRow)); });
+      })
+      .catch(() => {});
+    const addrShardKey = q => {
+      const s2 = q.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return s2.length >= 2 ? s2.slice(0, 2) : null;
+    };
     const input = document.getElementById("addr-input");
     const results = document.getElementById("addr-results");
+    // NEVER PASS pitch: undefined. MapLibre 5 aborts the whole animation on
+    // it -- flyTo returns normally, nothing moves, and the only trace is a
+    // cross-origin "Script error." from inside maplibre-gl.js. That is what
+    // broke the address search on the live site: picking a result did
+    // nothing at all, while every part of it tested fine in isolation.
+    // Land flat in 3D (the camera needs a frame at pitch 0 to resolve the
+    // terrain under it before tilting), and simply omit pitch otherwise.
+    const flyToPlace = (lng, lat, zoom, duration) => {
+      const o = { center: [lng, lat], zoom, duration };
+      if (terrain3d) o.pitch = 0;
+      map.flyTo(o);
+    };
     const openResult = (item) => {
       if (item.coords) { openCoords(item.coords); return; }
       if (item.town) {
@@ -2095,14 +2673,20 @@ map.on("load", async () => {
         map.flyTo({ center: [item.town.lng, item.town.lat], zoom: item.town.z, duration: 1400 });
         return;
       }
-      const ring = item.f.geometry.type === "Polygon" ? item.f.geometry.coordinates[0] : item.f.geometry.coordinates[0][0];
-      const lng = ring.reduce((a, c) => a + c[0], 0) / ring.length;
-      const lat = ring.reduce((a, c) => a + c[1], 0) / ring.length;
+      const { lng, lat, id } = item.at;
       results.style.display = "none";
       input.value = item.addr;
-      map.flyTo({ center: [lng, lat], zoom: 18, duration: 1200 });
-      selectBuilding(item.f.properties.building_id);
-      showBuildingPanel(item.f.properties, { lng, lat }, item.f.geometry);
+      flyToPlace(lng, lat, 18, 1200);
+      selectBuilding(id);
+      // The address index carries a point and an id, not the feature -- with
+      // buildings tiled there is no in-memory feature to hand over. The flyTo
+      // above lands at z18 on this exact building, so once the map is idle its
+      // tile is loaded and the real feature is right there.
+      map.once("idle", () => {
+        const f = map.queryRenderedFeatures({ layers: ["buildings-fill"] })
+          .find(x => x.properties.building_id === id);
+        if (f) showBuildingPanel(f.properties, { lng, lat }, f.geometry);
+      });
     };
     // Coordinates paste straight from a bug report or Google Maps:
     // "-44.95041,168.83692" (lat,lon) or lon-first. |value|>90 must be the
@@ -2120,18 +2704,22 @@ map.on("load", async () => {
       return { lat, lng };
     };
     let coordMarker = null;
-    const openCoords = ({ lat, lng }) => {
+    const openCoords = async ({ lat, lng }) => {
       results.style.display = "none";
       input.value = lat.toFixed(5) + ", " + lng.toFixed(5);
       if (coordMarker) coordMarker.remove();
       coordMarker = new maplibregl.Marker({ color: "#e5484d" })
         .setLngLat([lng, lat]).addTo(map);
-      map.flyTo({ center: [lng, lat], zoom: 18, duration: 1400 });
+      flyToPlace(lng, lat, 18, 1400);
       // If the point lands on (or within ~25 m of) a building we know,
       // open its panel too -- coordinate reports are usually about one.
+      // Against the buildings now RENDERED at the flown-to point rather than
+      // every building in the district -- the flyTo above lands at z18, so the
+      // tiles covering the report are exactly the ones on screen.
+      await new Promise(r => map.once("idle", r));
       let best = null, bestD = Infinity;
       const mPerDegLat = 111320, mPerDegLng = mPerDegLat * Math.cos(lat * Math.PI / 180);
-      for (const f of data.features) {
+      for (const f of map.queryRenderedFeatures({ layers: ["buildings-fill"] })) {
         const ring = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates[0][0];
         const cx = ring.reduce((a2, c) => a2 + c[0], 0) / ring.length;
         const cy = ring.reduce((a2, c) => a2 + c[1], 0) / ring.length;
@@ -2156,6 +2744,16 @@ map.on("load", async () => {
         results.innerHTML = `<div data-i="0">${matches[0].addr}</div>`;
         results.style.display = "block";
         return;
+      }
+      if (addrShards) {
+        const key = addrShardKey(q);
+        if (key && addrShards.has(key) && !addrShardLoaded.has(key)) {
+          addrShardLoaded.add(key);
+          fetch(`${DATA_BASE}data/addresses/${key}.json?v=${DATA_VERSION}`).then(r => r.json())
+            .then(rows => { searchable = searchable.concat(rows.map(addrRow));
+                            input.dispatchEvent(new Event("input")); })
+            .catch(() => { addrShardLoaded.delete(key); });
+        }
       }
       const starts = searchable.filter(x => x.lower.startsWith(q));
       const contains = searchable.filter(x => !x.lower.startsWith(q) && x.lower.includes(q));
@@ -2211,13 +2809,37 @@ map.on("load", async () => {
       recomputeInViewSummary();
     }, 140);
   };
+  // TILES ARRIVE AFTER THE VIEW SETTLES, so the view is not the only thing
+  // that invalidates the summary.
+  //
+  // inViewBuildingProps caches its queryRenderedFeatures result and only threw
+  // it away when the view moved. That was safe while every building was
+  // already in memory from one GeoJSON fetch. With buildings tiled, a cold
+  // tile lands a second or two after moveend, the cache holds the empty
+  // snapshot taken before it, and the dashboard sits on "0 buildings, 0.0 kW"
+  // over a screen full of roofs -- seen on the live site at exactly z13 with
+  // 2,429 buildings rendered.
+  //
+  // Debounced, because a tiled source fires sourcedata per tile and there is
+  // no point recomputing a 15k-building sum once per tile.
+  let tileTimer = null;
+  map.on("sourcedata", (e) => {
+    if (!e.isSourceLoaded) return;
+    if (e.sourceId !== "buildings" && e.sourceId !== "cells") return;
+    clearTimeout(tileTimer);
+    tileTimer = setTimeout(() => {
+      invalidateInView();
+      recomputeInViewSummary();
+    }, 200);
+  });
+
   // Panel layouts sometimes vanish and only a page refresh brings them back --
-  // reported by Josh, and he suspected tab switching, which fits. The basemap
+  // tab switching is the likely trigger, which fits. The basemap
   // survives because it is a plain raster source; the panels come from a
   // PMTiles vector source over HTTP range requests, and if those are aborted
   // while the tab is hidden, MapLibre can be left holding tiles marked as
   // failed and will not retry them on its own. Reloading the page rebuilds the
-  // source, which is exactly the workaround he found.
+  // source, which is exactly the workaround that was found.
   //
   // Detect it rather than assume it: the buildings layer comes from a GeoJSON
   // source that is parsed once and never goes stale, so buildings present with
@@ -2293,8 +2915,8 @@ map.on("load", async () => {
 
   // Band split for ONE building without touching the panel tiles.
   //
-  // Josh needs the district total to respond to the ROI bands "even when zoomed
-  // out very far", and per-panel ac_kwh_year only exists in the layout tiles,
+  // The district total must respond to the ROI bands even when zoomed out
+  // very far, and per-panel ac_kwh_year only exists in the layout tiles,
   // which are not loaded past a few hundred metres. But the baked deciles are
   // cumulative BEST-PANELS-FIRST, so the difference between consecutive ones is
   // the marginal yield of that slice of the roof -- a ten-point yield
@@ -2317,8 +2939,7 @@ map.on("load", async () => {
       prevP = cp; prevK = ck;
       if (dp <= 0) continue;
       const perPanel = (dk / dp) * bakedKwhScale();   // marginal yield in this slice
-      const band = perPanel < be ? "low"
-                 : perPanel < PANEL_ECON_HIGH_MULT * be ? "mid" : "high";
+      const band = bandForRatio(perPanel / Math.max(be, 1e-9));
       if (!panelEconShow[band]) continue;
       panels += dp; kwh += dk;
     }
@@ -2327,7 +2948,7 @@ map.on("load", async () => {
 
   function panelSumsFor(propsList) {
     let panels = 0, kwh = 0;
-    const banded = !!panelEcon && !(panelEconShow.low && panelEconShow.mid && panelEconShow.high);
+    const banded = !!panelEcon && !PANEL_ECON_KEYS.every(k => panelEconShow[k]);
     propsList.forEach(pr => {
       if (banded) {
         const b = bandSplitFor(pr, panelDensityPct);
@@ -2346,7 +2967,7 @@ map.on("load", async () => {
     // With both overlays off the numbers are still the coverage-based estimate,
     // but calling it the "heat map estimate" while no heat map is drawn reads
     // as a bug. Name it for what it is instead.
-    // No title or swatch in Panel Layout on the LEFT dashboard (Josh) -- the
+    // No title or swatch in Panel Layout on the LEFT dashboard -- the
     // mode buttons directly above already say which mode this is, so the
     // heading was repeating them, and the draft caveat is gone from here too.
     document.getElementById("inview-mode-title").innerHTML = isLayout
@@ -2366,7 +2987,7 @@ map.on("load", async () => {
       document.getElementById("vslider-value").textContent = coveragePct + "%";
     }
     // The slider only means something for panel density now; Heat Map mode uses
-    // the coverage ladder in the dashboard instead (Josh).
+    // the coverage ladder in the dashboard instead.
     const vwrap = document.getElementById("vslider-wrap");
     if (vwrap) vwrap.style.display = isLayout ? "" : "none";
     const eh = document.getElementById("est-heatmap"), ep = document.getElementById("est-panels"),
@@ -2387,8 +3008,9 @@ map.on("load", async () => {
     recomputeInViewSummary();
     const mh = document.getElementById("m-heatmap-btn");
     if (mh) {
-      mh.classList.toggle("active", mode === "heatmap");
-      document.getElementById("m-layout-btn").classList.toggle("active", isLayout);
+      mh.classList.toggle("active", overlayOn && mode === "heatmap");
+      document.getElementById("m-layout-btn")
+        .classList.toggle("active", overlayOn && isLayout);
       if (window.__syncMobileSheet) window.__syncMobileSheet();
     }
     if (window.__updateZoomHint) window.__updateZoomHint();
@@ -2427,7 +3049,7 @@ map.on("load", async () => {
   // Bug reports: capture the current map view as a PNG download (so the
   // tester can attach it) and open the Jotform pre-filled with machine
   // context -- building, view, settings -- which is what diagnosis needs.
-  // In-map quick-fire reports (Josh): note -> Send -> keep browsing -> send
+  // In-map quick-fire reports: note -> Send -> keep browsing -> send
   // another. Posts straight to the Jotform submit endpoint through a hidden
   // iframe -- no tab, no page leave. Context (building/view/settings) rides
   // along invisibly; a PNG of the map downloads on open for optional use.
@@ -2579,7 +3201,7 @@ map.on("load", async () => {
   // kWh/yr, both of which are already on screen. Keeping them here means the
   // numbers can be retuned without a three-hour rebuild.
   //
-  // Installed cost bands are Josh's, in $/kW. Note the spec had a gap between
+  // Installed cost bands in $/kW. Note the spec had a gap between
   // 8kW and 9kW; the $2000 band is closed at 8kW and $1800 picks up from
   // there, so there is no size with an undefined price.
   // Economics live in economics.js so the money maths is ONE implementation
@@ -2590,11 +3212,11 @@ map.on("load", async () => {
   const fmtMoney = v => v >= 1e6 ? "$" + (v / 1e6).toFixed(1) + "M"
                     : v >= 1e3 ? "$" + Math.round(v / 1e3) + "k"
                     : "$" + Math.round(v);
-  // Economics figures are written out in full (Josh). "$30k" is fine for a
+  // Economics figures are written out in full. "$30k" is fine for a
   // district total nobody will act on, but these four are about one building
   // and someone reading them is deciding whether to spend that money -- a
   // rounded abbreviation quietly hides up to $500 of it.
-  // Rounded to the nearest $100 (Josh). The model is not accurate to the
+  // Rounded to the nearest $100. The model is not accurate to the
   // dollar and printing "$45,540" claims a precision it does not have.
   const fmtMoneyFull = v => {
     const r = Math.round(v / 100) * 100;
@@ -2789,215 +3411,59 @@ map.on("load", async () => {
   document.getElementById("toggle-heatmap-dash").addEventListener("click", () => setMode("heatmap"));
   document.getElementById("toggle-layout-dash").addEventListener("click", () => setMode("layout"));
 
-  // Per-DSM-pixel generation-potential heatmap, before any panel layout --
-  // one image per built area (see src/build_heatmap_raster.py), same
-  // diverging blue/south -> red/north scale as the facet colours.
-  // Region builds publish data/heatmaps/manifest.json with one raster per
-  // region; the single-image pilot form stays as the fallback so the site
-  // works identically before the first full-region deploy.
-  let heatmapImages;
-  try {
-    const manifest = await heatmapManifestPromise;   // started before the big fetch
-    if (!manifest) throw new Error("no regional heat-map manifest");
-    heatmapImages = manifest.map(m => ({
-      id: `heatmap-raster-${m.name}`,
-      url: `${m.png}?v=${DATA_VERSION}`,
-      urlLod: m.png_lod ? `${m.png_lod}?v=${DATA_VERSION}` : null,
-      urlMid: m.png_mid ? `${m.png_mid}?v=${DATA_VERSION}` : null,
-      size: m.size, sizeLod: m.size_lod || m.size,
-      sizeMid: m.size_mid || m.size_lod || m.size,
-      coordinates: m.coordinates
-    }));
-  } catch (e) {
-    // Legacy single-raster fallback. A region with NO heatmap rasters at all
-    // (Island Bay's first build) 404s here, and the unhandled SyntaxError from
-    // parsing the 404 page killed the entire map init -- no panels, nothing.
-    // Heat-map imagery is optional; the map is not.
-    try {
-      const heatmapMeta = await (await fetch(`data/heatmap_raster.json?v=${DATA_VERSION}`)).json();
-      heatmapImages = [{ id: "heatmap-raster", url: `data/heatmap_raster.png?v=${DATA_VERSION}`,
-                         urlLod: null, size: null, sizeLod: null, coordinates: heatmapMeta.coordinates }];
-    } catch (e) {
-      heatmapImages = [];
-    }
-  }
-  // No heat-map imagery at all (a region whose rasters haven't been built
-  // yet): landing in heat-map mode would show a blank map, so start in
-  // panel-layout mode instead. The Heat Map button stays clickable.
-  if (heatmapImages.length === 0 && mode === "heatmap") {
-    setMode("layout");
-  }
-  // Heat rasters are attached ONLY while they intersect the viewport. A
-  // MapLibre image source is not tiled: adding one uploads the entire PNG as
-  // a GPU texture. With 24 regional rasters (64MB of PNG, several hundred MB
-  // once decoded to RGBA) attaching them all at startup made pan/zoom stutter
-  // badly at town scale. Attach/detach on movement instead -- you can only
-  // ever look at a few regions at once.
+  // Per-pixel generation potential, computed from the point cloud before any
+  // panel layout (src/build_heatmap_raster.py), on the same diverging
+  // blue/south -> red/north scale as the facet colours.
+  //
+  // THE HEAT MAP IS TILES NOW, and the 218 lines this replaces were all
+  // consequences of it not being.
+  //
+  // It used to be one PNG per region attached as a MapLibre image source: not
+  // tiled, so adding one uploads the ENTIRE image as a GPU texture. With 24
+  // regions that is 135 MB of PNG and several hundred MB decoded, which is why
+  // there were three resolutions per region, hysteresis between them, a
+  // megapixel budget, and attach/detach on every movement. Measured on the
+  // live site it still cost 9.6 MB to look at one street -- after buildings
+  // became tiles it was the largest thing the map downloaded.
+  //
+  // data/heatmap_tiles/{z}/{x}/{y}.png is the same imagery, reprojected into
+  // web mercator (tools/build_heatmap_tiles.py) from the deployed PNGs, so the
+  // picture is unchanged. A view fetches the dozen tiles under it, the browser
+  // caches them, and the cost stops depending on how big the region is --
+  // which is the only version of this that works at national scale.
   const HEATMAP_OPACITY = 0.78;
-  const heatmapById = Object.fromEntries(heatmapImages.map(m => [m.id, m]));
-  // Above this zoom a roof is a few pixels across and the 0.4m/px original
-  // earns its keep; below it, the overview copy (src/build_heatmap_lod.py,
-  // max 4096px) is indistinguishable and up to 15x cheaper.
-  // Hysteresis, not one threshold: swapping resolution means detaching and
-  // re-uploading the texture, and a user nudging the zoom around 16.5 (which
-  // is exactly where people sit) would do that on every nudge. Go to detail
-  // at 16.5, fall back only below 16.0.
-  const HEATMAP_DETAIL_ZOOM_IN = 16.5, HEATMAP_DETAIL_ZOOM_OUT = 16.0;
-  // A MIDDLE TIER between the two. The overview copies are capped at 4096px
-  // so twenty regions can attach at district zoom, which in the big regions
-  // means 1.1-1.65 m/px -- far coarser than the 0.4 m rasters or the point
-  // cloud behind them. Josh: "It seems low resolution and maybe lower
-  // resolution than the underlying point cloud data?" He was right, but only
-  // below z16.5. From z15 up only a handful of regions are in view, so they
-  // can afford the 8192px copies: the worst region halves to 0.83 m/px.
-  const HEATMAP_MID_ZOOM_IN = 15.0, HEATMAP_MID_ZOOM_OUT = 14.5;
-  let heatmapDetail = false;
-  let heatmapMid = false;
-  // Hard ceiling on attached texture, in megapixels (x4 bytes for RGBA). The
-  // uncapped version attached 20 of 24 rasters at district zoom -- measured
-  // 4.1GB of texture for a view where a whole building is two pixels. When
-  // the budget binds, the rasters nearest the middle of the screen win.
-  const HEATMAP_BUDGET_MP = 220;
-  const heatmapBounds = {};
-  heatmapImages.forEach(m => {
-    const lngs = m.coordinates.map(c => c[0]), lats = m.coordinates.map(c => c[1]);
-    heatmapBounds[m.id] = [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
-  });
-  // id -> { url, layer, src } for what is on screen, and separately for a
-  // replacement still decoding. Layer ids carry a slot number because during a
-  // resolution swap BOTH exist for a moment, and MapLibre ids must be unique.
-  const attached = new Map();
-  const pending = new Map();
-  let slotSeq = 0;
-  function removeSlot(rec) {
-    if (!rec) return;
-    if (map.getLayer(rec.layer)) map.removeLayer(rec.layer);
-    if (map.getSource(rec.src)) map.removeSource(rec.src);
-  }
-  function cancelPending(id) { removeSlot(pending.get(id)); pending.delete(id); }
-  function detachHeatmap(id) {
-    cancelPending(id);
-    removeSlot(attached.get(id));
-    attached.delete(id);
-  }
-  // MapLibre gives no promise for "this image source has an image now", and
-  // the whole point here is not to remove anything until it does.
-  function whenSourceReady(srcId, done) {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      map.off("sourcedata", onData);
-      clearTimeout(timer);
-      done();
-    };
-    const onData = e => {
-      if (e.sourceId === srcId && map.getSource(srcId) && map.isSourceLoaded(srcId)) finish();
-    };
-    map.on("sourcedata", onData);
-    // A raster whose PNG never arrives must not strand an invisible layer on
-    // top of the visible one forever -- give up and swap anyway.
-    const timer = setTimeout(finish, 6000);
-    if (map.getSource(srcId) && map.isSourceLoaded(srcId)) finish();
-  }
-  // Josh: "the heat map flashes off and on when zooming". Crossing the
-  // detail-zoom threshold used to removeLayer/removeSource and then addSource
-  // the other resolution -- and an image source fetches and decodes its PNG
-  // asynchronously, so for those frames there was simply nothing to draw.
-  // Now the replacement is uploaded UNDERNEATH the outgoing one at zero
-  // opacity (stacking two 0.78 rasters would pulse darker instead of blink)
-  // and the old one is dropped in the same frame the new one can draw.
-  function attachHeatmap(m, url) {
-    const cur = attached.get(m.id);
-    if (cur && cur.url === url) return;
-    if (pending.has(m.id)) return;   // a swap is already in flight for this one
-    const n = ++slotSeq;
-    const rec = { url, layer: `${m.id}#${n}`, src: `${m.id}#${n}-src` };
-    map.addSource(rec.src, { type: "image", url, coordinates: m.coordinates });
+  let heatmapTilesOk = true;
+  try {
+    const meta = await fetch(`${DATA_BASE}data/heatmap_tiles/meta.json?v=${DATA_VERSION}`)
+      .then(r => r.ok ? r.json() : null);
+    if (!meta) throw new Error("no heat-map tiles");
+    map.addSource("heatmap-tiles", {
+      type: "raster",
+      tiles: [`${DATA_BASE}data/heatmap_tiles/{z}/{x}/{y}.png?v=${DATA_VERSION}`],
+      tileSize: meta.tileSize || 256,
+      minzoom: meta.minzoom, maxzoom: meta.maxzoom,
+    });
     map.addLayer({
-      id: rec.layer, type: "raster", source: rec.src,
-      // Set at add time, not left to applyToggles: a layer added while in
-      // Panel Layout mode would otherwise flash over the panels.
-      layout: { visibility: mode === "heatmap" ? "visible" : "none" },
-      paint: { "raster-opacity": cur ? 0 : HEATMAP_OPACITY, "raster-resampling": "linear" }
-    }, cur ? cur.layer : "buildings-fill");
-    if (!cur) { attached.set(m.id, rec); return; }
-    pending.set(m.id, rec);
-    whenSourceReady(rec.src, () => {
-      if (pending.get(m.id) !== rec) return;   // superseded or cancelled
-      pending.delete(m.id);
-      if (!map.getLayer(rec.layer)) return;
-      map.setPaintProperty(rec.layer, "raster-opacity", HEATMAP_OPACITY);
-      removeSlot(attached.get(m.id));
-      attached.set(m.id, rec);
-      // The view may have moved on while that PNG was decoding.
-      syncHeatmapRasters();
-    });
+      id: "heatmap-raster",
+      type: "raster",
+      source: "heatmap-tiles",
+      layout: { visibility: overlayOn && mode === "heatmap" ? "visible" : "none" },
+      // linear, so the 0.4 m source stays smooth when overzoomed past the
+      // top tile zoom rather than going blocky
+      paint: { "raster-opacity": HEATMAP_OPACITY, "raster-resampling": "linear" },
+    }, "buildings-fill");
+  } catch (e) {
+    // No tiles built for this deployment. The map is not optional; the heat
+    // map is -- an earlier version of this path killed the whole init by
+    // letting a 404's SyntaxError escape.
+    console.warn("heat-map tiles unavailable", e);
+    heatmapTilesOk = false;
+    if (mode === "heatmap") setMode("layout");
   }
-  function syncHeatmapRasters() {
-    const b = map.getBounds();
-    // Keep neighbours warm so a short pan doesn't re-upload -- but PROPORTIONAL
-    // to the viewport, not a fixed 0.01 degrees. A fixed pad is ~1.1km, which
-    // at z17 is bigger than the whole viewport: it was pulling in six
-    // full-resolution regions to show one street.
-    const padX = (b.getEast() - b.getWest()) * 0.2, padY = (b.getNorth() - b.getSouth()) * 0.2;
-    const w = b.getWest() - padX, e = b.getEast() + padX,
-          so = b.getSouth() - padY, n = b.getNorth() + padY;
-    const z = map.getZoom();
-    if (z >= HEATMAP_DETAIL_ZOOM_IN) heatmapDetail = true;
-    else if (z < HEATMAP_DETAIL_ZOOM_OUT) heatmapDetail = false;
-    const detail = heatmapDetail;
-    if (z >= HEATMAP_MID_ZOOM_IN) heatmapMid = true;
-    else if (z < HEATMAP_MID_ZOOM_OUT) heatmapMid = false;
-    const mid = heatmapMid && !detail;
-    const cx = (b.getWest() + b.getEast()) / 2, cy = (b.getSouth() + b.getNorth()) / 2;
-
-    const wanted = new Map();
-    if (mode === "heatmap") {
-      const candidates = heatmapImages
-        .filter(m => {
-          const [mw, ms, me, mn] = heatmapBounds[m.id];
-          return !(me < w || mw > e || mn < so || ms > n);
-        })
-        .map(m => {
-          const [mw, ms, me, mn] = heatmapBounds[m.id];
-          const dx = Math.max(mw - cx, 0, cx - me), dy = Math.max(ms - cy, 0, cy - mn);
-          return { m, dist: dx * dx + dy * dy };
-        })
-        .sort((a, b2) => a.dist - b2.dist);
-      let spent = 0;
-      for (const { m } of candidates) {
-        const size = detail ? m.size : (mid ? m.sizeMid : m.sizeLod);
-        const mp = size ? size[0] * size[1] / 1e6 : 0;
-        // Always attach the nearest one even if it alone blows the budget --
-        // a blank heat map is worse than a heavy one.
-        if (wanted.size && spent + mp > HEATMAP_BUDGET_MP) continue;
-        spent += mp;
-        wanted.set(m.id, detail ? m.url
-                                : (mid ? (m.urlMid || m.urlLod || m.url)
-                                       : (m.urlLod || m.url)));
-      }
-    }
-
-    [...attached.keys()].forEach(id => {
-      const url = wanted.get(id);
-      // Out of view or priced out of the budget: this one really does go.
-      if (!url) { detachHeatmap(id); return; }
-      // Still wanted, different resolution -- swap it without a gap.
-      if (url !== attached.get(id).url) attachHeatmap(heatmapById[id], url);
-    });
-    heatmapImages.forEach(m => {
-      const url = wanted.get(m.id);
-      if (url && !attached.has(m.id)) attachHeatmap(m, url);
-    });
-  }
-  window.__syncHeatmapRasters = syncHeatmapRasters;
-  // Live, not a fixed list: slot ids change on every resolution swap, and
-  // applyToggles (defined earlier, top-level) needs whatever exists right now.
-  Object.defineProperty(window, "__heatmapLayers", {
-    get: () => [...attached.values(), ...pending.values()].map(r => r.layer)
-  });
-  syncHeatmapRasters();
+  // applyToggles drives layer visibility through this; with a tiled source
+  // there is exactly one layer and nothing to attach or detach.
+  window.__heatmapLayers = heatmapTilesOk ? ["heatmap-raster"] : [];
+  window.__syncHeatmapRasters = () => {};
 
   // Panel layouts come as vector tiles (PMTiles, ~24MB for all of
   // Queenstown vs ~364MB as GeoJSON): tiles stream on demand, so density
@@ -3130,9 +3596,8 @@ map.on("load", async () => {
   // content, but it never overlaps the map, survives panning, and clicking
   // a different building just replaces its content rather than spawning a
   // second overlapping popup.
-  // Josh: "a way to mark a building as a bad layout ... very easy to click
-  // mark as bad layout and send so that then you get that data and know that
-  // it might be a building that needs to be marked up".
+  // A one-click way to mark a building as a bad layout and send it, so the
+  // report arrives with its data and the building can be queued for markup.
   //
   // One click sends. The categories appear only AFTER that, as an optional
   // refinement, because a required category is a form and a form is a reason
@@ -3371,7 +3836,7 @@ map.on("load", async () => {
     const props = selectedBuildingProps;
     if (!props || props.building_id !== buildingId) return;
     // Where the system size comes from depends on which map you are looking at
-    // (Josh: the economics did not move when the coverage option changed). In
+    // (the economics once failed to move when the coverage option changed). In
     // Panel Layout it is the fitted panels at the current density. In Heat Map
     // there are no panels at all -- the number on screen is coveragePct of the
     // roof -- so the economics have to be built from the same estimate the
@@ -3396,7 +3861,7 @@ map.on("load", async () => {
     if (el("bldg-fitted-power")) {
       el("bldg-fitted-power").textContent = fmtPower(kwp);
       el("bldg-fitted-energy").textContent = fmtEnergy(kwhYear);
-      // No panel count in Heat Map mode -- nothing has been laid out (Josh).
+      // No panel count in Heat Map mode -- nothing has been laid out.
       if (el("bldg-fitted-panels") && count !== null) {
         el("bldg-fitted-panels").textContent = count.toLocaleString() + " panels";
       }
@@ -3405,8 +3870,8 @@ map.on("load", async () => {
     // 0 kW for no visible reason -- which looks like a broken page rather than
     // an honest answer. See MIN_ROOF_CONFIDENCE in build_layout_geojson.py:
     // below that share of the laser scan matching the roof planes we fitted, no
-    // layout is proposed at all. Josh, on 10 Stanley St: "very complicated roof,
-    // this one should probably just have no panels on it at all."
+    // layout is proposed at all: a very complicated roof (10 Stanley St)
+    // should have no panels rather than a wrong layout.
     const unmod = el("bldg-unmodelled");
     if (unmod) {
       const conf = props.roof_confidence;
@@ -3427,7 +3892,7 @@ map.on("load", async () => {
       be.style.display = (e || (panelEcon && isLayout)) ? "" : "none";
       if (e) {
         // Four figures, each as a bold yellow label with a light-weight value
-        // under it (Josh). Net savings is what is left after the system has
+        // under it. Net savings is what is left after the system has
         // paid for itself, which is the number people actually mean when they
         // ask what solar is worth -- lifetime savings on its own reads as
         // profit and is not.
@@ -3435,7 +3900,7 @@ map.on("load", async () => {
           `<div class="econ-item"><div class="econ-label">${label}</div>` +
           `<div class="econ-value${cls ? " " + cls : ""}" id="${id}"></div></div>`;
         // Assumptions sit UNDER the figures and show only the side that
-        // applies to this building (Josh): a house has no business tariff, and
+        // applies to this building: a house has no business tariff, and
         // showing both invites the reader to wonder which one they got.
         const p = e.biz ? "biz_" : "home_";
         const kind = e.biz ? "business" : "home";
@@ -3465,9 +3930,8 @@ map.on("load", async () => {
             `<input type="range" id="econ-self" min="0.2" max="${e.biz ? 30 : 6}" ` +
               `step="${e.biz ? 0.5 : 0.1}" value="${econ[p + "daytime_kw"]}">` +
             `<div class="econ-cap" id="econ-self-note"></div>` +
-            // RETAIL PLAN. Josh, 19 Sep: "I want to build in the option to
-            // select example retail plans, just a few and customisable
-            // ones." These are SHAPES of plan sold in New Zealand, not
+            // RETAIL PLAN: a few example plans, each customisable. These
+            // are SHAPES of plan sold in New Zealand, not
             // offers -- no retailer is named, and every rate stays editable
             // above. A plan only changes the answer because the hourly
             // engine prices each hour separately; on the annual model they
@@ -3478,9 +3942,8 @@ map.on("load", async () => {
                 `<option value="${pl.id}">${pl.label}</option>`).join("") +
               `</select></label>` +
             `<div class="econ-cap" id="econ-plan-note"></div>` +
-            // WHAT YOU PAY, AND WHEN. Josh, 19 Sep: "You need to make the
-            // prices all transparent, so the user can see them and see what
-            // hours they apply to." A plan that only shows a name is the
+            // WHAT YOU PAY, AND WHEN. Prices are transparent: the user sees
+            // each rate and the hours it applies to. A plan that only shows a name is the
             // same opaque number the flat rate was. This draws the 24 hours
             // with the price of each, marks the hours the roof actually
             // generates, and lets every band be edited -- which is also
@@ -3635,7 +4098,7 @@ map.on("load", async () => {
           el("econ-v-annual").textContent = fmtMoneyFull(e.annual);
           // Net carries the colour, because it is the one figure here that can
           // go the wrong way -- green if the system is ahead over its life, red
-          // if it never gets there (Josh).
+          // if it never gets there.
           el("econ-v-life").innerHTML = fmtMoneyFull(e.lifetime) +
             `<span class="econ-net-inline ${net >= 0 ? "econ-pos" : "econ-neg"}">` +
             `(${net < 0 ? "-" : ""}${fmtMoneyFull(Math.abs(net))} ` +
@@ -3662,7 +4125,7 @@ map.on("load", async () => {
             el("econ-self-val").textContent = e.daytimeKw.toFixed(1) + " kW";
             el("econ-self-note").innerHTML = selfNote(e);
           }
-          // Stated in full under the figure it produced (Josh), because every
+          // Stated in full under the figure it produced, because every
           // one of these moves the answer materially and a reader cannot check
           // a number whose basis is invisible.
           el("econ-method").innerHTML =
@@ -3735,7 +4198,7 @@ map.on("load", async () => {
           } else {
             // Counted from what is on the map, so a band reading zero says so
             // rather than being an absence of colour the reader has to notice.
-            const tally = { low: 0, mid: 0, high: 0 };
+            const tally = emptyBandTally();
             try {
               map.queryRenderedFeatures({ layers: ["panels-fill"] }).forEach(f => {
                 const pr = f.properties;
@@ -3791,8 +4254,8 @@ map.on("load", async () => {
         };
         // The corner toggle drives whichever building is currently open.
         window.__setPanelEcon = setPanelEcon;
-        // Stays on across buildings (Josh: "at the moment it turns off and then
-        // you need to go click it on each time"). It used to require the mode's
+        // Stays on across buildings rather than turning off on each click.
+        // It used to require the mode's
         // building to match, which a newly clicked one never does. Now that the
         // bands colour every roof, the id only decides which building the
         // right-hand readout describes, so switching buildings just retargets.
@@ -3824,7 +4287,26 @@ map.on("load", async () => {
   // current density, each panel weighted by its own roof face's orientation.
   const SEASON_COLORS = { summer: "#ff7a00", autumn: "#7dff5e", winter: "#00c8ff", spring: "#ffe600" };
   let seasonCurves = null;
-  fetch(`data/seasonal_curves.json?v=${DATA_VERSION}`).then(r => r.json())
+  // One curve set per degree of latitude (combine_regions). The single
+  // seasonal_curves.json stays as the fallback; when the index exists the
+  // band for the OPEN building's latitude is loaded on demand and swapped in.
+  let curveBands = null;
+  const curveBandDocs = {};
+  fetch(`${DATA_BASE}data/seasonal_curves/index.json?v=${DATA_VERSION}`)
+    .then(r => r.ok ? r.json() : null).then(d => { curveBands = d && d.bands ? d.bands : null; })
+    .catch(() => {});
+  function ensureCurvesFor(lat) {
+    if (!curveBands || !Number.isFinite(lat)) return;
+    const key = `m${Math.abs(Math.floor(lat))}`;
+    if (!curveBands[key]) return;
+    if (curveBandDocs[key]) { seasonCurves = curveBandDocs[key]; return; }
+    curveBandDocs[key] = true;   // in flight
+    fetch(`${DATA_BASE}data/seasonal_curves/${key}.json?v=${DATA_VERSION}`).then(r => r.json())
+      .then(doc => { curveBandDocs[key] = doc; seasonCurves = doc;
+                     if (typeof refreshDerived === "function") refreshDerived(); })
+      .catch(() => { delete curveBandDocs[key]; });
+  }
+  fetch(`${DATA_BASE}data/seasonal_curves.json?v=${DATA_VERSION}`).then(r => r.json())
     .then(d => { seasonCurves = d; }).catch(() => {});
 
   function pointInRing(pt, ring) {
@@ -4016,7 +4498,7 @@ map.on("load", async () => {
     // 45 degrees or steeper was looking up key "45_..." -- which is not a bin,
     // so no curve was found and the chart came up empty. That is every
     // sawtooth roof (Turner St's teeth are ~52 degrees) and every steep gable.
-    // Josh: "the load profile is not working on this".
+    // The load profile was failing on those.
     const binOf = fx => {
       const ss = seasonCurves.slope_step, as = seasonCurves.aspect_step;
       seasonMaxSlopeBin();
@@ -4157,9 +4639,9 @@ map.on("load", async () => {
     // instead of sitting squashed under the other one's peak.
     const showPeak = curveMode === "peak";
     const shown = showPeak ? peak : avg;
-    // NAMEPLATE. Josh, 19 Sep: "add a kW peak line to the generation profile
-    // graph. Which just shows the theoretical maximum generation so its easy
-    // to contextualise between low sun and high sun households." The array's
+    // NAMEPLATE: a kW peak line on the generation profile shows the
+    // theoretical maximum, so low-sun and high-sun roofs read against the
+    // same ceiling. The array's
     // DC rating is the ceiling no hour can pass, so how close a roof's curve
     // climbs toward it IS the comparison between a sunny roof and a shaded
     // one -- 47 of 88 kW reads quite differently from 47 of 52.
@@ -4219,7 +4701,7 @@ map.on("load", async () => {
           `<text x="${L + 2}" y="${y(v) - 2.5}" fill="#fff" font-size="8">${fmtv(v)}</text>`;
       });
     }
-    // Drawn as Josh asked: a white dotted line with the band above it
+    // A white dotted line with the band above it
     // lightly shaded, so the shading reads as the region generation cannot
     // enter rather than as another series. The gradient fades upward so the
     // line itself stays the crisp edge.
@@ -4255,6 +4737,61 @@ map.on("load", async () => {
       ` &nbsp;·&nbsp; ${isLayout ? "at current panel density" : `at ${coveragePct}% roof coverage`}</div>`;
   }
 
+  // ----------------------------------------------- per-building detail
+  //
+  // A building's shading horizon and its hourly shade mask are 38% of what
+  // solar_potential.geojson used to weigh, and exactly one building's copy is
+  // ever read -- the one someone clicked. At national scale that is roughly
+  // 600 MB of base64 downloaded so it can be thrown away.
+  //
+  // They now live in data/building_detail/<z>/<x>/<y>.json, keyed by the z13
+  // tile of the building's centroid, so neighbours share a file and browsing
+  // a suburb costs one fetch. See src/split_building_detail.py.
+  const DETAIL_Z = 13;
+  let detailIndex = null;          // null = not loaded yet, {} = unavailable
+  const detailTiles = new Map();   // "x/y" -> Promise<object>
+
+  function detailTileOf(lon, lat) {
+    const n = 2 ** DETAIL_Z;
+    const x = Math.floor((lon + 180) / 360 * n);
+    const r = lat * Math.PI / 180;
+    const y = Math.floor((1 - Math.asinh(Math.tan(r)) / Math.PI) / 2 * n);
+    return [Math.max(0, Math.min(n - 1, x)), Math.max(0, Math.min(n - 1, y))];
+  }
+
+  async function loadDetailIndex() {
+    if (detailIndex) return detailIndex;
+    try {
+      const r = await fetch(`${DATA_BASE}data/building_detail/index.json?v=${DATA_VERSION}`);
+      detailIndex = r.ok ? await r.json() : {};
+    } catch (e) { detailIndex = {}; }
+    return detailIndex;
+  }
+
+  // Resolves to the detail object for this building, or null. NEVER throws and
+  // never blocks the panel: a missing tile means the horizon tab is hidden,
+  // which is the same thing that already happens for a building that has no
+  // horizon baked.
+  async function buildingDetail(props, lngLat) {
+    if (props.horizon_b64 || props.tshade) return props;   // still inline
+    const idx = await loadDetailIndex();
+    if (!idx || !idx.tiles) return null;
+    let lon = lngLat && lngLat.lng, lat = lngLat && lngLat.lat;
+    if (lon == null) { lon = props._sx; lat = props._sy; }
+    if (lon == null) return null;
+    const [x, y] = detailTileOf(lon, lat);
+    const key = `${x}/${y}`;
+    if (!(key in idx.tiles)) return null;
+    if (!detailTiles.has(key)) {
+      detailTiles.set(key, fetch(
+        `${DATA_BASE}data/building_detail/${idx.z}/${x}/${y}.json?v=${DATA_VERSION}`)
+        .then(r => r.ok ? r.json() : {})
+        .catch(() => ({})));
+    }
+    const tile = await detailTiles.get(key);
+    return tile[String(props.building_id)] || null;
+  }
+
   function showBuildingPanel(p, lngLat, geom) {
     const panel = document.getElementById("side-panel");
     // Anything that opens a panel with a plain single building (the address
@@ -4273,6 +4810,7 @@ map.on("load", async () => {
     selectedPanelBuildingId = p.building_id;
     highlightSelectedBuilding(selectedIds.length ? selectedIds : p.building_id, geom);
     selectedBuildingProps = p;
+    ensureCurvesFor(lngLat && lngLat.lat);
     if (lngLat) { selectedBuildingProps._sx = lngLat.lng; selectedBuildingProps._sy = lngLat.lat; }
     // Everything below assumes the estimate layout. A not-estimated building
     // deliberately renders none of it.
@@ -4282,8 +4820,19 @@ map.on("load", async () => {
     }
     const hzBtn = panel.querySelector("#horizon-tab-btn");
     if (hzBtn) {
+      // Hidden until the detail tile answers. The panel is already drawn and
+      // usable by then -- the horizon is the one part that waits, and it is
+      // also the one part nobody is looking at in the first 200 ms.
       hzBtn.style.display = p.horizon_b64 ? "" : "none";
       if (!p.horizon_b64 && curveMode === "horizon") curveMode = "avg";
+      if (!p.horizon_b64) {
+        buildingDetail(p, lngLat).then(d => {
+          if (!d || selectedPanelBuildingId !== p.building_id) return;
+          Object.assign(p, d);
+          if (p.horizon_b64) hzBtn.style.display = "";
+          renderSeasonCurves(p.building_id);   // tshade arrived with it
+        });
+      }
     }
     panel.querySelectorAll(".curve-btn").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.curve === curveMode);
@@ -4358,7 +4907,7 @@ map.on("load", async () => {
   });
   /* legend On/Off removed -- the mode toggles already own this */
   document.getElementById("toggle-panel-econ").addEventListener("click", () => {
-    // No longer needs a selection (Josh): the bands apply to every building on
+    // No longer needs a selection: the bands apply to every building on
     // screen, each against its own break-even. A selected building still gets
     // its own readout on the right, but it is no longer a precondition.
     if (window.__setPanelEcon) { window.__setPanelEcon(!panelEcon); return; }
@@ -4371,6 +4920,55 @@ map.on("load", async () => {
     if (window.__invalidateInView) window.__invalidateInView();
     rebuildEconMatch();
     refreshDerived();
+  });
+
+  // THE DRAWN LINES, DRAWN ON THE MAP.
+  //
+  // A drawn line is not always meant to reach an edge, so it cannot be
+  // forced into the face geometry -- cutting faces on those lines measured
+  // worse against the markup (fidelity 94.8% -> 77.2%, extra facets
+  // 5 -> 25). The drawn faces are the ground truth. What was actually
+  // missing is that the map never DREW the lines, so a drawn line looked
+  // absent and read as a modelling failure.
+  //
+  // Loaded on demand: 399 kB of lines rather than the 1.9 MB label file,
+  // and only when someone asks to see them.
+  let markupOn = false, markupLoaded = false;
+  async function ensureMarkupLayer() {
+    if (markupLoaded) return true;
+    try {
+      const r = await fetch(`${DATA_BASE}data/markup_lines.geojson?v=${DATA_VERSION}`);
+      if (!r.ok) return false;
+      map.addSource("markup-lines", { type: "geojson", data: await r.json() });
+      map.addLayer({
+        id: "markup-lines", type: "line", source: "markup-lines",
+        layout: { "line-cap": "round", visibility: "none" },
+        paint: {
+          // one colour per kind, so the overlay says what the markup called each
+          // line rather than just that something is there
+          "line-color": ["match", ["get", "kind"],
+            "ridge", "#ff4da6", "valley", "#4dd2ff", "cliff", "#ffd24a",
+            "#8cff66"],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 15, 1.2, 19, 3.5],
+          "line-opacity": 0.95,
+        },
+      });
+      markupLoaded = true;
+      return true;
+    } catch (e) { return false; }
+  }
+  document.getElementById("toggle-markup").addEventListener("click", async () => {
+    const btn = document.getElementById("toggle-markup");
+    if (!markupOn && !(await ensureMarkupLayer())) {
+      btn.textContent = "No markup available";
+      return;
+    }
+    markupOn = !markupOn;
+    btn.classList.toggle("active", markupOn);
+    if (map.getLayer("markup-lines")) {
+      map.setLayoutProperty("markup-lines", "visibility",
+                            markupOn ? "visible" : "none");
+    }
   });
 
   document.getElementById("toggle-outlines").addEventListener("click", () => {

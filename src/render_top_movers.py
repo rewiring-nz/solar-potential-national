@@ -1,8 +1,8 @@
 """
 Render the biggest build-over-build movers for review BEFORE a push.
 
-Josh (30 Aug): "isn't there a risk there are different negative impacts on
-the rest of the buildings?" -- unknown impacts must surface, not hide in 15k
+A change can have unknown negative impacts on the rest of the buildings --
+those must surface, not hide in 15k
 buildings. compare_builds ranks the movers; this draws them.
 
 Usage: python src/render_top_movers.py [--top 10] [--out DIR]

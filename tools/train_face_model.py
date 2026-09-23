@@ -2,10 +2,10 @@
 Train a model that predicts roof FACES, not roof lines.
 
 WHY A DIFFERENT TARGET RATHER THAN A BETTER LINE MODEL. The line detector finds
-about as many creases per roof as Josh draws -- 19.2 against 18.0 over 299
+about as many creases per roof as a person draws -- 19.2 against 18.0 over 299
 buildings -- and its output cannot be turned into geometry, because 98.5% of its
-endpoints dangle against 56.4% of his and only 2.6% of its line pairs touch
-against his 24.3%. Fragments cannot be assembled into a partition: merging,
+endpoints dangle against 56.4% of the markup's and only 2.6% of its line pairs
+touch against the markup's 24.3%. Fragments cannot be assembled into a partition: merging,
 snapping and bridging them reached 85.7% dangling and stopped, since roof lines
 are mostly parallel and a ray along a ridge never meets another ridge.
 

@@ -12,7 +12,7 @@ panels carry which facet they belong to.
 Runs the per-building work across processes. Buildings are independent --
 segmentation, obstruction detection and packing all read shared rasters and
 write nothing shared -- and the parallel wrapper around this only fans out
-across AREAS, so rebuilding one area (the loop Josh actually iterates on) used
+across AREAS, so rebuilding one area (the loop actually iterated on) used
 one core out of twelve and took hours. The same per-building work parallelises
 to ~25 minutes for the pilot in scan_defects.py.
 
@@ -39,14 +39,16 @@ from src.preflight import preflight
 import geopandas as gpd
 
 from src.roof_segmentation import segment_building_best, _area_weighted_inlier
+from src.ridge_snap import snap_ridges_to_crest
 from src.pointcloud_source import PointCloudSource
-from src.panel_fitting import fit_panels_on_facet, drop_minor_arrays, assign_fill_ranks
+from src.panel_fitting import fit_panels_on_facet, drop_minor_arrays, assign_fill_ranks, building_frame, register_frame
 from src.obstruction_detection import detect_obstructions_combined
 from src.solar_model import SolarModel
 from src.building_shading import building_shading_factor
 from src.building_horizon import (far_profile as _hz_far_profile,
                                   facet_horizon_factor as _hz_facet_factor,
-                                  eave_height as _hz_eave_height)
+                                  eave_height as _hz_eave_height,
+                                  load_far_dem as _hz_load_far_dem)
 from src.region_build import area_paths, area_centroid_wgs84, areas_from_argv
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -54,9 +56,9 @@ DEEP_SHADE_FACTOR = 0.45  # a panel keeping less than this share of the year's d
 # under a tree/neighbour and should not be proposed at all
 
 # Below this share of a roof's points lying within 30 cm of the planes we are
-# about to place panels on, do not propose panels at all. Josh said it twice
-# about 10 Stanley St, once unprompted and once on the comparison sheet: "very
-# complicated roof, this one should probably just have no panels on it at all".
+# about to place panels on, do not propose panels at all. 10 Stanley St is
+# the case: a very complicated roof that should have no panels rather than a
+# wrong layout.
 # Showing a confident-looking layout on a roof we have not understood is worse
 # than showing nothing -- the number carries authority it has not earned.
 # 10 Stanley measures 35% on-plane; the next worst building in the sampled
@@ -155,16 +157,14 @@ def _init_worker(area, model):
     NASA POWER request per process."""
     paths = area_paths(area)
     dsm_ds = rasterio.open(paths["dsm"])
-    dem_wide_path = DATA_DIR / "dem_wide_mosaic.tif"
-    if dem_wide_path.exists():
-        _dw = rasterio.open(dem_wide_path)
-        _CTX.update({"dem_wide_band": _dw.read(1), "dem_wide_transform": _dw.transform,
-                     "dem_wide_nodata": _dw.nodata})
-    else:
-        # no wide DEM shipped for this deployment -- per-building far-horizon
-        # correction degrades to a no-op rather than failing the build
-        _CTX.update({"dem_wide_band": None, "dem_wide_transform": None,
-                     "dem_wide_nodata": None})
+    # Only the slice this region's rays can reach. The pool spawns rather than
+    # forks, so whatever this reads is held once PER WORKER -- see
+    # building_horizon.load_far_dem. A missing or non-overlapping wide DEM
+    # degrades the far-horizon correction to a no-op rather than failing.
+    _dw_band, _dw_tr, _dw_nd = _hz_load_far_dem(
+        DATA_DIR / "dem_wide_mosaic.tif", dsm_ds.bounds)
+    _CTX.update({"dem_wide_band": _dw_band, "dem_wide_transform": _dw_tr,
+                 "dem_wide_nodata": _dw_nd})
     _CTX.update({
         "gdf": gpd.read_file(paths["outlines"]).set_index("building_id", drop=False),
         "dsm_ds": dsm_ds,
@@ -180,7 +180,7 @@ def _init_worker(area, model):
 # SIGALRM IS POSIX-ONLY. Windows has no alarm signal, so the per-building
 # budget below cannot exist there and every building would die on an
 # AttributeError instead. Rather than bar Windows from the project (the
-# quickstart said "macOS or Linux" and Josh asked why), the budget becomes
+# quickstart said "macOS or Linux" without a reason), the budget becomes
 # a no-op there, announced once so nobody is surprised later: without it a
 # pathological roof can run unbounded instead of being dropped and named.
 # Every other POSIX dependency in the build is already guarded -- the two
@@ -233,10 +233,9 @@ def _build_one(building_id):
 # Until now a building we could not model simply vanished: it emitted no
 # features, so derive_solar_potential -- which aggregates over whatever appears
 # in panel_layouts -- never saw it, and it was absent from the map entirely.
-# Josh: "The buildings should stay. We should have a marking on the building
-# saying why it is not estimated."
+# The buildings should stay, marked with why they are not estimated.
 #
-# He is right, and the failure mode is worse than a wrong number. A homeowner
+# The failure mode is worse than a wrong number. A homeowner
 # who searches their address and finds NOTHING cannot tell whether we think
 # their roof is hopeless, whether we have never looked, or whether the site is
 # broken. An honest "too steep to model" is a better answer than silence.
@@ -394,11 +393,17 @@ def _build_one_at(building_id, nudge_m):
         f = _no_estimate_feature(building_id, row_geom, to_wgs84,
                                  _diagnose_no_facets(row_geom, pc_source))
         return [f] if f else []
+    _dsm_ev = (_CTX["dsm_band"], _CTX["dsm_ds"].transform, _CTX["dsm_ds"].nodata) \
+        if _CTX.get("dsm_ds") is not None else None
+    # Where two faces meet is decided by the crest the returns show, not by
+    # where two noisy plane fits happen to cross -- see src/ridge_snap.py
+    # (2 Preston Drive: a ridge 0.8 m off with a panel column astride it).
+    facets = snap_ridges_to_crest(facets, pc_source, dsm=_dsm_ev)
 
     # Do not propose panels on a roof we have not understood -- see
     # MIN_ROOF_CONFIDENCE. Facets are still emitted so the roof draws on the
     # map; only the layout is withheld.
-    confidence = _area_weighted_inlier(facets, pc_source) if facets else 0.0
+    confidence = _area_weighted_inlier(facets, pc_source, dsm=_dsm_ev) if facets else 0.0
     # A ROOF JOSH DREW IS NOT WITHHELD FOR LOW CONFIDENCE.
     #
     # _area_weighted_inlier asks how well the points fit the planes we FITTED.
@@ -416,17 +421,16 @@ def _build_one_at(building_id, nudge_m):
     from_labels = bool(facets) and any(f.get("from_labels") for f in facets)
     modelled = from_labels or confidence >= MIN_ROOF_CONFIDENCE
 
-    # Josh, on large commercial roofs: "it might be best to try find clear areas
-    # of flat space that are very large, to place panels on. Rather than trying
-    # to squeeze in every possible face", and: ignore any clean area that would
-    # take fewer than 8 panels. 32 Frankton Road is the case: 4,032 m2 shipped
+    # On large commercial roofs, find the large clear areas to place panels
+    # on rather than squeezing in every possible face, and ignore any clean
+    # area that would take fewer than 8 panels. 32 Frankton Road is the case: 4,032 m2 shipped
     # as two sheets fitting 15.3% and 16.3% carrying 1,138 panels. On big roofs
     # each facet must EARN panels: it has to be a believable plane on its own,
     # and it has to take at least 8 panels.
     big_roof = row_geom.area >= BIG_ROOF_M2
 
-    # Per-building FAR terrain horizon (Josh, 30 Aug: every number must take
-    # the building's own horizon into account). The POA lookup carries the
+    # Per-building FAR terrain horizon: every number must take the
+    # building's own horizon into account. The POA lookup carries the
     # AREA's shared profile; _hz_facet_factor converts each facet to this
     # building's own terrain, aspect-aware, so a valley-floor roof loses its
     # east sun where a hilltop roof three streets over does not. Near-field
@@ -439,6 +443,16 @@ def _build_one_at(building_id, nudge_m):
                                    _CTX["dem_wide_nodata"], row_geom, _eave)
 
     per_facet = []
+    # ONE GRID FRAME PER BUILDING (panel_fitting.building_frame): every face
+    # racks to the same bearing from the same origin, so rows and columns
+    # line up across the roof instead of each face choosing its own.
+    # SOLAR_FRAME=0 lays out the old way (each face its own grid) for A/B runs
+    _frame = building_frame(facets, row_geom) if facets and os.environ.get("SOLAR_FRAME", "1") != "0" else None
+    if _frame is not None:
+        try:
+            _frame = register_frame(_frame, facets)
+        except Exception as exc:
+            _note_fallback("register_frame", building_id, exc)
     for f in facets:
         facet_centroid = f["geometry"].centroid
         shading_factor = building_shading_factor(
@@ -462,11 +476,11 @@ def _build_one_at(building_id, nudge_m):
             from src.roof_line_source import drawn_obstruction_polys
             _drawn_obs = drawn_obstruction_polys(f.get("building_id"))
             if _drawn_obs:
-                # Josh marked this roof's obstructions in detail; the auto
+                # This roof's obstructions are marked in detail; the auto
                 # detector was hallucinating 140 m2 of phantom blockage on a
-                # bright membrane where his careful markup totals 17 m2
-                # (#5372565, "Clear empty space you are not filling"). Where
-                # he has spoken, only he speaks.
+                # bright membrane where the markup totals 17 m2 (#5372565,
+                # clear empty space left unfilled). Where the markup speaks,
+                # only it speaks.
                 obstructions = [o for o in _drawn_obs
                                 if o.intersects(f["geometry"])]
             from src.roof_line_source import drawn_line_keepouts
@@ -492,8 +506,8 @@ def _build_one_at(building_id, nudge_m):
         # #4725584 (4,032), and 1 Memorial Street, one of the two roofs he
         # first showed me as wrong.
         drawn = f.get("from_labels")
-        # A low plane-fit big-roof facet used to get NO panels at all. Josh:
-        # "fill in every area possible when doing 100% panel density" -- and
+        # A low plane-fit big-roof facet used to get NO panels at all. 100%
+        # panel density must fill every possible area -- and
         # #4735613 shipped its 372 and 337 m2 facets EMPTY through this skip
         # (382 panels refit vs 107 shipped). The facet still fits, but its
         # panels are DEMOTED to the straggler band: hidden at default density,
@@ -501,14 +515,15 @@ def _build_one_at(building_id, nudge_m):
         low_fit = (big_roof and not drawn
                    and _facet_fit(f, pc_source) < BIG_ROOF_FACET_MIN_FIT)
         if f.get("no_panel"):
-            # Josh clicked "no panels here" on this face. It exists as
-            # geometry -- his lines are the roof's lines -- and takes
+            # This face is marked "no panels here". It exists as
+            # geometry -- the drawn lines are the roof's lines -- and takes
             # nothing. See facets_from_drawn_faces.
             panels = []
         else:
             panels = fit_panels_on_facet(f, obstructions=obstructions,
                                          sibling_facets=siblings,
-                                         fold_keepouts=_keepouts)
+                                         fold_keepouts=_keepouts,
+                                         frame=_frame)
         if low_fit:
             for pnl in panels:
                 pnl["straggler"] = True

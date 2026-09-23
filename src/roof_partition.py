@@ -2,33 +2,23 @@
 Build a roof as a PLANAR PARTITION of the surveyed footprint, cut only by
 straight lines, refined until the planes explain the LiDAR.
 
-The design constraint is Josh's, stated directly:
-
-    "Most roof shapes are relatively simple. They aren't fuzzy, they are
-    straight lines, generally a few different angles."
-
-    "Those unique shapes are still generally made up of the same principles as
-    household roofs, just more of them on the same building footprint. For
-    example a hotel of apartments with many household like roofs in the same
-    building footprint. Or a big warehouse roof with multiple angle roof
-    sections... clear flat angled sections at differing pitches, with differing
-    cut offs, but in general the roof shape principles remain the same."
-
-    "The roof will almost never be some type of organic shape."
+The design constraint: most roofs are simple. They are straight lines at a
+few angles, never organic shapes. Large buildings are the same principles
+repeated -- a hotel is many house-like roofs on one footprint, a warehouse
+is several flat or pitched sections at differing pitches and cut-offs.
 
 Two consequences, and they are the whole module.
 
 STRAIGHT BY CONSTRUCTION. Every facet boundary is either a footprint edge
 (surveyed by LINZ, already straight) or a cut line. No boundary is ever traced
-from a raster. That alone removes the defect Josh has now reported four times:
+from a raster. That alone removes a recurring defect:
 the shipped facets on 29 Edinburgh Dr carry 1335-1835 vertices each on a roof
 that is four rectangles, and on 1/5 Sydney St 874-1035 each. A partition cannot
 produce those shapes -- the vertex count is bounded by the number of cuts.
 
-COMPLEXITY EARNED, NOT ASSUMED. Fitting one template per building would do
-exactly what Josh warned against -- "you should not fit a simple roof when the
-underlying roof is actually more complex". So nothing is assumed about how many
-faces a roof has. A region is kept whole when one plane already explains its
+COMPLEXITY EARNED, NOT ASSUMED. Fitting one template per building would fit
+a simple roof where the real roof is more complex. So nothing is assumed
+about how many faces a roof has. A region is kept whole when one plane already explains its
 points; it is cut when a plane does not, and each half is then asked the same
 question. A simple gable stops after one cut. A hotel keeps going. The stopping
 rule is fit quality, so complexity is spent only where the roof actually has it.
@@ -110,8 +100,8 @@ MIN_POINTS = 25
 # across 510 faces from 90 random pilot buildings, faces at 40 degrees or more
 # fit under 70% in 32% of cases against 11% for shallower ones -- so steep faces
 # are three times as likely to be wrong, and two thirds of them are still fine.
-# Queenstown has genuinely steep roofs. Josh, asked to choose: drop a face only
-# when it is BOTH steep and badly fitted.
+# Queenstown has genuinely steep roofs, so a face is dropped only when it is
+# BOTH steep and badly fitted.
 STEEP_FACE_DEG = 40.0
 STEEP_FACE_MIN_FIT = 0.70
 
@@ -146,7 +136,7 @@ RISER_SLOPE_GAP_DEG = 15.0   # ...and every face it touches is this much flatter
 # Anything that ends up badly fitted is withheld by the confidence gate in
 # build_layout_geojson rather than published wrong.
 CUT_TIME_BUDGET_S = 60.0     # base; scaled up with roof area, see partition_roof.
-# 60s flat starved exactly the roofs Josh cares most about: 32 Frankton Road
+# 60s flat starved exactly the roofs that matter most: 32 Frankton Road
 # (4,032 m2, 31,776 points) hit the deadline before the search made one good
 # cut and shipped as a 5,128 m2 sheet fitting 12.9% -- with 1,138 panels on it.
 # The budget exists to stop a stall, not to decide segmentation quality, so it
@@ -202,16 +192,25 @@ MIN_SPLIT_GAIN = 0.005
 #   unlimited   86%,          12          93%,  6
 #
 # 2.0 takes essentially all the available fit while houses still come back at
-# about six faces, which is the blockiness Josh asked for. Past 2.0 nothing
+# about six faces, which is the blockiness real roofs have. Past 2.0 nothing
 # changes, so the rule is only ever binding on the roofs where it should be.
 SETBACK_COST_PER_FIT = 2.0
+# THE PARTITION'S SETBACK IS NOT THE PANEL SETBACK. Cut economics were tuned
+# with a 0.25 m strip: a cut has to buy more fit than the racking area its
+# ridge strip costs. When config.RIDGE_SETBACK_M went to 0.1 for the panels,
+# every cut became 2.5x cheaper here, the recursion bought
+# fit it should not have, and 40 Avalon Crescent (#4747072) went from 3
+# faces and 81% of its roof to one face and 18% -- bisected to that one
+# constant. What panels keep clear of a ridge is a product decision; what a
+# partition pays for a cut is a tuning of this module, and stays put.
+PARTITION_SETBACK_M = 0.25
 
 # A "fold" test was tried here -- treat a face carrying points far off its own
 # plane as containing a physical drop, and cut it regardless of setback cost.
 # It does not work, and the reason is worth keeping: the signal does not
-# separate the cases. 5 Isle St, which Josh confirms is correctly three faces,
-# has a face with 10.6% of its points more than 0.5 m off plane; 7 Anderson
-# Heights, which he says is wrong, has 10.0% and 10.2%. Any threshold that cuts
+# separate the cases. 5 Isle St, confirmed correct at three faces, has a face
+# with 10.6% of its points more than 0.5 m off plane; 7 Anderson Heights,
+# confirmed wrong, has 10.0% and 10.2%. Any threshold that cuts
 # one cuts the other. Nor does WHERE those points sit help -- on both roofs they
 # cluster within half a metre of a facet edge, which is just bleed from the
 # neighbouring plane.
@@ -227,7 +226,7 @@ def _fit_plane(pts):
     points. Two faces of 5 Isle St measured 0.1 degrees apart with a 0.00 m step
     at their join, and the plane fitted to their union scored 16% on-plane
     against 99% for each of them separately, which blocked a merge that should
-    obviously have happened and left that roof at 5 faces where Josh counted 3."""
+    obviously have happened and left that roof at 5 faces where it has 3."""
     x0, y0 = pts[:, 0].mean(), pts[:, 1].mean()
     A = np.column_stack([pts[:, 0] - x0, pts[:, 1] - y0, np.ones(len(pts))])
     coef, *_ = np.linalg.lstsq(A, pts[:, 2], rcond=None)
@@ -256,7 +255,7 @@ def _inlier_fraction(pts, plane):
 
 def _usable(poly, setback=None):
     """Area left after the ridge setback -- what panel packing actually gets."""
-    setback = config.RIDGE_SETBACK_M if setback is None else setback
+    setback = PARTITION_SETBACK_M if setback is None else setback
     if poly.is_empty:
         return 0.0
     try:
@@ -294,8 +293,7 @@ def _edge_directions(poly):
     # so a hip line runs at 45 degrees to both, and without them the partition
     # cannot cut a hip roof at all -- it is forced to approximate one with
     # rectangular cuts, which is why 5 Isle St stalled at two faces and 45%
-    # on-plane. Josh named this exact geometry: "a 45 degree mitre type roof
-    # joint... they are very common on roof geometry".
+    # on-plane. A 45-degree mitre joint is common roof geometry.
     perp = [(a + 90.0) % 180.0 for a in out]
     diag = [(a + 45.0) % 180.0 for a in out] + [(a + 135.0) % 180.0 for a in out]
     seen, uniq = [], []
@@ -333,10 +331,10 @@ def _score(poly, pts):
 
 
 # A fold is not "many points off the plane" -- that test does not work, and the
-# numbers say so plainly. Measured on the two roofs Josh judged opposite ways:
+# numbers say so plainly. Measured on two roofs with opposite verdicts:
 #
-#   7 Anderson (he calls WRONG)  faces at 11.0% and 8.0% of points beyond 0.5 m
-#   5 Isle     (he calls RIGHT)  faces at  2.3%, 6.6% and 10.6% beyond 0.5 m
+#   7 Anderson (WRONG)          faces at 11.0% and 8.0% of points beyond 0.5 m
+#   5 Isle     (RIGHT)          faces at  2.3%, 6.6% and 10.6% beyond 0.5 m
 #
 # 5 Isle's correct 44 m2 face has a LONGER tail than Anderson's wrong 64.6 m2
 # face. Any threshold that cuts one shatters the other, which is why the earlier
@@ -358,8 +356,8 @@ FOLD_MIN_ELONGATION = 2.2    # and it is long and thin, not a blob
 def _fold_evidence(poly, pts, plane):
     """True when the points below `plane` form a band crossing `poly`.
 
-    Detects a roof that drops through the middle of a face -- the defect Josh
-    reported repeatedly on 7 Anderson Heights -- while ignoring the scattered
+    Detects a roof that drops through the middle of a face -- the 7 Anderson
+    Heights defect -- while ignoring the scattered
     low clutter that sits on a face which really is one plane."""
     sub = _points_in(poly, pts)
     if len(sub) < MIN_POINTS:
@@ -413,9 +411,8 @@ def _fold_evidence(poly, pts, plane):
 # Where the ridge drops, the roof changes section, and that is a cut whether or
 # not the plane fit asks for one.
 #
-# Josh, twice, on 7 Anderson Heights: "two panel planes placed and both
-# overlapping a roof ridge where it drops in the middle", and later "you are
-# also not accounting for the dip in the middle we have already spoken about."
+# On 7 Anderson Heights two panel planes were placed overlapping a ridge
+# where the roof drops in the middle: the dip was not accounted for.
 # Measured on that roof, taking the 97th percentile of height in 1 m slices
 # along the building's long axis: the ridge sits at 381.42 m from -8.5 to -3.5,
 # falls to 380.26 m at -0.5, and returns to 381.47 m from 1.5 to 6.5. A 1.16 m
@@ -618,9 +615,8 @@ def _refine_cut(poly, pts, parts):
 
 # Big planes first; their intersections ARE the roof lines.
 #
-# Josh, after seeing an edge detector draw a maze over a simple roof: "You need
-# a way to clearly detect and define big flat planes that make up roof shapes,
-# generally all these planes are large in size, and connect smoothly at angled
+# An edge detector draws a maze over a simple roof. Roofs are made of big
+# flat planes, generally large, that connect smoothly at angled
 # edges most of the time."
 #
 # That inverts the problem. Hunting edges in imagery and inferring planes from
@@ -725,9 +721,8 @@ def _partition(poly, pts, depth=0, budget=None):
     # exactly 85% -- the acceptance bar -- while 10% of its points sat more than
     # half a metre off it and nearly 5% over a metre. That is a roof dropping
     # through the middle of a face, and it was accepted as one plane, so the
-    # recursion never even asked whether a cut would help. Josh: "two panel
-    # planes placed and both overlapping a roof ridge where it drops in the
-    # middle."
+    # recursion never even asked whether a cut would help, and two panel
+    # planes were placed overlapping the ridge where the roof drops.
     #
     # A tail that far out is structure, not noise. Roughness raises the count of
     # points just outside the band; a fold puts them metres away.
@@ -754,9 +749,8 @@ def _partition(poly, pts, depth=0, budget=None):
     #
     # Without this the recursion buys fit indefinitely: measured on random pilot
     # roofs it produced 20 facets on a 255 m2 house and 25 on 333 m2, about
-    # 13 m2 each. Real houses have two to eight planes. Josh, twice: "they need
-    # to be large and blocky most of the time like real rooftops", and "it's
-    # highly unlikely there would ever be very many vertices on a house".
+    # 13 m2 each. Real houses have two to eight planes, large and blocky,
+    # with few vertices.
     gain = max(0.0, best[0] - score)
     cost = _usable(poly) - sum(_usable(q) for q in parts)
     # The setback economics protect a face that is already a plane from being
@@ -796,9 +790,9 @@ BRIDGE_MAX_STEP_M = 0.10
 # reports them as touching but unions them into a MultiPolygon, and the bridge
 # merge then refuses the pair because "the union is not a Polygon".
 #
-# That is not a corner case here, it is Josh's complaint about 7 Anderson
-# Heights: "the edge roof plane triangles are triangles, but you are cutting
-# them into two smaller triangles by continuing the main roof ridgeline through
+# That is not a corner case here, it is the 7 Anderson Heights defect: the
+# hip-end triangles are triangles, and were being cut into two smaller
+# triangles by continuing the main ridgeline through
 # them." Both hip ends were split by the ridge cut and both pairs were perfectly
 # coplanar -- aspects 315.2/315.2 and 138.4/136.5, angle well inside the bridge
 # limit, sharing an 8.4 m and a 6.7 m edge at zero distance -- and both merges
@@ -817,7 +811,7 @@ MERGE_SNAP_M = 0.01
 # 7 Anderson Heights: the north slope is notched by the recessed feature in the
 # middle of the roof, so its two parts meet along a neck of just 0.77 m. Merging
 # them recovers 0.008 m2 of setback and the economics threw it away, leaving 9
-# faces where Josh drew 8. They are 0.78 degrees apart with a 0.001 m step at
+# faces where the markup has 8. They are 0.78 degrees apart with a 0.001 m step at
 # the join, and merged they fit 93.7% -- better than the 86.8% a single
 # uncut face scored. That is one plane by every measure that matters.
 SAME_PLANE_ANGLE_DEG = 1.5   # tighter than the bridge angle: this is "identical", not "close"
@@ -889,9 +883,9 @@ def _merge_bridgeable(faces, pts):
                         rejected.add(key)
                         continue
                     u = Polygon(closed.exterior, [r for r in closed.interiors])
-                gain = (u.buffer(-config.RIDGE_SETBACK_M).area
-                        - pi.buffer(-config.RIDGE_SETBACK_M).area
-                        - pj.buffer(-config.RIDGE_SETBACK_M).area)
+                gain = (u.buffer(-PARTITION_SETBACK_M).area
+                        - pi.buffer(-PARTITION_SETBACK_M).area
+                        - pj.buffer(-PARTITION_SETBACK_M).area)
                 same_plane = (_plane_angle(li, lj) <= SAME_PLANE_ANGLE_DEG
                               and _step_at_join(li, lj, pi, pj) <= SAME_PLANE_STEP_M)
                 if gain <= 0.5 and not same_plane:
@@ -931,12 +925,10 @@ def _merge_bridgeable(faces, pts):
     return faces
 
 
-# How many planes a roof actually has, from Josh: "there are generally not going
-# to be many planes on a roof, most probably only have between 1 and 10 or so.
-# Unless a big hotel or business roof, but then still... Likely between 1 and 30
-# or so." That is the prior this whole module was missing, and it is why a
-# 93%-on-plane score could sit on a roof he called clearly wrong: fit says
-# nothing about whether a shape looks like a roof.
+# How many planes a roof actually has: a house between 1 and 10, a big hotel
+# or business roof between 1 and 30. That is the prior this whole module was
+# missing, and it is why a 93%-on-plane score could sit on a roof that was
+# clearly wrong: fit says nothing about whether a shape looks like a roof.
 PLANES_TYPICAL_MAX = 10          # a house
 PLANES_LARGE_MAX = 30            # a hotel or a large commercial roof
 PLANES_LARGE_ROOF_M2 = 600.0     # above this footprint, allow the higher count
@@ -1131,20 +1123,20 @@ def partition_with_labels(building_id, footprint, pts, labels, planes):
 # enough survey under the face to say what plane it is on.
 MIN_POINTS_PER_FACE = 12
 
-# The smallest face kept when the geometry came from Josh's markup.
+# The smallest face kept when the geometry came from the manual markup.
 #
 # MIN_FACET_M2 is 6.0 -- "below ~3 panels a face is not worth racking" -- which
-# is a decision about PANELS being used to discard GEOMETRY. Measured across his
-# 85 completed roofs it threw away 19.3% of the faces he drew (119 of 615), and
+# is a decision about PANELS being used to discard GEOMETRY. Measured across
+# 85 marked roofs it threw away 19.3% of the drawn faces (119 of 615), and
 # where every face on a roof was small the whole roof fell through to the LiDAR
-# partition and lost his markup entirely.
+# partition and lost its markup entirely.
 #
 # A 3 m2 dormer face is real roof. Keeping it costs nothing -- panel fitting
 # will place nothing on it -- and losing it changes the shape of the roof.
-# 0.8, not 1.5: Josh marks sub-2 m2 dormer faces individually
+# 0.8, not 1.5: markups mark sub-2 m2 dormer faces individually
 # (#4732152: eighteen faces at 1.3-2.0 m2, seven of which the old
-# threshold silently deleted -- drew 22, built 15). A face too small to
-# rack simply gets no panels; deleting HIS geometry for it violates
+# threshold silently deleted -- 22 drawn, 15 built). A face too small to
+# rack simply gets no panels; deleting drawn geometry for it violates
 # markup-wins. The floor now only rejects degenerate slivers.
 DRAWN_MIN_FACET_M2 = 0.8
 
@@ -1159,7 +1151,7 @@ DRAWN_MIN_FACET_M2 = 0.8
 # than a threshold anything normal has to clear.
 LINES_LEAD = os.environ.get("SOLAR_LINES_LEAD", "0") == "1"
 FLAT_ROOF_MAX_SLOPE_DEG = 5.0   # below this there is no fold to cut on
-DRAWN_MAX_SLOPE_DEG = 85.0    # a face he drew is roof unless it is a wall
+DRAWN_MAX_SLOPE_DEG = 85.0    # a drawn face is roof unless it is a wall
 DRAWN_COVER_MIN = 0.50
 
 # A drawn face at or above this share of the outline, when other faces exist
@@ -1169,7 +1161,7 @@ OUTER_FACE_OVERSPILL = 1.02   # a face bigger than the building cannot be one of
 OUTER_FACE_CONTAINS = 0.90    # ...nor can one that swallows every other face
 
 # How far a drawn or predicted line may be pushed along its own direction to
-# reach the roof edge. Measured on Josh's markups: endpoints sit a median 1.4 m
+# reach the roof edge. Measured on the markups: endpoints sit a median 1.4 m
 # from the eave on 7 Anderson and 3.9 m on 1 Memorial, with a 10.7 m worst
 # case -- people stop drawing where the crease visually stops, not at the
 # boundary. 2.5 m (label_geometry's default) leaves most faces unclosed.
@@ -1184,7 +1176,7 @@ def _seal_network(segs, boundary, max_ext=None):
     label_geometry.extend_dangling skips any end that comes within 25 cm of
     another line, so on a real markup -- where the lines are drawn to meet each
     other -- almost nothing is ever extended and the network never reaches the
-    eave. Josh's endpoints sit a median 1.4 m from the roof edge on 7 Anderson
+    eave. Drawn endpoints sit a median 1.4 m from the roof edge on 7 Anderson
     and 3.9 m on 1 Memorial, connected to each other but not to the boundary,
     and the faces therefore never close. Extending EVERY end instead is worse:
     it drives edges out from junctions in the middle of the roof that nobody
@@ -1266,8 +1258,8 @@ def _seal_network(segs, boundary, max_ext=None):
 
 # Faces chosen by the candidate selector (tools/predict_faces.py): SAM's
 # reading or the line network's, whichever the evidence scored higher --
-# validated against Josh's markup at 0.776 of a 0.782 oracle on his 28
-# benchmark roofs, and his eye on the winners page: "The rest are good".
+# validated against the manual markup at 0.776 of a 0.782 oracle on the 28
+# benchmark roofs, and checked by eye on the winners page.
 # Precomputed per building because the selector needs SAM and torch, which
 # have no business inside the build environment. Off unless the flag is set.
 SELECTED_FACES_DIR = (Path(__file__).resolve().parent.parent
@@ -1276,9 +1268,8 @@ SELECTED_FACES_DIR = (Path(__file__).resolve().parent.parent
 # shipping path exported SOLAR_SELECTED_FACES=1, so any tool that forgot
 # the variable silently measured and rendered the OLD geometry path --
 # not what ships. That cost three wrong answers in one day, the worst of
-# them a contact sheet of twelve roofs sent to Josh for his verdict, all
-# drawn from the wrong pipeline, including the pyramid he then had to
-# tell me was still wrong for the fourth time. A default that disagrees
+# them a contact sheet of twelve roofs for review, all drawn from the wrong
+# pipeline. A default that disagrees
 # with production is a trap, not a safety net; opt OUT with
 # SOLAR_SELECTED_FACES=0 to build the old path deliberately.
 USE_SELECTED_FACES = os.environ.get("SOLAR_SELECTED_FACES", "1") == "1"
@@ -1286,13 +1277,23 @@ SELECTED_MIN_SCORE = 0.30
 SELECTED_MIN_PLANE_INLIER = 0.45  # a facet must be A plane     # below this, neither reading earned trust
 
 
+BIG_FACE_KEEP_M2 = 100.0   # a machine face this big ships even over the vertex cap
+# ...but only if it is convincingly ONE plane. The ten-corner cap had been a
+# planarity proxy by accident: a SAM mask that covers a whole hip roof has
+# many corners and spans several planes, and the cap threw it out, after
+# which residual fill cut the area into real faces. Letting it ship at the
+# ordinary 0.45 inlier bar (23 Sep re-lay, bisected to 2a44ad96) turned
+# #5372674 from 6 facets into one at confidence 0.42 (withheld), #4747072
+# from 3 into one, and #4737389's 28 facets / 85% of the roof into 4 / 32%.
+BIG_FACE_MIN_PLANE_INLIER = 0.80
+
+
 def _regularise_machine_face(poly, footprint):
-    """Enforce the module's founding invariant on faces from the selected
-    chain: STRAIGHT BY CONSTRUCTION. SAM masks and LiDAR raster tilings
-    arrive as traced boundaries -- lightly smoothed wobble -- and on
-    10 Sep Josh flagged both in one sweep ("These roof lines are fuzzy,
-    no roof lines are fuzzy" #4734994; jagged overlapping faces on
-    #4735106). A face either becomes a low-vertex polygon whose edges
+    """(polygon, forced) or None. Enforce the module's founding invariant on
+    faces from the selected chain: STRAIGHT BY CONSTRUCTION. SAM masks and LiDAR raster tilings
+    arrive as traced boundaries -- lightly smoothed wobble: fuzzy roof
+    lines on #4734994, jagged overlapping faces on #4735106. No real roof
+    line is fuzzy. A face either becomes a low-vertex polygon whose edges
     snap to the building's dominant axes, or it does not ship (residual
     fill covers its area with clean partition cuts).
     """
@@ -1304,6 +1305,17 @@ def _regularise_machine_face(poly, footprint):
     cc = list(mrr.exterior.coords)
     ax = np.degrees(np.arctan2(cc[1][1] - cc[0][1], cc[1][0] - cc[0][0]))
     rot = _aff.rotate(poly, -ax, origin=(0, 0))
+    # THE VERTEX CAP SCALES WITH THE FACE. A flat 10-corner limit was right
+    # for a house face and wrong for a commercial wing: 22 Earl Street's
+    # 1,115 m2 and 937 m2 faces both regularised cleanly at every tolerance,
+    # had more than ten corners because the wing genuinely has more than ten
+    # corners, and were DROPPED -- a fifth of the roof gone, with residual
+    # fill scraping back 154 m2 of it. Ten corners per 150 m2 on top of the
+    # base ten, capped at thirty; and a face over BIG_FACE_KEEP_M2 ships at
+    # the coarsest tolerance rather than not at all, because deleting it is
+    # the larger error.
+    max_vertices = int(min(30, 10 + poly.area / 150.0))
+    fallback = None
     for tol in (0.3, 0.5, 0.8, 1.2):
         cand = rot.simplify(tol)
         if cand.geom_type != "Polygon" or cand.is_empty:
@@ -1329,10 +1341,14 @@ def _regularise_machine_face(poly, footprint):
         out = Polygon(snapped)
         if not out.is_valid or out.is_empty:
             continue
-        if len(snapped) <= 10 and abs(out.area - poly.area) < 0.25 * poly.area:
+        if abs(out.area - poly.area) < 0.25 * poly.area:
             back = _aff.rotate(out, ax, origin=(0, 0))
             if back.is_valid and back.geom_type == "Polygon":
-                return back
+                if len(snapped) <= max_vertices:
+                    return back, False
+                fallback = back      # over the cap, but a real, clean polygon
+    if fallback is not None and poly.area >= BIG_FACE_KEEP_M2:
+        return fallback, True
     return None
 
 
@@ -1340,16 +1356,14 @@ def residual_fill(building_id, footprint, pts, faces):
     """Facets for whatever of the footprint `faces` does not cover.
 
     COVERAGE IS A GUARANTEE, NOT A SIDE EFFECT. A machine face used to
-    leave its area EMPTY -- Josh: "Missing a lot of great sunny faces",
-    "you only have panels on the shady side!" on a pyramid whose two sunny
-    faces had failed the one-plane gate.
+    leave its area EMPTY: a pyramid whose two sunny faces had failed the
+    one-plane gate shipped panels only on the shady side.
 
-    Shared by BOTH paths since 18 Sep. It lived inside partition_roof only,
+    Shared by BOTH paths. It lived inside partition_roof only,
     so every building on the vision chain -- 13,376 of them -- silently
     skipped it: #4724740 shipped 8 facets over 63% of its roof and left a
-    216 m2 flat middle with no facet, hence no panels, hence nothing for
-    Josh to see but empty roof ("Why are there no panels in the middle
-    here? It's a flat section and also has no obstructions or lines").
+    216 m2 flat middle -- unobstructed, no lines -- with no facet, hence
+    no panels, hence nothing on the map but empty roof.
 
     The residue goes back to the LiDAR partition, and its facets carry no
     from_selected flag, so they face every downstream drop as usual.
@@ -1367,9 +1381,9 @@ def residual_fill(building_id, footprint, pts, faces):
             if cell.geom_type != "Polygon" or cell.area < 8.0:
                 continue
             fill = list(_partition(cell, _points_in(cell, inside_r)))
-            # Josh, on the facet web the fill drew over a cluttered flat
-            # (#4734913): "you should not create roof lines unless you are
-            # confident in them." The boundary between two fill facets whose
+            # The fill drew a facet web over a cluttered flat (#4734913).
+            # A roof line should only exist where there is confidence in
+            # it. The boundary between two fill facets whose
             # planes barely differ is exactly such a line -- merge them until
             # every remaining boundary separates planes that clearly disagree.
             merged = True
@@ -1459,19 +1473,28 @@ def facets_from_selected_faces(building_id, footprint, pts):
         # straight-by-construction, enforced at the seam: a traced boundary
         # either regularises to a clean low-vertex polygon or does not ship
         reg = _regularise_machine_face(poly, footprint)
+        _dbg = os.environ.get("SOLAR_FACE_DEBUG")
         if reg is None:
+            if _dbg:
+                print(f"[face {building_id}] {poly.area:.0f} m2 {len(poly.exterior.coords) - 1} corners: regulariser dropped it")
             continue
-        poly = reg
+        poly, forced = reg
         sub = _points_in(poly, inside)
         plane = _fit_plane_robust(sub) if len(sub) >= MIN_POINTS_PER_FACE \
             else None
+        if _dbg:
+            print(f"[face {building_id}] {poly.area:.0f} m2 {len(poly.exterior.coords) - 1} corners forced={forced} "
+                  f"pts={len(sub)} inlier={_inlier_fraction(sub, plane) if plane is not None else None}")
+        if forced and (plane is None
+                       or _inlier_fraction(sub, plane) < BIG_FACE_MIN_PLANE_INLIER):
+            continue          # over the cap and not one plane: residual fill cuts it properly
         if plane is not None:
             # A FACE THAT IS NOT ONE PLANE IS NOT A FACE. #4740503's balcony
             # panels rode in on an 835 m2 SAM mask whose plane inlier was
             # 0.13 -- a mask spanning the main roof AND three terrace levels.
             # Machine-chosen geometry earns no borrowed plane for that: it is
             # dropped outright, and the fitter simply places nothing there.
-            # (Josh's own faces never hit this path; sparse faces still
+            # (Drawn faces never hit this path; sparse faces still
             # borrow below.)
             if _inlier_fraction(sub, plane) < SELECTED_MIN_PLANE_INLIER:
                 continue
@@ -1494,7 +1517,24 @@ def facets_from_selected_faces(building_id, footprint, pts):
             "area_m2": float(poly.area), "point_count": int(len(sub)),
             "from_selected": True,
         })
-    for poly, _no_panel in pending:
+    # PLAIN POLYGONS, because that is what this function's pending list holds.
+    #
+    # This loop said `for poly, _no_panel in pending` -- the shape used by
+    # facets_from_drawn_faces, where a face carries the markup's "no panels here"
+    # flag. It was changed here by mistake while that flag was being added
+    # there, and this function's two producers still append a bare Polygon.
+    #
+    # The cost was invisible and large. Any building on the selected-faces
+    # chain with even one PENDING face -- a face too sparse to fit its own
+    # plane, or one whose fit is unusable -- raised TypeError, which
+    # partition_roof catches and reports as "selected faces unavailable"
+    # before falling back to the old RANSAC path. So the reading was
+    # discarded and the old path answered instead, with no error anyone would
+    # see. It showed on the map: 30 Brunswick Street, a 5,272 m2 roof
+    # with a 37-face LiDAR reading, came out as "Too complex to finish
+    # modelling" -- the fallback collapsed it to 2 facets and ran past its
+    # 1,800-second budget.
+    for poly in pending:
         best = None
         for f in out:
             try:
@@ -1519,7 +1559,155 @@ def facets_from_selected_faces(building_id, footprint, pts):
     # part of a roof left the rest with no facet at all -- and no facet
     # means no panels, no obstructions, nothing. #4724740 shipped 63%
     # coverage and a bare 216 m2 flat middle.
-    out.extend(residual_fill(building_id, footprint, pts, out))
+    filled = residual_fill(building_id, footprint, pts, out)
+    if os.environ.get("SOLAR_FACE_DEBUG"):
+        print(f"[face {building_id}] selected kept {len(out)} ({sum(f['area_m2'] for f in out):.0f} m2), "
+              f"residual fill added {len(filled)} ({sum(f['geometry'].area for f in filled):.0f} m2) of footprint {footprint.area:.0f} m2")
+    out.extend(filled)
+    return out
+
+
+# How many parts one face may be cut into by open-ended drawn lines. A face that
+# falls apart into five is not a fold being honoured, it is a bad cut.
+OPEN_LINE_MAX_PARTS = 4
+OPEN_LINE_MIN_PART_M2 = 2.0
+
+
+# How different two sides of a cut must be for the cut to be worth making.
+OPEN_LINE_MIN_ASPECT_DEG = 20.0
+OPEN_LINE_MIN_SLOPE_DEG = 5.0
+# and how much better two planes must fit than one
+OPEN_LINE_MIN_RMS = 0.15
+OPEN_LINE_MIN_RMS_GAIN = 0.20
+
+
+def _planes_differ(parts, poly, pts):
+    """Is this face genuinely two planes, or one plane with a line drawn on it?
+
+    Two tests, both of which must pass. The pieces have to face the sun
+    differently -- that is the only way a cut changes the estimate -- and
+    the whole face has to fit ONE plane materially worse than the pieces fit
+    two, which is what says the fold is in the survey and not just in the
+    drawing.
+    """
+    import numpy as np
+
+    def rms(sub):
+        pl = _fit_plane_robust(sub)
+        if pl is None:
+            return None, None
+        r = sub[:, 2] - (pl[0] * sub[:, 0] + pl[1] * sub[:, 1] + pl[2])
+        return float(np.sqrt((r ** 2).mean())), _slope_aspect(pl)
+
+    whole = _points_in(poly, pts)
+    if len(whole) < MIN_POINTS_PER_FACE * 2:
+        return False
+    r_one, _ = rms(whole)
+    if r_one is None:
+        return False
+    subs = []
+    fits = []
+    for q in parts:
+        sub = _points_in(q, pts)
+        if len(sub) < MIN_POINTS_PER_FACE:
+            return False          # cannot tell, so do not cut
+        r, sa = rms(sub)
+        if r is None:
+            return False
+        subs.append((r, len(sub)))
+        fits.append(sa)
+    n = sum(k for _, k in subs)
+    r_two = (sum(r * r * k for r, k in subs) / max(n, 1)) ** 0.5
+    if r_one < OPEN_LINE_MIN_RMS or r_two > (1.0 - OPEN_LINE_MIN_RMS_GAIN) * r_one:
+        return False
+    for i in range(len(fits)):
+        for j in range(i + 1, len(fits)):
+            (s1, a1), (s2, a2) = fits[i], fits[j]
+            da = abs(a1 - a2) % 360.0
+            da = min(da, 360.0 - da)
+            if abs(s1 - s2) >= OPEN_LINE_MIN_SLOPE_DEG:
+                return True
+            if min(s1, s2) >= 3.0 and da >= OPEN_LINE_MIN_ASPECT_DEG:
+                return True
+    return False
+
+
+def _split_on_open_lines(building_id, footprint, pts, faces):
+    """Cut drawn faces where a drawn line stops short of an edge.
+
+    The labelling tool exports faces from a planar subdivision, so a line with
+    a free end bounds no region and never reaches the build. Measured on the
+    three roofs repeatedly flagged for it, that is the WHOLE of the "missing
+    lines" defect: every closed line drawn is reproduced, every open-ended one
+    is dropped.
+
+    roof_line_source.drawn_network closes a free end only where the LiDAR fold
+    carries on across the gap, and only over a short gap -- see the long note
+    there, and in particular why this is not the 19 Sep experiment that
+    extended every dropped line to the boundary and cost 17.6 points of
+    fidelity.
+
+    A face is replaced by its parts only if the cut produces at least two
+    sensible ones. Anything else leaves the face exactly as he drew it.
+    """
+    try:
+        from src.roof_line_source import drawn_network, EXTEND_DANGLING
+    except Exception:
+        return faces
+    if not EXTEND_DANGLING or not faces:
+        return faces
+    try:
+        net = drawn_network(building_id, footprint, pts)
+    except Exception:
+        return faces
+    if not net:
+        return faces
+    from shapely.geometry import Polygon
+    from shapely.ops import split as _split
+    try:
+        cut = unary_union(net)
+    except Exception:
+        return faces
+
+    out = []
+    for f in faces:
+        try:
+            poly = Polygon(f["ring"])
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+            if poly.is_empty or poly.geom_type != "Polygon" or poly.area < 4.0:
+                out.append(f)
+                continue
+            parts = [q for q in _split(poly, cut).geoms
+                     if q.geom_type == "Polygon" and q.area > OPEN_LINE_MIN_PART_M2]
+        except Exception:
+            out.append(f)
+            continue
+        if len(parts) < 2 or len(parts) > OPEN_LINE_MAX_PARTS:
+            out.append(f)
+            continue
+        # the cut must not have shaved the face -- the parts have to account
+        # for it, or something other than a fold has been subtracted
+        if sum(q.area for q in parts) < 0.97 * poly.area:
+            out.append(f)
+            continue
+        # A CUT HAS TO CHANGE THE ANSWER TO BE WORTH THE FACE.
+        #
+        # Every split costs one exact match against the faces the labelling
+        # tool derived, because neither child equals the parent. Measured over
+        # the bench that is one-for-one: 9 more drawn lines found, 7 fewer faces
+        # exact. So a cut only earns its keep where the two sides really are
+        # different roof -- a different way to face the sun, which is the
+        # whole reason a fold matters to the estimate. Where the planes agree,
+        # the fold is cosmetic, the panel keepout already stops panels
+        # spanning it, and the map draws it from the markup layer.
+        if not _planes_differ(parts, poly, pts):
+            out.append(f)
+            continue
+        for q in parts:
+            out.append({"ring": list(q.exterior.coords),
+                        "m2": float(q.area),
+                        "usable": f.get("usable", True)})
     return out
 
 
@@ -1530,7 +1718,7 @@ def facets_from_drawn_faces(building_id, footprint, pts):
     settled. All that is added here is what the labels cannot know: the plane
     each face sits on, fitted from the LiDAR under it.
 
-    A face the labeller marked `usable: false` -- his "no panels here" click --
+    A face the labeller marked `usable: false` -- the "no panels here" click --
     is dropped rather than fitted. A face with too few returns under it is
     dropped too: the ring is his, but a plane needs points.
     """
@@ -1552,8 +1740,8 @@ def facets_from_drawn_faces(building_id, footprint, pts):
     # so its on-plane fit is 0.16, it is rejected by BIG_ROOF_FACET_MIN_FIT,
     # and the building shipped 18 panels against 465 live.
     #
-    # Only when there are OTHER faces. A roof Josh marked as a single plane
-    # legitimately has one face covering 100% of the outline, and eleven of his
+    # Only when there are OTHER faces. A roof marked as a single plane
+    # legitimately has one face covering 100% of the outline, and eleven marked
     # roofs are exactly that -- dropping those would delete the markup instead
     # of cleaning it.
     #
@@ -1566,7 +1754,7 @@ def facets_from_drawn_faces(building_id, footprint, pts):
     # WHAT MAKES A FACE THE ARRANGEMENT'S OUTER FACE, rather than simply large.
     #
     # The first version dropped any face covering >= OUTER_FACE_FRAC of the
-    # footprint. That is true of the artefact and also of a roof Josh drew as
+    # footprint. That is true of the artefact and also of a roof drawn as
     # ONE plane, and the `len(faces) >= 2` guard did not save those: a roof
     # marked as one plane plus one small "no panels here" patch has two faces,
     # so its only real plane was deleted and the remaining 5% failed the
@@ -1577,8 +1765,8 @@ def facets_from_drawn_faces(building_id, footprint, pts):
     # either enclosing them or spilling outside the footprint:
     #
     #   roof       face/footprint   contains the others
-    #   #5372585            0.951                  0%   a plane he drew
-    #   #5371108            0.161                  0%   a plane he drew
+    #   #5372585            0.951                  0%   a drawn plane
+    #   #5371108            0.161                  0%   a drawn plane
     #   #5372588            1.000                100%   artefact
     #   #4725584            1.230                 17%   artefact (4,962 m2
     #                                                   on a 4,032 m2 building)
@@ -1606,7 +1794,7 @@ def facets_from_drawn_faces(building_id, footprint, pts):
             # A COURTYARD HID THE ARTEFACT. #4725584's footprint arrives with
             # its courtyard filled (5,172 m2 against 4,032 with the hole), so
             # the 4,962 m2 complement face stopped overspilling and shipped
-            # 1,383 panels across the ridges Josh drew. Against the FILLED
+            # 1,383 panels across the drawn ridges. Against the FILLED
             # footprint it is 96% -- no real plane is 90% of a roof that
             # carries five other faces beside it. The many-faces gate keeps
             # #5372585's legitimate 95% single plane (two faces) safe.
@@ -1636,15 +1824,17 @@ def facets_from_drawn_faces(building_id, footprint, pts):
     inside = _points_in(footprint, pts)
     if len(inside) < MIN_POINTS:
         inside = pts
+
+    faces = _split_on_open_lines(building_id, footprint, inside, faces)
+
     out = []
     pending = []
     for f in faces:
         # A "NO PANELS HERE" FACE IS STILL A FACE. Dropping it entirely
-        # also deleted its boundaries, so a line Josh drew simply vanished
-        # from the roof: on #4735623 he saw exactly that and said "this is
-        # good but missing one valley line compared to what I drew". The
-        # valley was the edge of a face he had marked unusable. It is kept
-        # now, carrying no_panel, so the geometry is the roof he drew and
+        # also deleted its boundaries, so a drawn line simply vanished
+        # from the roof: #4735623 lost a valley line that was the edge of a
+        # face marked unusable. It is kept now, carrying no_panel, so the
+        # geometry is the roof as drawn and
         # the fitter still places nothing on it. This is what the
         # drawn_faces docstring always claimed: "knowing a face exists but
         # takes no panels is more useful than not knowing it exists."
@@ -1661,19 +1851,19 @@ def facets_from_drawn_faces(building_id, footprint, pts):
         sub = _points_in(poly, inside)
         if len(sub) < MIN_POINTS_PER_FACE:
             # Too few returns to fit a plane of its own. The face is still real
-            # -- at 1.7 returns/m2 a 4 m2 dormer holds about seven points --
+            # -- at 4.9 returns/m2 a 4 m2 dormer holds about twenty points --
             # so it borrows the plane of the largest face it touches rather
             # than being deleted.
             sub = None
         if sub is None:
             pending.append((poly, _no_panel))
             continue
-        # A BAD PLANE IS NOT A REASON TO DELETE A FACE HE DREW.
+        # A BAD PLANE IS NOT A REASON TO DELETE A DRAWN FACE.
         #
         # These three tests exist to reject walls and rubbish surfaces found by
-        # the LiDAR partition. On a face Josh drew they reject something else:
-        # the FIT, not the face. At 1.7 returns/m2 a 7 m2 dormer carries about
-        # twelve points, and twelve noisy points routinely fit a plane steeper
+        # the LiDAR partition. On a drawn face they reject something else:
+        # the FIT, not the face. At 4.9 returns/m2 a 7 m2 dormer carries about
+        # thirty points, and thirty noisy points still routinely fit a plane steeper
         # than MAX_ROOF_SLOPE. Measured on the two worst roofs in the benchmark,
         # this was the whole of the loss -- #4735237 lost 7 of 23 faces to slope
         # and steep-fit, #5372610 lost 3 of 6:
@@ -1681,21 +1871,21 @@ def facets_from_drawn_faces(building_id, footprint, pts):
         #   #4735237  kept 13, slope>55 4, steep+poor fit 3, too sparse 3
         #   #5372610  kept  2, slope>55 1, steep+poor fit 2
         #
-        # He is the authority on which parts of the roof are roof. So a face
+        # The markup is the authority on which parts of the roof are roof. So a face
         # whose own fit is unusable borrows a neighbour's plane, exactly as a
         # face with too few points already does, and is only dropped if it has
         # no neighbour to borrow from. That keeps the guard against genuine
         # walls -- a wall drawn in isolation still goes -- without deleting
-        # geometry he marked.
+        # marked geometry.
         plane = _fit_plane_robust(sub)
         bad_fit = plane is None
         if not bad_fit:
             slope, aspect = _slope_aspect(plane)
-            # Josh: "Panels can be placed steeper than 55 degrees too if
-            # needed". MAX_ROOF_SLOPE_DEG stays at 55 for geometry the LiDAR
+            # Panels can be placed steeper than 55 degrees when needed.
+            # MAX_ROOF_SLOPE_DEG stays at 55 for geometry the LiDAR
             # guessed, where it is the guard against calling a wall a roof.
-            # On a face he drew it was answering a question he has already
-            # answered, and steep roofs are exactly where the fitted slope is
+            # On a drawn face it was answering a question the markup has
+            # already answered, and steep roofs are exactly where the fitted slope is
             # least trustworthy anyway. Only a near-vertical face is still
             # refused here, since that is a wall however it was produced.
             if slope > DRAWN_MAX_SLOPE_DEG:
@@ -1740,11 +1930,36 @@ def facets_from_drawn_faces(building_id, footprint, pts):
             "from_labels": True, "plane_borrowed": True,
             **({"no_panel": True} if _no_panel else {}),
         })
+    # A LINE THE LABELLING TOOL DID NOT USE STILL SPLITS A FACE.
+    #
+    # Three roofs were missing drawn valley and ridge lines. Measured, one
+    # rule accounts for
+    # all three with no exceptions: every line whose two ends CLOSE is
+    # reproduced as a facet boundary, and every line with a FREE end is
+    # dropped -- the tool exports faces from a planar subdivision, and a
+    # dangling edge bounds no region.
+    #
+    # Extending every dropped line to the boundary was tried first and cost
+    # 17.6 points of fidelity (94.8% -> 77.2%, facets 5 -> 25). What ships is
+    # the narrow version above: a free end is run out only while the LiDAR
+    # fold carries on across the gap, only over a short gap, and only where
+    # two planes fit the face better than one.
+    #
+    # The trade it makes is exact and could not be resolved by measuring:
+    #
+    #   faces matching the markup   97.0% -> 95.8%
+    #   drawn lines found           80.8% -> 81.4%
+    #
+    # one-for-one by construction, because splitting a face always loses the
+    # parent's exact match and neither child replaces it. The real question
+    # was which of two authored things wins when they disagree -- the drawn
+    # LINES, or the FACES the tool exported after dropping one. The decision:
+    # the lines win; run them out.
     return out
 
 
 # MEASURED AND NOT USED FOR MODEL LINES. line_facets subdivides by segment
-# rather than cutting on infinite lines, which is right for geometry Josh drew
+# rather than cutting on infinite lines, which is right for drawn geometry
 # and wrong for geometry a detector guessed. Re-tested after MIN_SCORE rose to
 # 0.90, so most false lines are already gone:
 #
@@ -1754,22 +1969,21 @@ def facets_from_drawn_faces(building_id, footprint, pts):
 #
 # It does not become good at 0.90, it becomes CONSERVATIVE: half the invented
 # edges, and a quarter of the real creases gone with them. Bigger, cleaner
-# faces that run straight over folds he drew -- which is what puts a panel
+# faces that run straight over drawn folds -- which is what puts a panel
 # across a ridge, the failure this work exists to fix.
 #
 # Written down because the numbers flatter it in isolation. Fewer facets and
-# less clutter is what Josh asked for in words, and reported alone this reads
-# as progress.
+# less clutter is the stated goal, and reported alone this reads as progress.
 def line_facets(building_id, footprint, pts, segs):
     """Faces built by planar subdivision of ROOF-LINE SEGMENTS.
 
-    Works for any source of segments -- the lines Josh drew, or the ones the
+    Works for any source of segments -- drawn lines, or the ones the
     model predicted over imagery it has never seen. The second is the point:
     the markups exist to train a detector that then runs over every tile, so
     whatever consumes lines has to serve 15,000 unlabelled roofs, not 114
     labelled ones.
 
-    THE POINT OF DOING IT THIS WAY. Feeding his lines to _cut was tried first
+    THE POINT OF DOING IT THIS WAY. Feeding drawn lines to _cut was tried first
     and made things worse across 28 of his completed roofs -- lines found
     84.1% -> 82.6%, edges he never drew 22.3% -> 27.7%. _cut slices a whole
     cell with an INFINITE line, while a drawn ridge is a segment with extent, so
@@ -1777,7 +1991,7 @@ def line_facets(building_id, footprint, pts, segs):
     already said what was missing: "a way to cut only the stretch a crease
     actually covers".
 
-    This is that way. His segments and the roof boundary are polygonized
+    This is that way. The drawn segments and the roof boundary are polygonized
     together, so every face edge is either a line he drew or the edge of the
     building, and nothing is extrapolated across the roof.
 
@@ -1869,10 +2083,10 @@ def line_facets(building_id, footprint, pts, segs):
 def roof_line_segments(building_id, min_score=0.60):
     """The best available roof-line segments for a building, in NZTM.
 
-    Josh's own lines where he has drawn them, the model's predictions
-    otherwise. His supersede rather than merge: on a roof he has drawn, a
+    Drawn lines where a roof has been marked, the model's predictions
+    otherwise. Drawn lines supersede rather than merge: on a marked roof, a
     prediction about the same roof is a worse description of it, and mixing
-    the two re-fragments what he drew.
+    the two re-fragments the markup.
 
     The model path is the one that matters at district scale -- 114 roofs are
     labelled and ~15,000 are not.
@@ -1896,9 +2110,8 @@ def roof_line_segments(building_id, min_score=0.60):
 def partition_by_planes(building_id, footprint, pts, seed=0, planes=None):
     """Big planes from the LiDAR, trimmed by each other and by the building edge.
 
-    Josh's description exactly: "make big planes based on detectable roof angles
-    with the lidar, and then trim those planes by either the edge of the building
-    or another plane."
+    Make big planes from the roof angles the LiDAR shows, then trim each by
+    the edge of the building or by another plane.
 
     Nothing is detected in imagery and no boundary is traced. A plane's extent is
     decided by where it stops being the best explanation of the points -- which
@@ -1984,7 +2197,7 @@ def partition_by_planes(building_id, footprint, pts, seed=0, planes=None):
 
 # The LINZ outline is the BUILDING, not the roof.
 #
-# Josh drew the true roof outline on 7 Anderson Heights and it does not follow
+# The true roof outline of 7 Anderson Heights, as drawn, does not follow
 # the footprint: the roof overhangs it on one side and sits inside it on
 # another. Measured across five buildings, 6.6% to 18.8% of roof-height points
 # fall outside the footprint, by up to 2 m. Those are eaves.
@@ -1998,25 +2211,25 @@ def partition_by_planes(building_id, footprint, pts, seed=0, planes=None):
 # Deliberately timid, because a uniform buffer grows toward the NEIGHBOURS too
 # and their roofs sit at similar heights, so a loose test walks straight onto
 # them: at 2.0 m and a 50% share this grew 7 Anderson Heights by 66% and 2/8
-# Wakatipu by 81%, when Josh's drawn roof outline is nearer 10% larger than the
+# Wakatipu by 81%, when the drawn roof outline is nearer 10% larger than the
 # footprint. Held to a typical eave, and needing the ring to be almost entirely
 # roof-height before it is accepted.
 # OFF pending better work -- see roof_outline. The FINDING is solid and matters:
 # 6.6% to 18.8% of roof-height points fall outside the LINZ footprint, by up to
 # 2 m, so roof area is understated everywhere and every perimeter face is wrong
-# at its edge. But a uniform buffer is the wrong instrument. Josh's drawn outline
-# on 7 Anderson Heights is not the footprint grown evenly -- the roof overhangs
-# on one side and sits INSIDE it on another -- and growing uniformly took that
-# roof to 16 faces against the 8 he counted. This needs per-edge treatment:
+# at its edge. But a uniform buffer is the wrong instrument. The true roof
+# outline of 7 Anderson Heights is not the footprint grown evenly -- the roof
+# overhangs on one side and sits INSIDE it on another -- and growing uniformly
+# took that roof to 16 faces against its real 8. This needs per-edge treatment:
 # decide independently for each footprint edge how far the roof runs past it.
 # The eave is added AFTER partitioning, never before -- see _extend_to_eave.
 # Partitioning a grown outline was tried and is wrong -- 6.6% to 18.8% of roof-height points
 # fall outside the LINZ footprint by up to 2 m, so roof area is understated
-# everywhere -- and per-edge measurement matches Josh's drawn outlines exactly
+# everywhere -- and per-edge measurement matches the drawn outlines exactly
 # (7 Anderson Heights runs 1.25 m past one long edge, 0.0 past the opposite one,
 # 2.0 m past one end). But growing the outline makes face counts WORSE, in both
 # the uniform and the per-edge form: with imagery cuts active, Anderson goes
-# 10 -> 17 faces against Josh's 8 and 29 Edinburgh 4 -> 7 against his 5, because
+# 10 -> 17 faces against its real 8 and 29 Edinburgh 4 -> 7 against 5, because
 # the eave strips are then sliced by the same lines into slivers. Fixing this
 # which is why the ring is now merged into the faces that already exist instead.
 EAVE_MAX_M = 2.0
@@ -2031,10 +2244,10 @@ EAVE_MIN_POINT_SHARE = 0.85
 def roof_outline(footprint, pts):
     """Footprint pushed out to the real roof edge, ONE EDGE AT A TIME.
 
-    A uniform buffer cannot represent this and was tried first: Josh's drawn
-    roof outlines run past the footprint on some sides and sit inside it on
-    others, and growing evenly took 7 Anderson Heights to 16 faces against the
-    8 he counted, and 2/8 Wakatipu Heights up 33% in area. Measured per edge,
+    A uniform buffer cannot represent this and was tried first: drawn roof
+    outlines run past the footprint on some sides and sit inside it on
+    others, and growing evenly took 7 Anderson Heights to 16 faces against
+    its real 8, and 2/8 Wakatipu Heights up 33% in area. Measured per edge,
     Anderson runs 1.25 m past one long edge and 0.0 past the opposite one, and
     2.0 m past one end -- there is no single number.
 
@@ -2097,9 +2310,9 @@ def roof_outline(footprint, pts):
 #
 # Cutting every strong line unconditionally fixed 7 Anderson Heights, whose hip
 # creases the LiDAR cannot resolve, and broke 5 Isle St, which went from the 3
-# faces Josh confirms to 4. His note on that roof is the clue: "The largest
-# plane on this roof has a significant angle/slope on it. I haven't marked that.
-# It's also still all one plane though." The imagery sees a line there -- a
+# faces confirmed by markup to 4. The markup note on that roof is the clue:
+# its largest plane has a significant angle across it and is still one plane.
+# The imagery sees a line there -- a
 # seam, a stain, a shadow, a tonal band across a sloped surface -- and it is not
 # a roof line.
 #
@@ -2122,8 +2335,8 @@ LINE_MIN_SIDE_POINTS = 30
 # THIS IS THE THING THE FILE HAS SAID WAS MISSING SINCE AUGUST: "what is missing
 # is a way to cut only the stretch a crease actually covers". _cut takes an
 # (angle, offset) and slices the WHOLE cell with the infinite line, so a 1.8 m
-# detection divides an 11 m roof -- which is what Josh found on 107 Beach
-# Street, a 127 m2 roof sliced by lines of 1.8, 2.0, 2.1, 3.1 and 5.5 m.
+# detection divides an 11 m roof -- 107 Beach Street, a 127 m2 roof, was
+# sliced by lines of 1.8, 2.0, 2.1, 3.1 and 5.5 m.
 #
 # The length bar in roof_line_source is a blunt version of the same idea: it
 # judges a line against the whole BUILDING. This judges it against the CELL it
@@ -2135,8 +2348,8 @@ CUT_COVER_MIN = 0.55
 def _reanchor(ang, off, src_poly, dst_poly):
     """An offset measured from one polygon's centroid, expressed from another's.
 
-    THE BUG THIS FIXES, which produced the spurious lines Josh reported on 107
-    Beach Street. model_lines returns offsets measured from the FOOTPRINT's
+    THE BUG THIS FIXES, which produced the spurious lines on 107 Beach
+    Street. model_lines returns offsets measured from the FOOTPRINT's
     centroid -- its docstring says so -- but _cut re-anchors whatever offset it
     is given to the centroid of the polygon it is cutting. The first cell IS the
     footprint, so the first cut lands correctly; every cell produced by that cut
@@ -2207,8 +2420,8 @@ def _line_is_real(poly, pts, ang, off):
 
 # The footprint can also be BIGGER than the roof, and that half was missed.
 #
-# Josh drew it on 7 Anderson Heights -- "the roof overhangs it on the upper-left
-# and sits INSIDE it on the lower-left" -- and it is what put a panel over the
+# On 7 Anderson Heights the roof overhangs the footprint on the upper-left
+# and sits INSIDE it on the lower-left, and that is what put a panel over the
 # edge of 62 Ballarat St. Measured there, three edges overshoot the real roof by
 # 0.5 to 1.25 m: about 29 m2 of dead ground inside the footprint, carrying
 # panels on roof that does not exist.
@@ -2277,7 +2490,7 @@ def _extend_to_eave(faces, footprint, pts):
     LINZ footprint, by up to 2 m -- but partitioning a grown outline is the
     wrong way to capture it. The imagery lines then slice the new strips into
     slivers and the face count balloons: 7 Anderson Heights went 10 -> 17
-    against Josh's 8, 29 Edinburgh 4 -> 7 against his 5.
+    against its real 8, 29 Edinburgh 4 -> 7 against 5.
 
     Adding it here instead cannot create a face. The ring between footprint and
     roof edge is cut up and each piece joins whichever finished face it already
@@ -2325,7 +2538,7 @@ def _extend_to_eave(faces, footprint, pts):
 # has to come out as its own region before anything is cut, because no line that
 # spans the whole roof can isolate it.
 #
-# Josh drew one on 7 Anderson Heights and confirmed it is recessed. Measured:
+# 7 Anderson Heights has one, confirmed by markup. Measured:
 # the ridge runs at 381.42 m, drops to 380.26 m across the middle, and returns
 # to 381.47 m. Earlier attempts hunted for its edges as shoulders in a 1-D ridge
 # profile and put the cuts in the wrong place every time. In 2-D it is simply
@@ -2337,7 +2550,7 @@ def _extend_to_eave(faces, footprint, pts):
 # 211 m2 roof got flagged. And the depth has to be a BAND: where the surveyed
 # footprint overruns the roof, the points beyond the eave are wall or ground
 # sitting about 2 m down, and they connect to the real recess and swallow it.
-# Restricting to 0.45-1.8 m below separates them -- overlap with Josh's traced
+# Restricting to 0.45-1.8 m below separates them -- overlap with the traced
 # section went from IoU 0.24 to 0.55.
 RECESS_MIN_DEPTH_M = 0.45
 RECESS_MAX_DEPTH_M = 1.80
@@ -2345,7 +2558,7 @@ RECESS_CELL_M = 0.75
 RECESS_MIN_AREA_M2 = 6.0
 RECESS_MAX_AREA_SHARE = 0.35    # more than this is not a section, it is the roof
 RECESS_MIN_POINTS = 40
-RECESS_MAX_FACES = 2       # Josh: "only two faces in the middle recession"
+RECESS_MAX_FACES = 2       # a recessed section has two faces, not a partition of its own
 
 
 def _recessed_region(footprint, pts, faces):
@@ -2399,12 +2612,12 @@ def _recessed_region(footprint, pts, faces):
     xy = np.column_stack([cx, cy]) - c
     a, b = xy @ u, xy @ v
     # Measured on both axes, NOT stretched across the roof. Extending it eave to
-    # eave was tried, on my own reading of Josh's traced markup, and it is wrong
-    # twice over: his section is about 28 m2 where the full width of that roof
-    # would be nearer 55, and forcing the stretched region into the two faces he
+    # eave was tried, on a misreading of the traced markup, and it is wrong
+    # twice over: the section is about 28 m2 where the full width of that roof
+    # would be nearer 55, and forcing the stretched region into the two faces
     # describes gave planes fitting 50% and 43% -- worse than not modelling it.
     # The traced corners came out aligned to north rather than to the roof, so
-    # that reading was an artefact of tracing his line by eye.
+    # that reading was an artefact of tracing the drawn line by eye.
     poly = Polygon([c + u * aa + v * bb for aa, bb in
                     ((a.min(), b.min()), (a.max(), b.min()),
                      (a.max(), b.max()), (a.min(), b.max()))])
@@ -2451,8 +2664,7 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
     whole roof. Every LiDAR-scored candidate there was rejected -- correctly, by
     its own logic, since cutting did not improve a fit that was never wrong
     about height -- so the faces ran straight over both hips and the panels
-    followed. Josh: "two panel planes placed and both overlapping a roof ridge
-    where it drops in the middle."
+    followed: two panel planes placed over a ridge where the roof drops.
 
     Only lines carrying enough evidence to be a primary crease qualify; see
     roof_lines.strong_roof_lines."""
@@ -2469,10 +2681,10 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
     if len(inside) < MIN_POINTS:
         return []
 
-    # Imagery cuts are OFF. Measured against the four roofs Josh has drawn, they
-    # are actively harmful:
+    # Imagery cuts are OFF. Measured against four drawn roofs, they are
+    # actively harmful:
     #
-    #                    Josh   cuts ON   cuts OFF
+    #                  drawn   cuts ON   cuts OFF
     #   7 Anderson         8       12         8
     #   5 Isle St          3        3         3
     #   29 Edinburgh       5        3         5
@@ -2483,8 +2695,7 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
     # absent from a point cloud that is flat across that roof -- but cutting a
     # whole cell with a line detected over part of it fragments the roof faster
     # than it fixes it, and the rendered result is a jumble of arbitrary
-    # polygons. Josh, looking at exactly that output: "the whole placement is
-    # wrong."
+    # polygons.
     #
     # What is missing is a way to cut only the stretch a crease actually covers.
     # Clipping the cut to the detected segment's extent was tried and did not
@@ -2503,7 +2714,7 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
     # to pass _line_is_real against the point cloud. The model cannot force a
     # cut. It can only draw attention to a place the LiDAR then confirms is a
     # fold, which is exactly the case the partition misses on its own -- 19.5%
-    # of panels currently straddle a line Josh drew.
+    # of panels currently straddle a drawn line.
     USE_IMAGERY_CUTS = _vision_cuts_available(building_id)
 
     cells = [footprint]
@@ -2516,19 +2727,18 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
     # model's lines exactly as it did to Hough's, because the geometry of the
     # cut is what fragments the roof, not where the line came from.
     #
-    # Measured on 28 of Josh's completed roofs, feeding drawn lines to _cut
-    # made agreement WORSE (lines found 84.1% -> 82.6%, edges he never drew
-    # 22.3% -> 27.7%). This path polygonizes the segments against the roof
+    # Measured on 28 marked roofs, feeding drawn lines to _cut made agreement
+    # WORSE (lines found 84.1% -> 82.6%, edges never drawn 22.3% -> 27.7%). This path polygonizes the segments against the roof
     # boundary instead, so no line is extrapolated past where it was seen.
     # THE FACES THE LABELLING TOOL ALREADY DERIVED.
     #
     # roof_labels.json carries a `faces` array per roof: rings the tool built
-    # from Josh's lines in the browser, with an area and a usable flag, and
+    # from the drawn lines in the browser, with an area and a usable flag, and
     # nothing has ever read them. Re-deriving faces from the lines in Python
     # was the wrong instinct -- it cost a sealing rule, a noding bug and two
     # measured regressions to reconstruct something already computed. It is
-    # also the construction HE was looking at when he called the roof finished,
-    # so a second derivation risks building geometry he never approved.
+    # also the construction on screen when the roof was marked finished, so a
+    # second derivation risks building geometry that was never approved.
     _lf = []
     try:
         _lf = facets_from_drawn_faces(building_id, footprint, pts)
@@ -2536,7 +2746,7 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
         print(f"  roof_partition: drawn faces unavailable ({exc!r})", flush=True)
     if _lf:
         return _lf
-    # the selector's winner ranks below Josh's markup and above everything
+    # the selector's winner ranks below the manual markup and above everything
     # fitted here -- same construction, weaker author
     try:
         _sf = facets_from_selected_faces(building_id, footprint, pts)
@@ -2546,9 +2756,9 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
         _sf = []
     if _sf:
         # COVERAGE IS GUARANTEED, quality gates or not. Dropping a garbage
-        # machine face used to leave its area EMPTY -- Josh: "Missing a lot of
-        # great sunny faces", "you only have panels on the shady side!" on a
-        # pyramid whose two sunny faces had failed the one-plane gate. The
+        # machine face used to leave its area EMPTY: a pyramid whose two sunny
+        # faces had failed the one-plane gate shipped panels only on the
+        # shady side. The
         # residue now goes back to the LiDAR partition, whose facets carry no
         # from_selected flag and so face every downstream drop as usual.
         _sf.extend(residual_fill(building_id, footprint, pts, _sf))
@@ -2556,8 +2766,8 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
 
     # A FLAT ROOF HAS NO FOLDS, so imagery cuts on one are noise.
     #
-    # Josh flagged four town-centre roofs: "very simple roof, and you have got
-    # the roof lines way off". They are flat. #4734914 varies 0.87 m across
+    # Four town-centre roofs were flagged with roof lines way off on a very
+    # simple roof. They are flat. #4734914 varies 0.87 m across
     # 224 m2 and fits a plane at 0.3 degrees; #4734913 1.22 m at 1.0; #4734994
     # at 3.7. The build gave them 4, 11 and 7 facets pitched at 8-10 degrees,
     # with hips that do not exist.
@@ -2565,14 +2775,14 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
     # The detector is not wrong to fire on them -- a flat commercial roof is
     # covered in real lines: parapets, plant, membrane seams, shadow edges.
     # None is a fold. Retraining does not help, and was measured: on 5 of those
-    # 7 roofs a detector retrained on 50 more of his roofs produced an identical
+    # 7 roofs a detector retrained on 50 more marked roofs produced an identical
     # result, because the lines were never the binding constraint.
     #
     # Slope separates these cleanly from roofs that do need cutting -- the hips
-    # he drew fit at 9.6-12.5 degrees against 0.3-3.7 here.
+    # drawn there fit at 9.6-12.5 degrees against 0.3-3.7 here.
     #
     # Only for geometry nobody has drawn: this sits after the drawn-faces return
-    # above, so a flat roof he HAS marked keeps every face he drew. #4735237 is
+    # above, so a flat roof that HAS been marked keeps every drawn face. #4735237 is
     # exactly that -- 1,688 m2 at 1.6 degrees with 23 drawn faces.
     _flat = False
     if imagery_ds is not None and USE_IMAGERY_CUTS:
@@ -2627,10 +2837,10 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
                     # THE IMAGERY SAYS WHERE THE LINE IS; THE LIDAR ONLY SAYS
                     # HOW STEEP THE FACES ARE.
                     #
-                    # Josh: "The image is what tells you the roof lines, the
-                    # lidar just tells you slope." _line_is_real asks the point
+                    # The image is what tells you the roof lines; the LiDAR
+                    # tells you slope. _line_is_real asks the point
                     # cloud whether the roof changes across a proposed line, and
-                    # at 1.7 returns/m2 on a shallow roof it usually cannot tell
+                    # at 4.9 returns/m2 on a shallow roof it usually cannot tell
                     # -- so it vetoes real creases. On #4734696 three lines
                     # survived the score and length bars and it passed exactly
                     # one, which is why loosening those bars from 0.90/0.35 to
@@ -2659,8 +2869,8 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
     for cell in cells:
         # ONE FACE PER CELL THE IMAGERY CUT OUT.
         #
-        # Josh: "The image is what tells you the roof lines, the lidar just
-        # tells you slope." Cutting on imagery lines and then running RANSAC
+        # The image is what tells you the roof lines; the LiDAR tells you
+        # slope. Cutting on imagery lines and then running RANSAC
         # inside each cell hands the boundaries straight back to the point
         # cloud -- the cuts happen (thousands of splits on these roofs) and the
         # edges still land where RANSAC put them, which is why loosening the
@@ -2697,8 +2907,8 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
             regrown = []
             for piece in pieces:
                 if piece is recess:
-                    # Josh: "There are only two faces in the middle recession. It
-                    # is two four sided shapes connected in the middle." A budget
+                    # A middle recession is two four-sided faces joined in
+                    # the middle. A budget
                     # of two allows exactly one cut -- the line where they join.
                     # Unbudgeted, the recursion split the section into four.
                     regrown.extend(_partition(piece, _points_in(piece, inside),
@@ -2725,8 +2935,8 @@ def partition_roof(building_id, footprint, pts, imagery_ds=None):
     # geometrically a small steep roof. The remaining signal is imagery: a real
     # gable shows a sunlit/shaded pair, a step shows a shadow line.
 
-    # NO eave extension. Josh's decision (29 Aug): roof beyond the LINZ
-    # footprint stays out of the model. It was also placing panels on air --
+    # NO eave extension: roof beyond the LINZ footprint stays out of the
+    # model. It was also placing panels on air --
     # 45 Camp St showed panels overlapping the edge 'floating with nothing
     # underneath them', because a face grown past the footprint carries its
     # panel grid with it. _extend_to_eave is kept for reference but not called.

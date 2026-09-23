@@ -89,7 +89,7 @@ def rerank_area(name):
         # before -- is what made the density slider strip a whole dim SIDE
         # before it touched the lone panels on the sunny side.
         # MEAN yield per panel, not total -- same fix as
-        # panel_fitting._order_by_array (Josh, #4740662: total let 40 shaded
+        # panel_fitting._order_by_array (#4740662: total let 40 shaded
         # panels outrank 18 sunny ones, so the slider showed the shady side
         # first). This file runs after the fitter and overwrites its ranks,
         # so the fix must live here too or it silently un-happens: #4751009

@@ -24,8 +24,8 @@ for r in $REGIONS; do
   {
     $PY src/build_heatmap.py "$r" &&
     # Addresses are a patch-in-place post-process on solar_potential.geojson,
-    # and the only per-region step that needs the network (Josh's connection
-    # is intermittent) -- a failure here must not throw away the ~15min of
+    # and the only per-region step that needs the network (connections are
+    # intermittent) -- a failure here must not throw away the ~15min of
     # offline-safe compute around it. Re-run later: python src/add_addresses.py <region>
     { $PY src/add_addresses.py "$r" || echo "WARN: addresses failed for $r -- patch later"; } &&
     $PY src/build_layout_geojson.py "$r" &&

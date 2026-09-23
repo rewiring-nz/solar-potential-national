@@ -1,9 +1,8 @@
 """
 Build ONE self-contained HTML file for marking up roofs. No server, no Python.
 
-Josh: "You should make it possible to open the tool on a standard computer,
-maybe as an HTML file? And then draw the lines on the buildings, then save the
-file to be uploaded to you."
+The labelling tool must open on a standard computer as a plain HTML file,
+so lines can be drawn on the buildings and the result saved and uploaded.
 
 So this bakes the imagery, the building outline and the neighbouring outlines
 into a single .html that opens by double-clicking it, anywhere, offline. Marking
@@ -15,9 +14,8 @@ zip away from a tool that opens to blank squares. One file cannot lose its
 images. The cost is size -- roughly 40-60 KB per roof -- so a 150-roof bundle
 lands around 8 MB, which is fine to open locally and fine to email.
 
-NEIGHBOURING OUTLINES matter more than they sound. Josh: "provide the building
-outline, so it's clear on busy rooftops where they stop and where is the next
-building." On a terrace or a dense commercial block the roof under the cursor
+NEIGHBOURING OUTLINES matter more than they sound: on busy rooftops it must be
+clear where one building stops and the next starts. On a terrace or a dense commercial block the roof under the cursor
 runs straight into its neighbour, and a line drawn across that join is a wrong
 label that would teach a model the wrong thing. The target building is drawn
 solid, every neighbour dashed and dimmed.
@@ -96,7 +94,7 @@ def main():
     import rasterio
     from src.region_build import area_paths, all_areas
 
-    # Josh: "some rooftops I need to check the 3D shape". The imagery is a
+    # Some rooftops need their 3D shape checked. The imagery is a
     # single orthophoto, so a dormer and a flat vent can look identical from
     # straight above. A lat/lon per roof lets the tool link straight out to
     # Google Earth's 3D mesh, which settles it in seconds.
@@ -105,9 +103,8 @@ def main():
 
     ids = a.ids
     why = {}
-    # THE BENCHMARK CLUSTER AS A WORK QUEUE. Josh: "only shows the marked
-    # rooftops and then the ones in the area you want me to do. So I can just
-    # press next unmarked".
+    # THE BENCHMARK CLUSTER AS A WORK QUEUE: only the marked rooftops and
+    # the ones queued in the area, so "next unmarked" walks the queue.
     #
     # Marking scattered roofs across the district trains the detector well and
     # leaves the scoreboard thin -- tools/bench.py scores 152 roofs of which
@@ -121,28 +118,26 @@ def main():
             print("no data/bench_ids.txt -- run tools/bench.py --make first")
             return 2
         ids = [int(x) for x in bp.read_text().split() if x.strip()]
-        # RIGHT-SIZE THE ASK. Josh: "Does it need to be 152? That is a lot and I
-        # imagine diminishing returns?" It does not, and the returns were
-        # measured rather than guessed: bootstrapping the score over his 84
+        # RIGHT-SIZE THE ASK. 152 roofs is a lot, and the returns diminish:
+        # measured rather than guessed, bootstrapping the score over the 84
         # drawn roofs, the 95% interval is +/-6.2 points at 10 roofs, +/-4.3 at
         # 25 and +/-2.3 at 84. The knee is around 25-30; past that a day of
         # drawing buys well under a point.
         #
         # The other roofs stay in the BENCHMARK -- they are built and scored
-        # automatically for fragmentation and panel counts, which costs him
-        # nothing. Only the drawn subset needs to grow, so only it is bundled.
+        # automatically for fragmentation and panel counts, which costs no
+        # labelling time. Only the drawn subset needs to grow, so only it is bundled.
         #
-        # SIMPLEST FIRST, because the scarce resource is Josh's time, not the
-        # roof count. Josh: "Why don't we fix simple roofs first which are
-        # faster for me to draw?" -- and the data agrees more strongly than the
-        # argument did. Across his 84 drawn roofs:
+        # SIMPLEST FIRST, because the scarce resource is labelling time, not
+        # the roof count: simple roofs are faster to draw, and the data agrees
+        # more strongly than the argument did. Across the 84 drawn roofs:
         #
         #   simple (2-3 faces)   24 roofs   93.9% of faces exact    4.4 lines/roof
         #   medium (4-6)         31         95.9%                  10.6
         #   complex (7+)         29         96.7%                  33.1
         #
         # Simple roofs are the WORST band, so they are not already solved, and
-        # they cost a fifth of the drawing. Per line he draws they return about
+        # they cost a fifth of the drawing. Per line drawn they return about
         # 1.1 faces of signal against 0.16 for a complex roof -- roughly seven
         # times the value of the same hour. Ordering by complexity descending,
         # which is what this did first, optimised faces per ROOF and ignored
@@ -163,12 +158,12 @@ def main():
                         nlines = 0
                 return (nlines if nlines else 999)
             todo.sort(key=_weight)
-            # ROOFS JOSH HAS POINTED AT COME FIRST, whatever their complexity.
-            # The ordering below is a proxy for his drawing effort and it is a
+            # FLAGGED ROOFS COME FIRST, whatever their complexity.
+            # The ordering below is a proxy for drawing effort and it is a
             # rough one: #4734696 is a plain hip roof that the detector fires 20
             # lines at, so it sorted to the back of a "simplest first" queue
             # while being both quick to draw and visibly wrong on the map. A
-            # roof he has looked at and called wrong is worth more than any
+            # roof already looked at and called wrong is worth more than any
             # proxy, so those are pulled to the front.
             flag = DATA_DIR / "flagged_ids.txt"
             if flag.exists():
@@ -214,8 +209,8 @@ def main():
             if r.get("building_id"):
                 truth[int(r["building_id"])] = r
 
-    # ADDRESSES COME FROM THE BUILD, NOT FROM roof_truth.json. Josh: "Give me
-    # the address in the title for the building". roof_truth carries 28 roofs;
+    # ADDRESSES COME FROM THE BUILD, NOT FROM roof_truth.json. The tool
+    # titles each building with its address. roof_truth carries 28 roofs;
     # the built solar_potential.geojson carries an address for all 15,353,
     # because add_addresses runs over the whole district. Reading truth first
     # meant almost every roof showed its region name instead of a street.
@@ -232,11 +227,11 @@ def main():
 
     # WHAT THE PIPELINE CURRENTLY THINKS THE ROOF IS.
     #
-    # Josh: "showing how you interpret rooftops and how I have drawn them, and
-    # ones where you need help". Until now the tool showed him the imagery and
-    # his own lines; it never showed what the build had made of the roof. So
-    # the one person who can say "that is wrong" could not see what to correct,
-    # and the disagreement only surfaced days later on the live map.
+    # The tool shows how the build interpreted each rooftop next to how it
+    # was drawn, and which roofs need help. Until now it showed the imagery
+    # and the drawn lines but never what the build had made of the roof, so
+    # the labeller could not see what to correct, and the disagreement only
+    # surfaced days later on the live map.
     #
     # Read straight from the built panel_layouts, reprojected to the tool's
     # frame. If a region has not been built the roof simply carries none and
@@ -327,8 +322,8 @@ def main():
                 # WORK ALREADY DONE TRAVELS WITH THE BUNDLE. The tool keeps
                 # marks in the browser's local storage, so a fresh bundle on a
                 # fresh machine shows every roof as untouched -- including the
-                # ones Josh has already drawn, which he would then draw again
-                # and "next unmarked" would stop on. Seeding from
+                # ones already drawn, which would then be drawn again and
+                # "next unmarked" would stop on. Seeding from
                 # roof_labels.json makes the bundle carry its own history.
                 "saved": _saved.get(bid),
                 "jpg": jpg,

@@ -1,5 +1,5 @@
 """
-Before/after panel layouts, side by side, for Josh to judge.
+Before/after panel layouts, side by side, for review.
 
 The point of this over every metric tried so far: he looks at a pair and says
 which is better. Plane counts, off-plane residuals and fill percentages have
@@ -24,6 +24,7 @@ import argparse
 import base64
 import io
 import json
+import os
 import sys
 import warnings
 from collections import defaultdict
@@ -98,7 +99,7 @@ def _refit_ids(area, ids, partition=False):
     import geopandas as gpd
     from src.roof_segmentation import segment_building_best
     from src.obstruction_detection import detect_obstructions_combined
-    from src.panel_fitting import fit_panels_on_facet, drop_minor_arrays, assign_fill_ranks
+    from src.panel_fitting import fit_panels_on_facet, drop_minor_arrays, assign_fill_ranks, building_frame, register_frame
     from src.pointcloud_source import PointCloudSource
 
     p = area_paths(area)
@@ -125,13 +126,21 @@ def _refit_ids(area, ids, partition=False):
         else:
             facets = segment_building_best(dsm, pc, geom, bid, imagery_ds=img)
         per_facet = []
+        # the same building frame the build uses (panel_fitting.building_frame)
+        # SOLAR_FRAME=0 lays out the old way (each face its own grid) for A/B runs
+        frame = building_frame(facets, geom) if facets and os.environ.get("SOLAR_FRAME", "1") != "0" else None
+        if frame is not None:
+            try:
+                frame = register_frame(frame, facets)
+            except Exception:
+                pass
         for f in facets:
             plane = (f["plane_a"], f["plane_b"], f["plane_c"])
             ob = detect_obstructions_combined(img, pc, f["geometry"], plane)
             out[bid]["facet"].append(f["geometry"])
             out[bid]["obstruction"].extend(ob)
             per_facet.append(fit_panels_on_facet(
-                f, obstructions=ob,
+                f, obstructions=ob, frame=frame,
                 sibling_facets=[o for o in facets if o is not f]))
         panels = [q for lst in drop_minor_arrays(per_facet) for q in lst]
         for i, q in enumerate(panels):

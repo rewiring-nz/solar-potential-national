@@ -212,12 +212,12 @@ def main():
         targets = {t: max(2, round(v * scale)) for t, v in targets.items()}
 
     chosen, why = [], {}
-    # Josh's already-marked roofs go first, whatever their type: turning his
+    # Already-marked roofs go first, whatever their type: turning their
     # prose into coordinates is the cheapest labelling available.
     for bid in sorted(truth):
         if bid in foot:
             chosen.append(bid)
-            why[bid] = "already marked by Josh (prose -> coordinates)"
+            why[bid] = "already marked (prose -> coordinates)"
 
     for t, want in targets.items():
         pool = [x for x in by_type.get(t, []) if x[0] not in why]
@@ -281,7 +281,7 @@ def _write_index(chosen, why, area_of, truth):
 <h1>{len(chosen)} roofs to label</h1>
 <p class="sub">Sampled across roof TYPES rather than at random, weighted towards the shapes that
 currently fail — sawtooth, flat commercial and stepped houses are rare in the district and would
-barely appear in a random draw. Josh's already-marked roofs come first. Click a roof to enlarge.</p>
+barely appear in a random draw. Already-marked roofs come first. Click a roof to enlarge.</p>
 <div class="grid">{''.join(cards)}</div>
 <script>document.querySelectorAll('img').forEach(i=>i.onclick=()=>i.classList.toggle('big'));</script>
 """)

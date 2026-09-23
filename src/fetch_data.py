@@ -1,6 +1,7 @@
 """
-Pull building outlines (WFS) and the DSM raster (Exports API) for
-config.PILOT_BBOX from the LINZ Data Service, and save both under data/.
+ Pull building outlines (WFS), DSM, imagery, and the wide terrain DEM
+ (Exports API) for the pilot from the LINZ Data Service, and save them under
+ data/.
 
 Requires a LINZ_API_KEY with REST API scope enabled (Account -> API keys
 -> edit the key -> enable "Search and Download"), not just the default
@@ -92,8 +93,30 @@ def fetch_raster(bbox_wgs84, api_key, layer_id, name, out_dir=DATA_DIR, format_k
         # LINZ returns a JSON body naming the exact problem (bad extent, wrong
         # format for the layer type, area outside coverage) -- surface it
         # instead of a bare 400.
-        raise RuntimeError(f"Exports API {resp.status_code} for layer {layer_id} "
-                            f"({name}): {resp.text[:300]}")
+        #
+        # SHOW THE REASON, NOT THE PREAMBLE. This truncated at 300 characters,
+        # and the first 300 characters of that body are the licence and item
+        # boilerplate every response carries -- so a 400 on the Wanaka DSM
+        # printed a Creative Commons URL and hid why. Pull out the fields that
+        # actually say what is wrong, and keep a longer tail behind them.
+        detail = ""
+        try:
+            j = resp.json()
+            bits = []
+            for it in (j.get("items") or []):
+                r = it.get("invalid_reasons") or it.get("reasons")
+                if r:
+                    bits.append(f"item: {r}")
+            for k in ("error", "detail", "message", "non_field_errors",
+                      "extent", "formats", "crs"):
+                if j.get(k):
+                    bits.append(f"{k}: {j[k]}")
+            detail = " | ".join(str(b) for b in bits)
+        except Exception:
+            pass
+        raise RuntimeError(
+            f"Exports API {resp.status_code} for layer {layer_id} ({name}): "
+            f"{detail or resp.text[:800]}")
     job = resp.json()
     job_url = job["url"]
     print(f"Export job {job['id']} created, polling...")
@@ -201,6 +224,10 @@ def main():
 
     print(f"Fetching DSM for bbox {config.PILOT_BBOX} (WGS84)...")
     fetch_raster(config.PILOT_BBOX, api_key, config.LINZ_DSM_LAYER, "dsm")
+
+    from src.fetch_dem_wide import ensure_dem_wide
+    print("Ensuring wide 8m DEM for distant terrain...")
+    ensure_dem_wide(api_key)
 
     print(f"Fetching aerial imagery for bbox {config.PILOT_BBOX} (WGS84)...")
     fetch_raster(config.PILOT_BBOX, api_key, config.LINZ_IMAGERY_LAYER, "imagery", format_key="raster")

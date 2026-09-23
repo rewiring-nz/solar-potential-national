@@ -12,7 +12,7 @@ DEFINITION, so on any roof with plant the residuals are dominated by the very
 objects the plane is supposed to help detect. Judge the plane on the central 80%
 of residuals and the same roofs give 5.9%.
 
-Result over Josh's first 22 labelled roofs (2 Sep 2026), robust:
+Result over the first 22 labelled roofs (2 Sep 2026), robust:
 
     RMS < 0.10 m      5781 m2   74.7%
     RMS 0.10-0.20 m    306 m2    4.0%

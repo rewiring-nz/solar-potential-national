@@ -1,13 +1,13 @@
-"""Does the selector pick the reading that agrees with Josh's faces?
+"""Does the selector pick the reading that agrees with the drawn faces?
 
-Josh: "You should only conclude things based on my direct feedback or direct
-measurement of my mark ups." So before any render: on every benchmark roof he
-has drawn, build BOTH candidate face-sets, measure each against HIS faces, and
+Conclusions rest on direct measurement against the markup. So before any
+render: on every marked benchmark roof, build BOTH candidate face-sets,
+measure each against the drawn faces, and
 check whether the evidence scorer picks the better one. Selection accuracy
-against his markup is the number that licenses this design.
+against the markup is the number that licenses this design.
 
-AGREEMENT is continuous, not the deploy-gate's exact-match: mean over his
-usable faces of the best IoU any candidate face achieves. A reading that gets
+AGREEMENT is continuous, not the deploy-gate's exact-match: mean over the
+usable drawn faces of the best IoU any candidate face achieves. A reading that gets
 every face roughly right beats one that nails three and misses six.
 
     .venv-sam/bin/python tools/select_faces.py            # measure
@@ -168,7 +168,7 @@ def main():
             with _t.no_grad():
                 pr = _t.sigmoid(lm(x2.to(device)))[0].cpu().numpy()[:, :h, :w]
         # evidence = the calibrated v5 landscape PLUS the one thing v5
-        # cannot see: v6's dedicated hip channel (activation along Josh's
+        # cannot see: v6's dedicated hip channel (activation along the
         # drawn hips 0.16-0.24 -> 0.74-0.79). Swapping the whole map to v6
         # cost 0.021 of picked agreement -- its hotter statistics
         # mis-calibrate the edge term -- so only the new signal joins.
@@ -340,7 +340,7 @@ def main():
         oracle_m = np.mean([max(r["ag_sam"], r["ag_line"], r.get("ag_lid", 0)) for r in rows])
         lid_m = np.mean([r.get("ag_lid", 0) for r in rows])
         print(f"    LIDAR always  {lid_m:.3f}")
-        print(f"\n  agreement with Josh's faces (mean of {n} roofs):")
+        print(f"\n  agreement with the drawn faces (mean of {n} roofs):")
         print(f"    SAM always   {m_s:.3f}")
         print(f"    LINE always  {m_l:.3f}")
         print(f"    scorer-picked {picked:.3f}")

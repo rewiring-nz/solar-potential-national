@@ -96,13 +96,14 @@ def collect_heatmaps(regions):
                           "coordinates": meta["coordinates"]})
     write_json_atomic(HEATMAPS_DIR / "manifest.json", manifest)
     print(f"heatmaps/manifest.json: {len(manifest)} region rasters")
-    # The manifest is rebuilt from scratch above, so the overview-raster
-    # entries (png_lod/size/size_lod) have to be regenerated with it -- without
-    # this the frontend silently loses its LOD path and goes back to uploading
-    # the full-resolution rasters at every zoom. Cheap when nothing changed:
-    # the builder skips any LOD newer than its source.
-    from src.build_heatmap_lod import main as build_lod
-    build_lod()
+    # NO LOD COPIES ANY MORE. They existed because the heat map was served as
+    # whole-region PNGs attached as image sources, so a town-scale view had to
+    # upload a full-resolution raster to the GPU -- three sizes per region and
+    # hysteresis between them made that bearable. The heat map is raster tiles
+    # now (tools/build_heatmap_tiles.py); a view fetches the tiles under it and
+    # the whole LOD idea has nothing left to do. 75 MB across 48 files that
+    # nothing read, deployed on every push. src/build_heatmap_lod.py is kept
+    # for reference and is no longer called.
 
 
 def main():

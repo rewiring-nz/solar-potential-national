@@ -2,8 +2,8 @@
 The roof the LiDAR actually sees, as a polygon -- an alternative to trusting the
 surveyed outline as the limit of where panels may go.
 
-Josh: "it's important you base the panel placement likely moreso based on the
-actual roof position and shape than the building outline necessarily as you
+Panel placement must follow the actual roof position and shape more than
+the building outline, as it
 might cut off a lot of edges if the building outline is the limit."
 
 Measured on 30 labelled buildings (tools/measure_outline_offset.py): 17.9% of

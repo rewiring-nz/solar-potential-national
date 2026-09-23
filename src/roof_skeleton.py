@@ -1,6 +1,6 @@
 """Skeleton-roof reconstruction: build the roof UP from the footprint.
 
-Josh's #5119630 (Island Bay) is the type case. Its top-surface LiDAR shows a
+#5119630 (Island Bay) is the type case. Its top-surface LiDAR shows a
 single connected hip-and-valley form: every face climbs inward from its eave
 at a common ~23 degree pitch, and the ridge network is nothing more than
 where those inclined planes meet. Point-cluster methods keep drawing organic

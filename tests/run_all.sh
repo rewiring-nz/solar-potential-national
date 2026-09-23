@@ -13,11 +13,15 @@
 #   economics    the money maths: self-consumption split, savings, payback.
 #                Untestable until 1 Sep, when it was pulled out of preview.html
 #                -- which is how a 2.4x error in the yearly figure survived
-#                long enough for Josh to spot it on the map.
+#                long enough to be spotted on the map.
 #   deprecations the class that nearly removed shapely.vectorized from under
 #                the geometry core on a routine dependency upgrade.
 #   sync         the two repos have already diverged twice, silently, with
 #                both bugs reaching the public site.
+#   both repos   imports and call arities in BOTH repos. check_repo_sync
+#                deliberately stops comparing three files that are meant to
+#                differ, and on 22 Sep a signature change slipped through
+#                exactly that gap.
 #   diagram      the architecture page names 78 functions and constants. This
 #                fails if any has moved or changed value, because a diagram
 #                that drifts is worse than none -- a reviewer trusts it.
@@ -46,6 +50,7 @@ else
 fi
 run "deprecated APIs"       $PY tests/test_no_deprecations.py
 run "repo sync"             $PY tools/check_repo_sync.py
+run "both repos"            $PY tests/test_both_repos_import.py
 run "diagram vs code"       $PY tools/check_diagram.py
 if [ $FAST -eq 0 ]; then
   run "golden buildings"    $PY -W ignore tests/test_golden.py

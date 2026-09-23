@@ -28,37 +28,44 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import config
+from src.surveys import survey_for
 from src.fetch_data import fetch_building_outlines
 
 POINTCLOUD_DIR = Path(__file__).resolve().parent.parent / "data" / "pointcloud"
 # Survey-specific values live in config, never here: hard-coding them meant the
 # Wellington repo asked the OTAGO bulk store for 2021-named tiles and every
 # download 404'd, leaving regions to fall back silently to the 1 m DSM.
+# Per SURVEY, not per repo. These remain as the defaults for a deployment with
+# no registry; tilename_to_filename and the fetch take the survey's own values
+# where one covers the region. See src/surveys.py.
 BULK_URL = config.POINTCLOUD_BULK_URL
 TILE_YEAR = config.POINTCLOUD_TILE_YEAR
 TO_NZTM = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2193", always_xy=True)
 
 
-def tilename_to_filename(tilename):
+def tilename_to_filename(tilename, year=None):
     sheet, tile = tilename.split("_", 1)  # "CC11_1000_0712" -> ("CC11", "1000_0712")
-    return f"CL2_{sheet}_{TILE_YEAR}_{tile}.laz"
+    return f"CL2_{sheet}_{year or TILE_YEAR}_{tile}.laz"
 
 
 def area_bbox_wgs84(name):
-    if name == "pilot":
-        return config.PILOT_BBOX
-    return config.REGIONS[name]
+    # Through region_build, which derives a bbox from the region's own
+    # outlines when config does not list it -- a region that has data is
+    # buildable, full stop.
+    from src.region_build import area_bbox_wgs84 as _bbox
+    return _bbox(name)
 
 
 def tiles_for_bbox_wgs84(bbox, api_key):
     minx, miny = TO_NZTM.transform(bbox[0], bbox[1])
     maxx, maxy = TO_NZTM.transform(bbox[2], bbox[3])
-    data = fetch_building_outlines([minx, miny, maxx, maxy], api_key,
-                                    layer_id=config.LINZ_LIDAR_TILE_INDEX_LAYER)
+    data = fetch_building_outlines(
+        [minx, miny, maxx, maxy], api_key,
+        layer_id=survey_for(bbox)["lidar_tile_index_layer"])
     return sorted({f["properties"]["tilename"] for f in data["features"]})
 
 
-def download_tile(filename, retries=4):
+def download_tile(filename, store=None, retries=4):
     dest = POINTCLOUD_DIR / filename
     copc_variant = POINTCLOUD_DIR / filename.replace(".laz", ".copc.laz")
     if dest.exists() or copc_variant.exists():
@@ -66,7 +73,7 @@ def download_tile(filename, retries=4):
     part = dest.with_suffix(".part")
     for attempt in range(retries):
         try:
-            resp = requests.get(f"{BULK_URL}/{filename}", stream=True, timeout=120)
+            resp = requests.get(f"{store or BULK_URL}/{filename}", stream=True, timeout=120)
             if resp.status_code == 404:
                 return "missing-upstream"
             resp.raise_for_status()
@@ -88,7 +95,7 @@ def download_tile(filename, retries=4):
 def main(region_names=None):
     """region_names lets fetch_regions call this directly, so setting up a new
     region pulls its point cloud automatically instead of relying on someone
-    remembering a second script (Josh, 31 Aug)."""
+    remembering a second script."""
     load_dotenv()
     api_key = os.environ["LINZ_API_KEY"]
     POINTCLOUD_DIR.mkdir(parents=True, exist_ok=True)
@@ -97,17 +104,43 @@ def main(region_names=None):
     # left holes over the town centre (Turner St, 23 Aug).
     region_names = region_names or sys.argv[1:] or (["pilot"] + list(config.REGIONS))
 
-    all_tiles = {}  # filename -> first region needing it (tiles can span regions)
+    # filename -> (region, the bulk store that region's survey uses). BOTH the
+    # store and the YEAR are per survey, and until 22 Sep neither reached
+    # here: the year came from the module-level TILE_YEAR, so asking for
+    # Wanaka's 2022 tiles produced CL2_CA12_2021_*.laz and every one of 165
+    # tiles 404'd. The run reported a "coverage gap to investigate" and
+    # carried on to build Wanaka off the 1 m DSM.
+    all_tiles = {}
     for name in region_names:
-        tiles = tiles_for_bbox_wgs84(area_bbox_wgs84(name), api_key)
-        print(f"{name}: {len(tiles)} tiles")
-        for t in tiles:
-            all_tiles.setdefault(tilename_to_filename(t), name)
+        bbox = area_bbox_wgs84(name)
+        sv = survey_for(bbox, name)
+        store = sv.get("pointcloud_bulk_url")
+        if not store:
+            print(f"{name}: survey {sv.get('name')} publishes no point cloud "
+                  f"-- this region will build from its 1 m DSM")
+            continue
+        year = sv.get("pointcloud_tile_year") or TILE_YEAR
+        tiles = tiles_for_bbox_wgs84(bbox, api_key)
+        print(f"{name}: {len(tiles)} tiles from {store.rsplit('/', 1)[-1]} ({year})")
+        names = [tilename_to_filename(t, year) for t in tiles]
+        for fn in names:
+            all_tiles.setdefault(fn, (name, store))
+        # RECORD WHICH TILES THIS REGION USES. Tiles are shared at region
+        # borders, and publish_region deletes a tile only when no other region
+        # still on the disk lists it -- which it can only know from this file.
+        try:
+            from src.region_build import area_paths
+            d = area_paths(name)["dir"]
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "pointcloud_tiles.txt").write_text("\n".join(sorted(names)) + "\n")
+        except Exception as exc:
+            print(f"  (could not record {name}'s tile list: {exc})")
 
     print(f"\n{len(all_tiles)} unique tiles across {len(region_names)} regions")
     missing_upstream = []
     for i, filename in enumerate(sorted(all_tiles)):
-        result = download_tile(filename)
+        _region, store = all_tiles[filename]
+        result = download_tile(filename, store)
         if result == "missing-upstream":
             missing_upstream.append(filename)
         print(f"  [{i + 1}/{len(all_tiles)}] {filename}: {result}")

@@ -31,8 +31,8 @@
   button.prob.on{border-color:#e0a458;background:rgba(224,164,88,.20)}
   .row{display:flex;gap:5px}.row button{margin-bottom:0}
   .hint{color:var(--muted);font-size:11.5px;margin-top:5px;line-height:1.45}
-  /* Josh: "make all the explainer text drop down rather than always showing.
-     I have to scroll a lot to get to different tools." Every hint is now a
+  /* Explainer text drops down rather than always showing, so the tools
+     need less scrolling. Every hint is now a
      details, shut by default -- the palette is the thing you navigate, so the
      prose must not sit between the buttons. */
   details.hint{margin-top:6px}
@@ -273,6 +273,7 @@
 
 <script>
 const ROOFS = /*__ROOFS__*/;
+const OPTS = /*__OPTS__*/{};
 const COL = {ridge:"#1fff7a",valley:"#35b6ff",cliff:"#ff3b30",edge:"#2ecc71"};
 const KEY = "roof_labels_v1";
 const LINE_TOOLS = new Set(["ridge","valley","cliff"]);
@@ -298,7 +299,7 @@ const HANDLE = () => 8 * dpr();
 // corner) makes the junction exact.
 const SNAP_PX = 14;
 let hoverSnap = null;
-let hideDone = false;
+let hideDone = !!OPTS.unmarkedOnly;
 // The pipeline's own facets, toggled with B. Default OFF on purpose: see the
 // note where they are drawn.
 let showBuilt = false;
@@ -385,6 +386,17 @@ function snapPoint(px,py){
 }
 
 let idx=0, tool="ridge", data=load(), img=new Image();
+// SEED FROM THE BUNDLE'S OWN HISTORY. A roof already drawn arrives
+// with its lines attached, so a bundle opened on a machine that has never seen
+// this tool still knows what is done. Local storage always wins -- work in
+// progress here is newer than whatever was exported into the file.
+ROOFS.forEach(r=>{
+  if(r.saved && !data[r.id]){
+    data[r.id] = {lines: r.saved.lines||[], obstructions: r.saved.obstructions||[],
+                  nopanel: r.saved.nopanel||[], complete: !!r.saved.complete,
+                  problem: r.saved.problem||null};
+  }
+});
 let pending=null, drag=null, sel=null, shift=false, space=false;
 const cv=document.getElementById("c"), ctx=cv.getContext("2d");
 const R = () => ROOFS[idx];
@@ -440,8 +452,8 @@ function refreshShare(){
       + (marked(R().id) ? "<b>This one is done.</b>" : "This one is not done yet.");
   }
   nudgeSave();
-  // Josh marked 58 roofs without once using the face tag, and said he simply
-  // did not notice it. A section heading is evidently not enough, so ask
+  // 58 roofs were marked without once using the face tag; it went unnoticed.
+  // A section heading is evidently not enough, so ask
   // directly at the moment the faces appear -- and only then.
   (function(){
     const el=document.getElementById("facenudge");
@@ -609,8 +621,8 @@ function clipHalf(poly,a,b,keep){
 // tool now matches that.
 // PLANAR SUBDIVISION. The first version cut the footprint with one line at a
 // time, which cannot express the commonest roof there is: a ridge meeting two
-// hips encloses a face even though NO single line spans the building. Josh's
-// first 20 roofs proved it -- 53 drawn lines produced one face, so the shading
+// hips encloses a face even though NO single line spans the building. The
+// first 20 marked roofs proved it -- 53 drawn lines produced one face, so the shading
 // was useless and no-panel tagging was unavailable.
 //
 // So build the arrangement properly: take the footprint edges and every drawn
@@ -635,11 +647,11 @@ function _segIntersect(p1,p2,p3,p4){
 
 function _key(p){ return Math.round(p[0]/NODE_TOL)+"_"+Math.round(p[1]/NODE_TOL); }
 
-// The surveyed outline is not always the roof, and where it is wrong Josh's
-// lines are the better description. Measured across his 85 completed roofs,
+// The surveyed outline is not always the roof, and where it is wrong the
+// drawn lines are the better description. Measured across 85 completed roofs,
 // 2.7% of drawn length falls outside the outline overall -- but 12 roofs are
-// over 5% and #5373469 is at 36%, both of the worst being ones he flagged
-// bad_outline himself. Clipping a face to an outline that is in the wrong
+// over 5% and #5373469 is at 36%, both of the worst being ones flagged
+// bad_outline in the markup. Clipping a face to an outline that is in the wrong
 // place ships a face in the wrong place.
 //
 // So when the outline clearly disagrees with the drawing, the boundary grows
@@ -849,10 +861,10 @@ function draw(){
   drawFaces();
   // WHAT THE BUILD CURRENTLY MAKES OF THIS ROOF, under everything else.
   //
-  // Josh asked to see "how you interpret rooftops and how I have drawn them".
-  // Without it he was correcting a result he could not see, and disagreements
+  // Shows how the build interprets each rooftop next to how it was drawn.
+  // Without it the labeller corrects a result they cannot see, and disagreements
   // only surfaced days later on the live map. Drawn dim and dashed so it reads
-  // as background: his own lines must stay the loudest thing on the canvas.
+  // as background: the drawn lines must stay the loudest thing on the canvas.
   //
   // Off by default -- it is a reference, not a tracing guide, and a labeller
   // who traces the pipeline's mistakes teaches the model its own errors.
@@ -960,8 +972,14 @@ function show(i){
   idx=(i+ROOFS.length)%ROOFS.length; pending=null; drag=null; sel=null; selLine=null;
   hoverSnap=null; triPts=[];
   const r=R();
-  document.getElementById("title").textContent = `#${r.id} · ${r.m2} m²`;
-  document.getElementById("addr").textContent = r.address || r.area;
+  // THE ADDRESS IS THE HEADLINE: the title carries the building's address,
+  // because checking a roof starts from a street address
+  // against what is visible, and a building id is only useful for reporting
+  // one back. Id and area drop to the line beneath, which is where the region
+  // already sat.
+  document.getElementById("title").textContent = r.address || `#${r.id}`;
+  document.getElementById("addr").textContent =
+    (r.address ? `#${r.id} · ` : "") + `${r.m2} m² · ${r.area}`;
   const wy=document.getElementById("why");
   if(r.why && r.why.length){
     wy.innerHTML = r.why.map(t=>`<span class="why-chip">${t}</span>`).join("");
@@ -970,14 +988,22 @@ function show(i){
   const lk=document.getElementById("links");
   if(r.ll){
     const [lat,lon]=r.ll;
-    // Google MAPS rather than Earth: same 3D imagery, but Earth web loads a
-    // whole globe client and Josh found it slow and unreliable. The data=!3m1!1e3
-    // suffix is satellite, and 80a/35y/45t tilts it enough to read a roof.
+    // THE OLD "3D satellite" LINK WAS NOT 3D. It carried 80a/35y/45t, which
+    // Google Maps no longer honours from a URL -- it opened flat satellite,
+    // and adding a distance term made it worse, jumping to a regional view.
+    // Verified by opening both. So the Maps link is now labelled Satellite,
+    // which is what it actually is and still worth having: different imagery
+    // and a different capture date from our orthophoto.
+    //
+    // Earth carries the 3D mesh and its /search/ form is more robust than
+    // @-coordinates. It needs WebGL and is slower, which is why it is a
+    // separate link rather than a replacement.
     // Apple Maps opens the Maps app on a Mac, where Flyover gives a genuinely
     // better 3D model of a roof than anything in a browser.
     // Both open in a new tab so a half-drawn roof is never lost.
     lk.innerHTML =
-      `<a target="_blank" rel="noopener" href="https://www.google.com/maps/@${lat},${lon},80a,35y,45t/data=!3m1!1e3">3D satellite</a>`
+      `<a target="_blank" rel="noopener" href="https://www.google.com/maps/@${lat},${lon},19z/data=!3m1!1e3">Satellite</a>`
+    + `<a target="_blank" rel="noopener" href="https://earth.google.com/web/search/${lat},${lon}">Google Earth 3D</a>`
     + `<a target="_blank" rel="noopener" href="https://maps.apple.com/?ll=${lat},${lon}&z=19&t=k">Apple Maps</a>`;
   } else lk.innerHTML="";
   resetView(); sizeCanvas();
@@ -1408,6 +1434,15 @@ addEventListener("resize", ()=>{ sizeCanvas(); draw(); });
 
 setTool("ridge");
 show(0);
+// A FOCUSED BUNDLE OPENS ON WORK: "next unmarked" goes straight to the roofs
+// queued for marking. Opening on roof 0 -- often one already done -- means
+// the first thing the tool asks is to navigate.
+if(OPTS.unmarkedOnly){
+  const b=document.getElementById("hidedone");
+  b.classList.add("on");
+  b.firstChild.textContent="Showing unmarked only";
+  if(marked(ROOFS[0].id)) document.getElementById("skipto").click();
+}
 
 // PUBLISHED ON GITHUB PAGES there is no db to write to -- Pages is static. But
 // the roofs already collected can still be shown, by reading a progress file

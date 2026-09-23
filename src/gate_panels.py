@@ -26,7 +26,6 @@ from pathlib import Path
 
 import numpy as np
 import pyproj
-import rasterio
 import shapely
 from shapely.geometry import shape
 from shapely.ops import transform as shp_transform
@@ -54,7 +53,7 @@ BELOW_PLANE_TOLERANCE_M = 0.35  # returns further below the panel's own roof lev
 # not the roof -- see the lumpy test for the measurement that motivated it
 
 
-def panel_ok(poly, pc, dem, dem_transform_inv):
+def panel_ok(poly, pc):
     minx, miny, maxx, maxy = poly.bounds
     # A veto requires EVIDENCE AGAINST a roof, never mere absence of data:
     # a LiDAR coverage gap (zero returns of ANY class) means "unknown" and
@@ -111,8 +110,8 @@ def panel_ok(poly, pc, dem, dem_transform_inv):
     #     82% had their outliers mostly BELOW the roof plane  (edge artefact)
     #     10% had them mostly ABOVE                            (real structure)
     # and separately, 87% of all gate drops were edge panels. It was cutting
-    # 45 Camp St from 63 fitted panels to 31 -- a roof Josh reported as
-    # "sparsely populated even though plenty of extra space".
+    # 45 Camp St from 63 fitted panels to 31 -- a roof left sparsely
+    # populated with plenty of space free.
     #
     # Same physics guard obstruction_detection already applies to its own
     # candidates: deviation on both sides is roof form, deviation above is an
@@ -136,7 +135,7 @@ def panel_ok(poly, pc, dem, dem_transform_inv):
 
 
 def _has_usable_markup(building_id):
-    """A roof Josh drew is not second-guessed by the surface gates, for the
+    """A drawn roof is not second-guessed by the surface gates, for the
     same reason a drawn face skips the plane-fit judgment: lumpy/sparse ask
     whether the SURFACE is real roof, and he has answered by hand. #4725488
     (119-face sawtooth, tiny 26-degree faces, 1.7 pts/m2): the sparse gate
@@ -150,7 +149,7 @@ def _has_usable_markup(building_id):
         return False
 
 
-def gate_area(name, pc, dem, dem_inv, only_ids=None):
+def gate_area(name, pc, only_ids=None):
     import config
     non_roof = getattr(config, "NON_ROOF_BUILDING_IDS", set())
     path = area_paths(name)["panel_layouts"]
@@ -178,7 +177,7 @@ def gate_area(name, pc, dem, dem_inv, only_ids=None):
             continue
         try:
             poly = shp_transform(TO_NZTM, shape(f["geometry"]))
-            ok, why = panel_ok(poly, pc, dem, dem_inv)
+            ok, why = panel_ok(poly, pc)
         except Exception:
             ok, why = True, "error-kept"  # never drop a panel on a gate crash
             errors += 1
@@ -200,9 +199,10 @@ def gate_area(name, pc, dem, dem_inv, only_ids=None):
 #
 # The old flat cap dated from workers that cached EIGHT decoded LiDAR tiles
 # each; eight of those crashed a 64 GB machine on Wellington's dense survey.
-# The cache is three tiles now, and a running worker measures 0.70 GB RES on
-# the VM -- of which the wide DEM every worker loads is only 0.07 GB. So the
-# flat 4 was leaving a 16-core box at 25% while the gate is the single longest
+# The cache is three tiles now, and a running worker measured 0.70 GB RES on
+# the VM -- of which the wide DEM was 0.07 GB, and that load is gone entirely
+# (see _init_gate_worker). So the flat 4 was leaving a 16-core box at 25%
+# while the gate is the single longest
 # stage in the build (1240s on town_west_fernhill, against 362s for the layout
 # builder that was already running ten workers).
 #
@@ -240,9 +240,13 @@ def _init_gate_worker():
     # dense survey; two tiles per worker is plenty here because a panel query
     # touches exactly the tile(s) under one building.
     _W["pc"] = PointCloudSource(max_cached_tiles=3)
-    with rasterio.open(DATA_DIR / "dem_wide_mosaic.tif") as ds:
-        _W["dem"] = ds.read(1)
-        _W["dem_inv"] = ~ds.transform
+    # NO wide DEM here. Every worker used to read the whole mosaic and pass it
+    # to panel_ok, which has not looked at it since the height-above-DEM test
+    # was removed (see the comment in panel_ok) -- the load and the two
+    # parameters outlived the only code that read them. That was 0.07 GB a
+    # worker while the mosaic covered Queenstown; widening it to Kingston and
+    # Wanaka on 22 September made it 1.12 GB, so twelve workers would have held
+    # 13 GB of an array nothing reads.
 
 
 def _gate_one(feature_json):
@@ -256,7 +260,7 @@ def _gate_one(feature_json):
             # island_bay gate at 5,000/121,273 with ordered reporting hiding
             # everything queued behind it. Corrupt input never earns a panel.
             return feature_json, False, "corrupt-geometry"
-        ok, why = panel_ok(poly, _W["pc"], _W["dem"], _W["dem_inv"])
+        ok, why = panel_ok(poly, _W["pc"])
     except Exception:
         return feature_json, True, "error-kept"
     return feature_json, ok, why

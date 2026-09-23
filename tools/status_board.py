@@ -1,7 +1,6 @@
 """Regenerate the status board from what is actually true right now.
 
-Josh: "why aren't you updating the status dashboard? That should always be
-updating and automatic and live".
+The status dashboard must always be updated, automatically and live.
 
 Because it was hand-written HTML, so it was only ever as current as the last
 time someone retyped it -- it went stale within the hour, still claiming v36 was
@@ -16,7 +15,7 @@ So every number here is READ, not typed:
     recent work                   git log
     VM                            gcloud, if it answers quickly
 
-The curated half -- what needs Josh, what is rejected and why -- cannot be
+The curated half -- what needs a decision, what is rejected and why -- cannot be
 derived from the repo, so it lives in data/status_items.json as DATA. Editing
 that file is how those cards change; nobody hand-edits HTML again.
 

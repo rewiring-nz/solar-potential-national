@@ -9,7 +9,34 @@ data/*
 !data/heatmap_raster.json
 !data/seasonal_curves.json
 !data/marked_scores.json
-!data/roof_cases.json   # the roofs Josh has flagged: tracked, never ignored
+# the flagged roofs: tracked, never ignored
+# the drawn lines as a map overlay -- see tools/build_markup_lines.py
+!data/markup_lines.geojson
+!data/roof_cases.json
+# 3D terrain: the DSM as Mapbox terrain-RGB tiles, served straight off Pages
+!data/terrain/
+!data/terrain/**
+
+# Buildings are served as TILES now, not as one solar_potential.geojson
+# download (src/build_building_tiles.py, src/split_building_detail.py). These
+# are what the live map fetches, so they have to be deployed.
+# NOTE: a trailing comment on the same line as a pattern silently breaks it --
+# that has already cost this file once. Comments go on their own line.
+!data/buildings.pmtiles
+!data/building_cells.pmtiles
+!data/addresses.json
+!data/assumptions.json
+!data/building_detail/
+!data/building_detail/**
+
+# The heat map is raster tiles too (tools/build_heatmap_tiles.py), replacing
+# 24 whole-region PNGs the browser downloaded one of to see one street.
+!data/heatmap_tiles/
+!data/heatmap_tiles/**
+
+# The overview copies of the heat map. Dead since it became tiles -- 75 MB
+# across 48 files that nothing fetches, deployed on every push.
+data/heatmaps/lod/
 !data/roof_labels.json
 !data/bench_ids.txt
 !data/bench_set.json
@@ -36,3 +63,31 @@ validation/
 data/training/
 training_faces/
 data/training_faces/
+
+# A second local virtualenv (the SAM/torch one used by tools/predict_faces.py).
+# .venv is already ignored; this one was not, and a `git add -A` put 21,387
+# site-packages files into a commit.
+.venv-sam/
+
+# Per-machine quickstart area, written by the user running quickstart.sh.
+my_area.json
+
+# The code map (tools/build_code_graph.sh). Regenerable in ~40 s, 3 MB, and
+# it has no business on the public site.
+graphify-out/
+
+# Understand-Anything working data (tools/build_method_page.py reads it).
+.ua/
+
+# per-region emitted outputs and combine scratch (docs/scale-architecture.md)
+data/out/
+data/summaries_prev/
+data/combine_*/
+
+# SERVED with the map (docs/scale-architecture.md): per-region summaries for the
+# deploy gate, the build totals, and the per-latitude-band curves.
+!data/summaries/
+!data/summaries/*.json
+!data/build_summary.json
+!data/seasonal_curves/
+!data/seasonal_curves/*.json

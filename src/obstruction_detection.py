@@ -90,17 +90,16 @@ SATURATION_WINDOW_PX = 7  # local texture window for the saturation check, ~0.7m
 # Buffering out merges scattered flagged points into one coherent object. It
 # also leaves the object BIGGER than the thing it represents, and nothing on
 # these two paths ever pulled it back (only the strong-cluster path trims).
-# Josh, on 28 Rees St: obstructions "show up wider in the lidar than they
-# really are, because they often have vertical edges but don't necessarily show
-# as vertical edges in the lidar" -- a return near a vertical face lands at an
+# Obstructions show up wider in the LiDAR than they really are (28 Rees St):
+# they often have vertical edges that do not read as vertical in the LiDAR
+# -- a return near a vertical face lands at an
 # intermediate height, so the flagged cluster is already dilated before we
 # buffer it further. BLOB_TRIM_FRACTION pulls back that share of the buffer
 # after the merge: a morphological close rather than a plain dilate.
 # 0.4, not the full 1.0 -- and the reason is a mistake worth keeping written
 # down. A full close was chosen because it placed 165 more panels than 0.4,
-# which is optimising the one number Josh had already said is not a measure of
-# quality. He found the consequence immediately: "lots of examples of panels
-# overlapping obstructions now".
+# which is optimising the one number that is not a measure of quality. The
+# consequence was immediate: many panels overlapping obstructions.
 #
 # Eroding by the whole buffer removes the LiDAR smear AND the safety margin,
 # and on a small obstruction it removes nearly everything -- measured across
@@ -172,7 +171,7 @@ def _local_contrast_map(imagery_ds, sample_geom):
     # is `dist > centre + z * spread`, so the statistic that sets it must not be
     # moved by the very objects it is meant to find: every skylight and duct
     # inflates a standard deviation, which raises the bar against itself. That
-    # self-masking is a plausible part of the under-detection Josh marked on
+    # self-masking is a plausible part of the under-detection marked on
     # 29 Edinburgh Dr -- roughly ten obstructions marked, and the colour path
     # was finding two.
     #
@@ -209,7 +208,7 @@ def _trim_blob(geom, buffer_m):
 
 
 # Skylights are the clearest thing on a roof to a camera and among the hardest
-# for everything else here. Josh marked 29 Edinburgh Dr: roughly ten
+# for everything else here. 29 Edinburgh Dr's markup has roughly ten
 # obstructions, mostly 1-2 m skylights. The pipeline found four. They are near
 # flush, so the height path cannot see them, and the colour path scores LOCAL
 # contrast -- a z-score against a blurred neighbourhood -- which a bright panel
@@ -226,7 +225,7 @@ def _trim_blob(geom, buffer_m):
 # the difference between this working and inventing objects. A percentile always
 # finds something: by construction a tenth of any facet is in its own top
 # decile, so run per facet the detector cannot return nothing, and on 17
-# Cardigan St -- a uniformly sunlit terracotta roof with, per Josh, seven small
+# Cardigan St -- a uniformly sunlit terracotta roof with seven small marked
 # obstructions -- it manufactured eight blobs totalling 21 m2, carving 17% of a
 # 149 m2 roof down to 9 panels. Against the whole roof that same roof yields two
 # small blobs, while 29 Edinburgh Dr keeps eight real skylights.
@@ -418,8 +417,8 @@ HEIGHT_STRONG_POINT_RADIUS_M = 0.5  # per-point footprint radius for strong clus
 OBSTRUCTION_TRIM_M = 0.2  # ...and then pull that merged shape back in by this much. The radius
 # above exists for CONNECTIVITY (one duct run = one shape, not a string of beads), but it also
 # leaves a 0.5m skirt around the real object: a single flagged point became a 0.79m2 exclusion,
-# roughly 9x a small vent. Josh, on 35 Gorge Rd: "some obstructions getting drawn larger than
-# they are which is interrupting what could otherwise be a clean array". Merge wide, then hug.
+# roughly 9x a small vent. On 35 Gorge Rd obstructions drawn larger than they are interrupted
+# what could otherwise be a clean array. Merge wide, then hug.
 # Fragmenting into several smaller obstructions here is fine and usually more accurate.
 HEIGHT_STRONG_MIN_PART_AREA_M2 = 0.4  # a strong-footprint fragment smaller than this is a lone
 # stray point, not equipment worth carving a panel exclusion around
@@ -779,7 +778,7 @@ def _lidar_signature(blob, pc_source, plane):
 
 # --- Sunken regions: the deck the height path cannot see ---------------------
 # detect_obstructions_from_height finds points ABOVE the plane -- equipment
-# protrudes. 26 Panorama Terrace is the inverse: a structure Josh marked sits
+# protrudes. 26 Panorama Terrace is the inverse: a marked structure sits
 # about 2 m BELOW the facet that spans it, the colour path proposes nothing
 # there (similar tone to the roof), and 23.4 m2 of panels went onto it. A
 # region of returns well below its own facet's plane is not roof that facet can
@@ -947,7 +946,7 @@ def detect_obstructions_combined(imagery_ds, pc_source, facet_geom, plane,
             # On a flat commercial roof the colour path flags membrane tone and
             # shadow -- 7 Shotover St: 242.7 m2 of a 462 m2 roof -- so keeping a
             # 73 m2 region whole because one small vent sits inside it carved a
-            # quarter of that roof away (Josh: "incorrect obstructions").
+            # quarter of that roof away with incorrect obstructions.
             #
             # A blob small enough to be one plausible object is still kept
             # whole: trimming a 3 m2 vent housing back to its raised core would
@@ -963,12 +962,12 @@ def detect_obstructions_combined(imagery_ds, pc_source, facet_geom, plane,
         elif (COLOUR_ONLY_MIN_AREA_M2 <= blob.area <= COLOUR_ONLY_MAX_AREA_M2
               and _elongation_ratio(blob) <= COLOUR_ONLY_MAX_ELONGATION
               and _lidar_signature(blob, pc_source, plane)):
-            # Josh's fusion rule (29 Aug, 6 Weaver St): "an obstruction should
-            # show some signature on both. For example you don't want to
-            # identify painting discolouration as an obstruction, which lidar
-            # can tell you is flat." Live testing showed exactly that failure
-            # at scale: ~10 paint patches carved on 6 Weaver where he counts
-            # ONE object, and dozens speckled across 101/8 Duke St. A colour
+            # The fusion rule: an obstruction should show a signature in
+            # both instruments -- paint discolouration is not an obstruction,
+            # and the LiDAR can tell it is flat. Live testing showed exactly
+            # that failure at scale: ~10 paint patches carved on 6 Weaver St
+            # where there is ONE object, and dozens speckled across 101/8
+            # Duke St. A colour
             # blob that overlaps a height detection is corroborated above;
             # one that does not must at least sit over raw returns that are
             # off the plane. Paint is flat; equipment is not. Skylights are
@@ -1030,8 +1029,8 @@ def detect_obstructions_combined(imagery_ds, pc_source, facet_geom, plane,
 
     # Bright compact objects join on their own terms -- see detect_bright_objects.
     # They are the skylight case, which the height path cannot see (near flush)
-    # and the local-contrast colour path only sometimes clears. Josh marked
-    # roughly ten obstructions on 29 Edinburgh Dr and this pipeline found four;
+    # and the local-contrast colour path only sometimes clears. 29 Edinburgh
+    # Dr has roughly ten marked obstructions and this pipeline found four;
     # the brightness tail finds nine.
     try:
         bright = detect_bright_objects(imagery_ds, facet_geom, roof_geom)

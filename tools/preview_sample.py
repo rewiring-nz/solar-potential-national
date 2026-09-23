@@ -2,8 +2,8 @@
 Build and RENDER a handful of roofs, so a geometry change can be judged in
 minutes instead of a district rebuild.
 
-Josh: "is there a way to test on a smaller amount of buildings so we can have a
-more efficient feedback loop". Yes, and the lack of one has been the real cost
+A way to test on a small number of buildings, for a faster feedback loop.
+The lack of one has been the real cost
 this week. Every change today was judged either by an aggregate that cannot see
 a building shipping zero panels, or by a 4.5 hour rebuild followed by opening
 the live map. Both are too slow and too coarse, which is why five regressions
@@ -21,8 +21,8 @@ which is what a partition change alters and what a person can actually judge by
 eye. The panel count here is what the fitter placed, before gating -- close to
 but not identical with what ships.
 
-CHOOSING THE SAMPLE MATTERS MORE THAN THE SIZE. --labelled draws from the roofs
-Josh has drawn, where there is ground truth; --like takes buildings that
+CHOOSING THE SAMPLE MATTERS MORE THAN THE SIZE. --labelled draws from the
+marked roofs, where there is ground truth; --like takes buildings that
 resemble a given one, which is how you check whether a fix generalises off the
 roofs it was tuned on. That distinction is exactly what caught the sawtooth
 twin: 7 Anderson Heights was right and 7 Duncan's Place, the same roof design
@@ -39,6 +39,7 @@ import base64
 import io
 import json
 import math
+import os
 import sys
 import warnings
 from concurrent.futures import ProcessPoolExecutor
@@ -77,7 +78,7 @@ def _one(bid):
     from PIL import Image
     from src.roof_segmentation import segment_building_best
     from src.obstruction_detection import detect_obstructions_combined
-    from src.panel_fitting import fit_panels_on_facet
+    from src.panel_fitting import fit_panels_on_facet, building_frame, register_frame
     from src.roof_line_source import drawn_segments
 
     g = _CTX["gdf"]
@@ -90,6 +91,14 @@ def _one(bid):
     except Exception as exc:
         return {"id": bid, "error": f"{type(exc).__name__}: {exc}"}
 
+    # the same building frame the build uses (panel_fitting.building_frame)
+    # SOLAR_FRAME=0 lays out the old way (each face its own grid) for A/B runs
+    frame = building_frame(facets, geom) if facets and os.environ.get("SOLAR_FRAME", "1") != "0" else None
+    if frame is not None:
+        try:
+            frame = register_frame(frame, facets)
+        except Exception:
+            pass
     panels = []
     for f in facets:
         if f.get("plane_a") is None:
@@ -116,7 +125,7 @@ def _one(bid):
             obs = []
         sib = [o for o in facets if o is not f]
         try:
-            for pnl in (fit_panels_on_facet(f, obstructions=obs,
+            for pnl in (fit_panels_on_facet(f, obstructions=obs, frame=frame,
                                             sibling_facets=sib,
                                             fold_keepouts=kout) or []):
                 panels.append(pnl["geometry"] if isinstance(pnl, dict) else pnl)
@@ -151,6 +160,7 @@ def _one(bid):
         "outline": ring(geom),
         "facets": [{"ring": ring(f["geometry"]),
                     "slope": round(f.get("slope_deg", 0), 1),
+                    "aspect": round(f.get("aspect_deg", 0), 1),
                     "labels": bool(f.get("from_labels")),
                     "selected": bool(f.get("from_selected")),
                     "m2": round(f.get("area_m2", 0), 1)} for f in facets],
@@ -179,9 +189,9 @@ PAGE = """<title>Roof preview</title>
 <div class="sub">__SUB__</div>
 <div class="key">
  <span class="k" style="background:var(--fac)"></span>facet edge
- <span class="k" style="background:var(--lab)"></span>facet from Josh's markup
+ <span class="k" style="background:var(--lab)"></span>facet from the markup
  <span class="k" style="background:var(--pan)"></span>panel
- <span class="k" style="background:var(--drawn)"></span>line Josh drew
+ <span class="k" style="background:var(--drawn)"></span>drawn line
 </div>
 <div class="grid" id="g"></div>
 <script>
@@ -234,7 +244,7 @@ def main():
     ap.add_argument("--region", default="pilot")
     ap.add_argument("--n", type=int, default=24)
     ap.add_argument("--labelled", action="store_true",
-                    help="sample from roofs Josh has marked complete")
+                    help="sample from roofs marked complete")
     ap.add_argument("--jobs", type=int, default=0)
     ap.add_argument("--out", default="preview.html")
     a = ap.parse_args()

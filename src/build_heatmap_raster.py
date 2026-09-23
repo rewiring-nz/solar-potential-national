@@ -49,7 +49,8 @@ from src.solar_model import SolarModel
 from src.building_shading import building_shading_factor
 from src.building_horizon import (far_profile as _hz_far_profile,
                                   far_beam_ratio as _hz_far_ratio,
-                                  eave_height as _hz_eave_height)
+                                  eave_height as _hz_eave_height,
+                                  load_far_dem as _hz_load_far_dem)
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 VMIN, VMAX = 700, 1650  # kWh/m2/yr -- same fixed scale as preview.html's legend and demo_figure.py
@@ -100,8 +101,7 @@ def shading_grid(dsm_band, dsm_transform, dsm_nodata, geom, hourly,
     The raster used to scale a whole building by ONE factor taken at its
     footprint centroid, so its within-roof variation came only from
     orientation -- a roof half-buried under a neighbour's macrocarpa rendered
-    as brightly as an open one, and Josh (31 Aug) asked why the heat map does
-    not show shadows. It now varies per position, which is the whole point of
+    as brightly as an open one: the heat map did not show shadows. It now varies per position, which is the whole point of
     a per-pixel layer.
 
     Returns (grid, xs, ys): grid[j, i] is the factor at (xs[i], ys[j]), ys
@@ -220,13 +220,11 @@ def main(area="pilot"):
 
     t0 = time.time()
     rendered = 0
-    dem_wide_path = DATA_DIR / "dem_wide_mosaic.tif"
-    if dem_wide_path.exists():
-        _dw = rasterio.open(dem_wide_path)
-        dem_wide_band, dem_wide_transform, dem_wide_nodata = _dw.read(1), _dw.transform, _dw.nodata
-    else:
-        dem_wide_band = dem_wide_transform = dem_wide_nodata = None
-        print(f"[{area}] WARNING: no data/dem_wide_mosaic.tif -- far-terrain "
+    # Only the slice this region's rays can reach (building_horizon.load_far_dem).
+    dem_wide_band, dem_wide_transform, dem_wide_nodata = _hz_load_far_dem(
+        DATA_DIR / "dem_wide_mosaic.tif", dsm_ds.bounds)
+    if dem_wide_band is None:
+        print(f"[{area}] WARNING: no usable data/dem_wide_mosaic.tif -- far-terrain "
               f"correction is OFF for this raster.", flush=True)
 
     for i, row in enumerate(gdf.itertuples()):

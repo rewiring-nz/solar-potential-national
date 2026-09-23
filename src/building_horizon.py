@@ -1,7 +1,7 @@
 """
 Per-building horizon: ONE 72-bin profile per building, the single source of
-truth for every number the site shows (Josh, 30 Aug: "make sure all
-calculations, like generation profiles, economics and savings that show, and
+truth for every number the site shows (every calculation -- generation
+profiles, economics, savings -- and
 heat maps, all take into account these horizons").
 
 Two layers, combined by per-bin max:
@@ -208,3 +208,48 @@ def far_beam_ratio(far, baseline, hourly):
         return 1.0
     num = dni[base_vis & (el > horizon_angle_at(far, az))].sum()
     return float(min(num / denom, 1.0))
+
+
+def load_far_dem(path, bounds, crs=None):
+    """The slice of the wide DEM this region's far horizons can actually reach.
+
+    `bounds` is the region's extent in the DEM's own CRS (NZTM here, which is
+    what every raster in this pipeline uses). Returns
+    (band, transform, nodata), or (None, None, None) when there is no wide DEM
+    or it does not overlap the region at all.
+
+    WHY A WINDOW AND NOT THE WHOLE FILE. Every build worker used to read the
+    entire mosaic, and the pool runs with a spawn context, so each worker holds
+    its own copy rather than sharing the parent's. That was 70 MB a worker
+    while the mosaic covered Queenstown alone. Widening it to reach Kingston
+    and Wanaka on 22 September made it 1.12 GB -- about 16 GB across a 16-core
+    build, all of it terrain no ray will ever touch, since far_profile marches
+    FAR_MAX_KM and stops.
+
+    The window is therefore the region plus exactly that reach. It is also
+    strictly more correct than reading the whole file: the old code handed
+    every region the same array regardless of where the region was, so the
+    memory grew with the DISTRICT while the useful part stayed the size of a
+    town.
+    """
+    import rasterio
+    from rasterio import windows
+    from rasterio.errors import WindowError
+
+    pad = FAR_MAX_KM * 1000.0
+    try:
+        with rasterio.open(path) as ds:
+            win = windows.from_bounds(bounds[0] - pad, bounds[1] - pad,
+                                      bounds[2] + pad, bounds[3] + pad,
+                                      transform=ds.transform)
+            win = win.round_offsets().round_lengths()
+            try:
+                win = win.intersection(windows.Window(0, 0, ds.width, ds.height))
+            except WindowError:
+                return None, None, None
+            if win.width <= 0 or win.height <= 0:
+                return None, None, None
+            return (ds.read(1, window=win),
+                    windows.transform(win, ds.transform), ds.nodata)
+    except Exception:
+        return None, None, None

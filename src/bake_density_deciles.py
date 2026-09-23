@@ -32,7 +32,9 @@ SYSTEM_PANEL_STEPS = [7, 10, 14, 17, 20, 27, 34, 45, 68]
 
 
 
-COVERAGE_STEPS = [5, 10, 25, 50, 100]
+# Every step the coverage dropdown offers, so each listed option is measured
+# rather than interpolated. Mirrored by COVERAGE_POA_STEPS in preview.html.
+COVERAGE_STEPS = [5, 10, 15, 25, 50, 75, 100]
 
 
 def _ring_area(geom):
@@ -60,8 +62,8 @@ def _coverage_poa(facets, pct):
     Roof coverage is not linear in output and treating it as such overstates a
     partial system badly. Someone covering 10% of their roof puts the panels on
     the best 10%, which yields well above the roof average; someone covering
-    100% is also taking the south face. Josh: "if just 10% is covered, it would
-    be the sunniest 10% ... 100% would not be 10 times higher than the 10%".
+    100% is also taking the south face: 10% coverage is the sunniest 10%, and
+    100% is not ten times the 10% figure.
 
     kWp stays linear in area -- half the roof is half the panels -- so only the
     POA term changes, which keeps this a drop-in for the existing estimate.
@@ -83,9 +85,17 @@ def _coverage_poa(facets, pct):
     return acc_weighted / acc_area if acc_area > 0 else 0.0
 
 
-def main():
-    preflight("bake_density_deciles")
-    layouts = json.loads((DATA_DIR / "panel_layouts.geojson").read_text())
+def bake(sp, layouts):
+    """Bake the ladders into `sp` (a solar_potential document) from `layouts`
+    (a panel_layouts document). Returns how many buildings matched a layout.
+
+    A FUNCTION OF TWO DOCUMENTS, not of two files at the data root: it is
+    per-building arithmetic and always was. It read the merged files only
+    because they were there, which is what made it a fan-in stage -- and
+    the fan-in is what does not scale (docs/scale-architecture.md).
+    emit_region calls this on one region; main() below still serves the
+    merged path while it exists.
+    """
     per_building = {}
     # Facet (area, POA) pairs per building, for the coverage curve below.
     facets_by_building = {}
@@ -103,8 +113,6 @@ def main():
             (p.get("fill_rank", 100), p.get("ac_kwh_year", 0),
              p.get("fill_order", 0), p.get("array_size", 1)))
 
-    sp_path = DATA_DIR / "solar_potential.geojson"
-    sp = json.loads(sp_path.read_text())
     matched = 0
     for feat in sp["features"]:
         b = feat["properties"]["building_id"]
@@ -133,13 +141,22 @@ def main():
         # System-size targeting: cumulative kWh by fill_order, so the frontend
         # can ask "the best N panels" (a 6kW system) and get the right energy
         # without loading the panel tiles. Stored at the sizes a real quote
-        # uses; households are 3-12kW (Josh), so the ladder is dense there.
+        # uses; households are 3-12kW, so the ladder is dense there.
         by_order = sorted(t for t in panels if t[2])
         for n in SYSTEM_PANEL_STEPS:
             sel = by_order[:n]
             feat["properties"][f"sys_kwh_{n}"] = int(round(sum(t[1] for t in sel)))
         if panels:
             matched += 1
+    return matched
+
+
+def main():
+    preflight("bake_density_deciles")
+    layouts = json.loads((DATA_DIR / "panel_layouts.geojson").read_text())
+    sp_path = DATA_DIR / "solar_potential.geojson"
+    sp = json.loads(sp_path.read_text())
+    matched = bake(sp, layouts)
     write_json_atomic(sp_path, sp)
     print(f"Baked deciles for {matched}/{len(sp['features'])} buildings "
           f"({sp_path.stat().st_size / 1e6:.1f}MB)")

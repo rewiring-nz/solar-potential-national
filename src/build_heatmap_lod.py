@@ -41,8 +41,8 @@ HEATMAPS_DIR = DATA_DIR / "heatmaps"
 LOD_DIR = HEATMAPS_DIR / "lod"
 MAX_DIM = 4096
 # A MIDDLE TIER, because 4096 is the right cap for DISTRICT zoom and much too
-# coarse for the zooms in between. Josh, 19 Sep: "It seems low resolution and
-# maybe lower resolution than the underlying point cloud data?" Measured: the
+# coarse for the zooms in between -- it looked lower resolution than the
+# underlying point cloud. Measured: the
 # full rasters are 0.41-0.44 m/px against a point cloud of 4.9-7.4 pts/m2
 # (0.37-0.45 m spacing), so at z16.5+ the raster already matches the survey
 # and cannot honestly go finer. Below that the overview copy took over, and

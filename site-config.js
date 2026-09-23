@@ -4,7 +4,7 @@
 //
 // Why it exists: preview.html was unified across both deploys on 31 Aug, and
 // its DEFAULT_VIEW was hardcoded to Island Bay. That silently pointed the
-// QUEENSTOWN site at Wellington on first load -- Josh found it on 1 Sep. A
+// QUEENSTOWN site at Wellington on first load. A
 // shared file cannot carry a per-site default, so the default moved here.
 //
 // Loaded synchronously before the map is constructed, so there is no visible

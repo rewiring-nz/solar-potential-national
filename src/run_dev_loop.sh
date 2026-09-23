@@ -3,8 +3,8 @@
 # whole district.
 #
 # A full rebuild is 15,353 buildings across 24 areas and takes about 4.5
-# hours, which is far too slow to iterate placement changes against -- Josh,
-# after a day of it: "it's taking a lot of time now to implement fixes and we
+# hours, which is far too slow to iterate placement changes against: fixes
+# took too long to implement and we
 # have a lot to fix". Pilot alone is 1,066 buildings (6.9% of the district)
 # and rebuilds in roughly 15 minutes.
 #

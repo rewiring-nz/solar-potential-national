@@ -22,9 +22,9 @@ WHAT IT CHECKS AND WHY EACH ONE EXISTS
               not panel_count, which run_layouts_regate does not regenerate.
   YIELD       kWh per kWp per region, inside a physically defensible band.
               Catches a calibration or loss change that has gone the wrong way.
-  WATCHLIST   the buildings Josh reported by hand. A district total can look
-              perfect while the specific roof he complained about is broken
-              again, and he WILL check that one.
+  WATCHLIST   the buildings reported by hand. A district total can look
+              perfect while the specific roof reported is broken again, and
+              that one WILL be checked.
   INVARIANTS  the physical bounds in src/invariants.py.
 
 A FAIL blocks the push. A WARN is for a human to read and decide.

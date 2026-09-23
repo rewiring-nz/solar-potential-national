@@ -1,7 +1,7 @@
 """
 Score every building's layout on the things that make it look wrong.
 
-Josh found 21 bad buildings by clicking around for an afternoon. Every one
+An afternoon of clicking around found 21 bad buildings. Every one
 was real, and the audit scripts we already had (edge overlap, facet escape,
 lumpy, z-split) flagged none of them, because those measure GEOMETRIC
 correctness -- is the panel inside its facet, is the surface under it flat --
@@ -16,8 +16,7 @@ Per building:
               two compact arrays; twelve islands is confetti.
   angles      distinct panel bearings (5-degree bins). More than one on a
               building usually means facets disagreed about which way to
-              rack -- Josh on 26 Isle St, "it should just fill consistently
-              in the same direction".
+              rack -- 26 Isle St should fill consistently in one direction.
   obstr       obstruction area as a share of resolved roof. Over ~35% is
               almost always over-carve, not equipment.
   stranded    panels not part of any group of >= MIN_CLEAN_ARRAY panels --

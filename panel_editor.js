@@ -1,7 +1,7 @@
 /* Hand-editing a roof's panel layout.
  *
- * Josh: "click on a panel, and then delete it with a little pop up bin icon
- * ... 4 + sign bubbles on each edge so I can add a panel in any direction (or
+ * Click a panel to delete it with a pop-up bin icon; four + bubbles on its
+ * edges add a panel in any direction (or
  * not if there are already panels there) ... add a new panel, so then many can
  * be added to it with the same plus buttons ... shift-selectable, so they can
  * be shift selected and dragged to be moved around. Maybe only selected onto
@@ -217,8 +217,7 @@
     for (let dir = 0; dir < 4; dir++) {
       const d = stepFor(ring, dir);
       const cand = translate(ring, d);
-      if (occupied(cand)) continue;            // Josh: "(or not if there are
-                                               // already panels there)"
+      if (occupied(cand)) continue;            // not where a panel already is
       const at = add(c, scale(d, 0.72));       // just outside the panel edge
       const pt = map.project(toLngLat(at[0], at[1]));
       const plus = mkHandle("pe-plus", "+", "Add a panel here",
@@ -384,8 +383,7 @@
 
   // ---------- input ----------
   function wire() {
-    // DOUBLE click to select, on purpose. Josh: "only selected onto with
-    // double click, to avoid accidentally selecting panels by the user" --
+    // DOUBLE click to select, on purpose, to avoid accidental selection --
     // single-click already means "open this building" everywhere else.
     map.on("dblclick", ev => {
       if (!S.active) return;

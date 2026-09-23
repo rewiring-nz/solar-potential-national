@@ -90,7 +90,7 @@ tippecanoe -o data/panel_layouts.pmtiles --force -l layout \
 
 echo "IBFULL3 COMPLETE $(date -u +%H:%M:%S)" >> "$MARK"
 
-# Report for Josh to read before anything is pushed.
+# Report to read before anything is pushed.
 {
   echo "=== Island Bay rebuild, $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
   echo "FIRST IB build carrying the gap-fill pass and the straggler yield fix."

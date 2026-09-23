@@ -1,23 +1,22 @@
 """Two independent readings of a roof's faces, and the evidence to choose one.
 
-A day of Josh's verdicts established that no single front-end wins everywhere:
+Review of a day's results established that no single front-end wins everywhere:
 
-  LINE NETWORK  best on crease-textured hip houses -- "much better" on
-                7 Anderson Heights -- because the detector fires on folds
-  SAM           best where faces differ in tone or material -- "clearly
-                better than any of your lines" on #4735106 -- because it
-                segments surfaces, not folds
+  LINE NETWORK  best on crease-textured hip houses (7 Anderson Heights)
+                because the detector fires on folds
+  SAM           best where faces differ in tone or material (#4735106)
+                because it segments surfaces, not folds
 
 Every attempt to MERGE them degraded the winner: each stage's failure modes
 multiplied. So they are not merged. Each generator produces a complete
 candidate face-set, a scorer measures each against the imagery and LiDAR
 evidence, and the better one is used -- per roof. Roofs where both score
-poorly belong in Josh's markup queue, not in a guess.
+poorly belong in the manual markup queue, not in a guess.
 
 The scorer's authority is not taken on faith: tools/select_faces.py measures,
-on the benchmark roofs Josh has drawn, whether the scorer picks the candidate
-that agrees better with HIS faces. Selection accuracy against his markup is
-the only accepted validation here.
+on the benchmark roofs with manual markup, whether the scorer picks the
+candidate that agrees better with the drawn faces. Selection accuracy against
+the markup is the only accepted validation here.
 """
 
 import math
@@ -217,17 +216,18 @@ def sam_faces(predictor, rgb, geom, bounds, pts):
                         break
             if changed:
                 break
-    # a roof edge is straight; a wavy boundary is mask noise, and Josh reads
-    # it as "fuzzy incorrect lines". Simplify harder, and collapse micro-jags
+    # a roof edge is straight; a wavy boundary is mask noise and reads as
+    # fuzzy, incorrect lines. Simplify harder, and collapse micro-jags
     # by closing/opening before the simplify so staircase pixels go first.
     out_faces = []
+    ax = building_axis(geom)
     for p2 in polys:
         if p2.area < 2.0:
             continue
-        q = p2.buffer(0.15).buffer(-0.15).simplify(0.35)
+        q = p2.buffer(0.15).buffer(-0.15)
         if q.geom_type != "Polygon" or q.is_empty:
-            q = p2.simplify(0.3)
-        out_faces.append(q)
+            q = p2
+        out_faces.append(regularise(q, ax))
     return out_faces, obs
 
 
@@ -235,10 +235,9 @@ def sam_faces(predictor, rgb, geom, bounds, pts):
 
 def obstruction_mask(rgb, geom, bounds, pts, h, w):
     """Pixel mask of probable rooftop obstructions, computed BEFORE any
-    line reasoning. Josh, 14 Sep: "there can be really clear roof lines
-    with a few obstructions and they seem to throw off your roof lines...
-    define the simple roof lines first, then try to detect the
-    obstructions." The detector cannot tell a duct edge from a ridge, so
+    line reasoning. A few obstructions throw off otherwise clear roof
+    lines, so the simple roof lines come first and obstructions are
+    detected after. The detector cannot tell a duct edge from a ridge, so
     obstruction pixels are silenced in its activation before extraction.
     """
     import numpy as np
@@ -275,8 +274,8 @@ def obstruction_mask(rgb, geom, bounds, pts, h, w):
 
 
 def lidar_step_channel(pts, bounds, h, w):
-    """Cliff evidence measured, not learned. Josh: "It needs to see hips
-    and edges/cliffs." A cliff is a height step, and the laser measures
+    """Cliff evidence measured, not learned. The reading has to see hips
+    and cliffs. A cliff is a height step, and the laser measures
     height steps directly (cliff F1 from imagery alone: 0.143) -- so the
     cliff channel gets the LiDAR's answer OR'd in at extraction, and the
     camera is only asked about what only the camera can see.
@@ -348,20 +347,102 @@ def line_faces(line_model, device, rgb, geom, bounds, pts, building_id=0):
     if not segs:
         return [], pr
     facets = line_facets(building_id, geom, pts, segs) or []
-    return [f["geometry"] for f in facets], pr
+    ax = building_axis(geom)
+    return [regularise(f["geometry"], ax) for f in facets], pr
 
 
 # --------------------------------------------------------------- scorer
+
+# ---------------------------------------------------------- straight edges
+
+# A ROOF EDGE IS STRAIGHT. Everything here exists because a wavy boundary
+# is a mistake about the roof: fuzzy, jagged boundaries following nothing
+# visible in the imagery, inaccurate roof lines drawn where there are none,
+# too many faces in the wrong places.
+#
+# Each reading traces something raster -- a SAM mask, a thinned line network,
+# a LiDAR label grid -- and a raster traces a straight eave as a staircase.
+# An isotropic simplify cannot remove a staircase, because every tread is a
+# real vertex a fixed distance from the chord; rotating into the BUILDING'S
+# frame first can, because there the staircase is a run of nearly-equal
+# coordinates and collapses to one line.
+#
+# This was written for lidar_faces and lived inside it, so the two readings
+# that produced every roof flagged as jagged did not get it: sam_faces
+# only simplified isotropically at 0.35, and line_faces did not simplify at
+# all. Shared here, and applied by all three.
+SNAP_M = 0.5            # a jog shorter than this in the building frame is noise
+SIMPLIFY_M = 0.55       # chord tolerance in the building frame
+SIMPLIFY_FINAL_M = 0.35
+MIN_KEEP_FRAC = 0.7     # a snap that eats 30% of the face was not a jog
+
+
+def building_axis(geom):
+    """The angle of the building's long side, in radians."""
+    try:
+        cc = list(geom.minimum_rotated_rectangle.exterior.coords)
+        return float(np.arctan2(cc[1][1] - cc[0][1], cc[1][0] - cc[0][0]))
+    except Exception:
+        return 0.0
+
+
+def regularise(part, ax):
+    """Straighten a traced boundary in the building's own frame."""
+    import shapely.affinity as aff
+    from shapely.geometry import Polygon
+    # Polygon is imported HERE on purpose. This body was lifted out of
+    # lidar_faces, which imports it locally, and the first version relied on a
+    # module-level name that does not exist -- so every call raised NameError
+    # into the except below, fell back to an isotropic simplify, and quietly
+    # did the opposite of its job: #4735106 went 35 -> 67 vertices and
+    # #4734994 50 -> 56, both roofs already flagged as jagged.
+    if part is None or part.is_empty or part.geom_type != "Polygon":
+        return part
+    try:
+        rot = aff.rotate(part, -np.degrees(ax), origin=(0, 0))
+        rot = rot.simplify(SIMPLIFY_M)
+        if rot.geom_type == "Polygon":
+            cs = list(rot.exterior.coords)[:-1]
+            snapped = []
+            for i2 in range(len(cs)):
+                x0, y0 = cs[i2]
+                xp, yp = cs[i2 - 1]
+                if abs(x0 - xp) < SNAP_M:
+                    x0 = (x0 + xp) / 2
+                    if snapped:
+                        snapped[-1] = (x0, snapped[-1][1])
+                if abs(y0 - yp) < SNAP_M:
+                    y0 = (y0 + yp) / 2
+                    if snapped:
+                        snapped[-1] = (snapped[-1][0], y0)
+                snapped.append((x0, y0))
+            if len(snapped) >= 3:
+                cand = Polygon(snapped)
+                if cand.is_valid and cand.area > MIN_KEEP_FRAC * rot.area:
+                    rot = cand.simplify(SIMPLIFY_FINAL_M)
+        reg = aff.rotate(rot, np.degrees(ax), origin=(0, 0))
+    except Exception:
+        reg = None
+    # NO AREA GUARD HERE. The inner snap already refuses a collapse that eats
+    # MIN_KEEP_FRAC of the face; adding a second test on the whole result only
+    # sends good rectifications back to an isotropic simplify, which measured
+    # WORSE -- #4735106 went from 6 to 12 vertices a face and #4734994 from
+    # 10 to 11, both of them roofs already flagged as jagged.
+    if (reg is None or not reg.is_valid or reg.is_empty
+            or reg.geom_type != "Polygon"):
+        return part.simplify(0.3)
+    return reg
+
 
 def lidar_faces(pts, geom):
     """LiDAR-first reading: normal-based region growing on the point cloud,
     regularised to the building's axes, tiled to the footprint.
 
-    Why a third family: the two imagery families go blind exactly where Josh
-    kept flagging failures -- tree shadow (#4735106) and cluttered flats
+    Why a third family: the two imagery families go blind exactly where
+    failures kept recurring -- tree shadow (#4735106) and cluttered flats
     (#4735244). Shadows and clutter do not exist in the point cloud. Greedy
     RANSAC was measured absorbing small raised faces into neighbouring big
-    planes (2 Kent St: 4 faces where Josh counts 13-14); growing regions by
+    planes (2 Kent St: 4 faces where the markup has 13-14); growing regions by
     NORMAL agreement is the fix the audit named.
     """
     import numpy as np
@@ -509,10 +590,7 @@ def lidar_faces(pts, geom):
         cell_label = m2
         cell_label[cell_label == -9] = big
 
-    # dominant axes of the footprint for boundary regularisation
-    mrr = geom.minimum_rotated_rectangle
-    cc = list(mrr.exterior.coords)
-    ax = np.arctan2(cc[1][1] - cc[0][1], cc[1][0] - cc[0][0])
+    ax = building_axis(geom)
 
     faces = []
     for r in sorted(set(cell_label.ravel())):
@@ -537,36 +615,7 @@ def lidar_faces(pts, geom):
         for part in parts:
             if part.geom_type != "Polygon" or part.area < 6.0:
                 continue
-            # regularise: rotate into the building frame, simplify with a
-            # coarse tolerance there (axis-parallel jags collapse), rotate back
-            import shapely.affinity as aff
-            rot = aff.rotate(part, -np.degrees(ax), origin=(0, 0))
-            rot = rot.simplify(0.55)
-            # axis-snap: raster stair-steps survive simplify as short jogs;
-            # in the building frame a nearly-axis-parallel edge IS axis
-            # parallel, so collapse runs of nearly-equal x (or y) vertices
-            if rot.geom_type == "Polygon":
-                cs = list(rot.exterior.coords)[:-1]
-                snapped = []
-                for i2 in range(len(cs)):
-                    x0, y0 = cs[i2]
-                    xp, yp = cs[i2 - 1]
-                    if abs(x0 - xp) < 0.5:
-                        x0 = (x0 + xp) / 2
-                        if snapped:
-                            snapped[-1] = (x0, snapped[-1][1])
-                    if abs(y0 - yp) < 0.5:
-                        y0 = (y0 + yp) / 2
-                        if snapped:
-                            snapped[-1] = (snapped[-1][0], y0)
-                    snapped.append((x0, y0))
-                if len(snapped) >= 3:
-                    cand2 = Polygon(snapped)
-                    if cand2.is_valid and cand2.area > 0.7 * rot.area:
-                        rot = cand2.simplify(0.35)
-            reg = aff.rotate(rot, np.degrees(ax), origin=(0, 0))
-            if not reg.is_valid or reg.is_empty or reg.geom_type != "Polygon":
-                reg = part.simplify(0.3)
+            reg = regularise(part, ax)
             if reg.geom_type == "Polygon" and reg.area >= 6.0:
                 faces.append(reg)
     return faces
@@ -641,9 +690,9 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
     """STRUCTURE FIRST: test simple parametric roof forms against the
     evidence, instead of assembling detections into shapes.
 
-    Josh, 14 Sep, after weeks of bottom-up failures on visually obvious
-    roofs: "Roofs are simpler shapes... define the simple roof lines
-    first, then try to detect the obstructions." Bottom-up compounds
+    After weeks of bottom-up failures on visually obvious roofs: roofs are
+    simpler shapes, so define the simple roof lines first, then detect the
+    obstructions. Bottom-up compounds
     errors -- fragments, guessed archetypes, obstruction edges read as
     ridges. Here the vocabulary is closed: per rectangular part, the roof
     is FLAT, a GABLE, a HIP, or a PYRAMID; each form's predicted seams
@@ -736,7 +785,7 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
         # GABLE: ridge full length. Real gables are asymmetric, so the
         # ridge SLIDES across the width and keeps the offset where seam
         # activation peaks (v1 fixed it at the midline and scored 0.5-0.6
-        # on his simple gables while the incumbents hit 0.85+).
+        # on simple drawn gables while the incumbents hit 0.85+).
         best_off, best_sup = 0.5, -1.0
         for t in (0.3, 0.38, 0.44, 0.5, 0.56, 0.62, 0.7):
             ra = A + v * (Wd * t); rb = ra + u * L
@@ -760,7 +809,7 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
         if x1.geom_type == "Polygon" and x2.geom_type == "Polygon" \
                 and x1.area > 4 and x2.area > 4:
             out["gable_x"] = ([x1, x2], [(tuple(sa), tuple(sb))])
-        # HIP with a RIDGE BAND. Josh's #4735623 gold: hips at the ends
+        # HIP with a RIDGE BAND. The #4735623 markup: hips at the ends
         # and a THIN flat band along the ridge (a clerestory strip). Pure
         # hip (band 0) and truncated hip are endpoints of one family; the
         # band width is chosen by evidence like the gable ridge offset.
@@ -802,7 +851,7 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
                        for f in faces):
                     out[name] = (faces, seams)
         # TRUNCATED HIP: sloped skirt around a flat top -- the form both
-        # #4735623 and #5371107 actually are (Josh's gold overlay made it
+        # #4735623 and #5371107 actually are (the markup overlay makes it
         # unmissable: perimeter hips, recessed centre). Inset slides like
         # the gable ridge does: the top edge sits where seam evidence
         # peaks.
@@ -840,10 +889,9 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
         # THE FLAT TOP WHERE THE LIDAR ACTUALLY PUTS IT. The form above
         # insets the same distance from all four sides, so its top is
         # always centred, and snap_form then slides it on a guess-grid --
-        # which is how #4735292 got a box carved into one slope. Josh, on
-        # the fourth time he raised that roof: "you are missing the square
-        # in the middle at the top. It ends in a square at the peak which
-        # should be visible in both imagery and lidar." It is: a plateau of
+        # which is how #4735292 got a box carved into one slope. That roof
+        # ends in a square at the peak, visible in both imagery and
+        # LiDAR: a plateau of
         # cells 0.9 m above the surrounding roof with a sharp step at its
         # edge. So MEASURE the top rather than sweeping for it -- per-side
         # insets read off the plateau, which is the same family, placed by
@@ -864,7 +912,19 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
                       Polygon([c3, c4, j4, j3]), Polygon([c4, c1, j1, j4])]
                 faces = [top.intersection(part)] + \
                     [f.intersection(part) for f in sk]
-                if all(f.geom_type == "Polygon" and f.area > 2 for f in faces):
+                # A FLAT TOP THAT EATS THE ROOF IS NOT A FLAT TOP. When the
+                # detected plateau covers most of the part, the four skirts
+                # degenerate into slivers and the "form" is a big face with
+                # scraps around it -- #5371115 shipped 63 m2 plus four
+                # pieces of 4-7 m2 and then placed no panels at all. A
+                # truncated hip is a top INSIDE a roof: if the plateau is
+                # most of the surface the honest reading is a flat roof,
+                # which the flat form already offers and can win on its own.
+                _top_share = (faces[0].area / max(part.area, 1e-9)
+                              if faces and faces[0].geom_type == "Polygon" else 1.0)
+                if all(f.geom_type == "Polygon" and f.area > 2 for f in faces) \
+                        and _top_share < 0.55 \
+                        and min(f.area for f in faces[1:]) > 0.04 * part.area:
                     out["trunc_lidar"] = (faces, [
                         (tuple(j1), tuple(j2)), (tuple(j2), tuple(j3)),
                         (tuple(j3), tuple(j4)), (tuple(j4), tuple(j1))])
@@ -886,8 +946,8 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
         parts = [q for q in rect_parts(geom) if q.area > 15]
     except Exception:
         parts = []
-    # Josh on the residential panel: "overly simplified. Missing some
-    # clearly defined faces." An attached wing or garage is 8-11% of the
+    # The residential panel was overly simplified, missing clearly
+    # defined faces. An attached wing or garage is 8-11% of the
     # footprint, so the substantial-parts filter absorbed it into the main
     # blob and its faces never existed. At residential scale every
     # rectangular part >= 16 m2 gets its own form.
@@ -900,8 +960,8 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
                       "hip": 0.09, "pyramid": 0.09, "skeleton": 0.07,
                       "trunc_hip": 0.10, "trunc_lidar": 0.10, "hip_band1.6": 0.10,
                       "hip_band2.6": 0.10}
-    # THE SKELETON FORM. Josh's 3-6 face tier (his villas: hips with
-    # valleys wrapping the wings) measured 0.14-0.40 because no simple
+    # THE SKELETON FORM. The 3-6 face tier (villas: hips with valleys
+    # wrapping the wings) measured 0.14-0.40 because no simple
     # form has an L-hip. The constructive straight-skeleton builder from
     # the August arc generates exactly that network from the outline; it
     # competes on the WHOLE footprint against the per-part assembly.
@@ -937,7 +997,7 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
             group to the evidence peak. The parametric seams sit at ideal
             MRR positions; the real ridge/hips are often offset a metre or
             two, so the hip evidence v6 finally sees went unclaimed (sup
-            0.20 along the ideal lines vs 0.74 along Josh's drawn hips)."""
+            0.20 along the ideal lines vs 0.74 along the drawn hips)."""
             if not seams:
                 return faces, seams, 0.0
             best = (faces, seams, np.mean([seam_support(a, b)
@@ -1016,10 +1076,9 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
             # pyramid scored ~0.78, while a truncated hip -- whose flat
             # top's seams run parallel to the eaves -- scored 0.91 for
             # inventing a flat top that is not there. #4735292 (36 Stanley
-            # St, the square pyramid Josh has flagged repeatedly) lost
-            # 0.733 to 0.689 on exactly this and shipped with a box
-            # carved into one slope. Josh: "you are inventing places to
-            # put lines that are clearly not right in the visual imagery."
+            # St, a square pyramid flagged repeatedly) lost 0.733 to
+            # 0.689 on exactly this and shipped with a box carved into
+            # one slope -- lines invented where the imagery shows none.
             eaves = []
             _rim = geom.exterior.buffer(0.6)
             for f in faces:
@@ -1093,7 +1152,7 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
             # flat top with a step at its edge, a form that runs four
             # sloping faces through it is contradicted by the data, and
             # until now nothing said so: on #4735292 the plain pyramid
-            # (which denies the square Josh kept pointing at) and the
+            # (which denies the visible square at the peak) and the
             # plateau-placed form scored 0.761 against 0.759, a tie broken
             # by nothing. The penalty is proportional to how badly the form
             # splits it, so a form that holds the plateau in one face pays
@@ -1107,7 +1166,7 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
             if name == "flat":
                 # a ONE-FACE claim is "one tilt direction (or none)": score
                 # it by tilt-field COHERENCE. The horizontal-only bonus
-                # collapsed every mono-pitch single-face roof Josh drew
+                # collapsed every drawn mono-pitch single-face roof
                 # (three 1.00 -> 0.50 regressions in one measurement):
                 # a shed roof is one face with a uniform tilt, not "flat".
                 if len(cells) >= 8:
@@ -1180,14 +1239,13 @@ def hypothesis_faces(pts, geom, prob_max, to_px):
 def evidence_map(prob_max, rgb):
     """Support for a boundary: the model's activation OR a visible edge.
 
-    Josh, on a run of roofs the selector fumbled: "It's pretty clear the model
-    is not working very well at detecting lines from my markups." He is right
-    -- and worse, the scorer judged every candidate BY that weak model's
-    activation, so on #4735106 SAM's six faces at 99% coverage (his verdict:
-    clearly better) scored 0.341 and lost to a two-face reading. The judge
-    had the defendant's eyesight.
+    The line model detects lines from the markups poorly -- and worse, the
+    scorer judged every candidate BY that weak model's activation, so on
+    #4735106 SAM's six faces at 99% coverage (clearly the better reading)
+    scored 0.341 and lost to a two-face reading. The judge had the
+    defendant's eyesight.
 
-    Image gradient is model-free: his "clearly visible lines" are literally
+    Image gradient is model-free: clearly visible lines are literally
     high gradient. Evidence = max(model activation, scaled gradient), so a
     correct boundary on a visible crease scores even where the model is blind.
     """
@@ -1201,9 +1259,8 @@ def evidence_map(prob_max, rgb):
 
 def type_agreement(faces, geom, typed_probs, to_px, pts):
     """Does the candidate's GEOMETRY tell the same story as the detector's
-    fold TYPES? Josh, setting the night's direction: "differentiating
-    ridges, valleys, and cliffs to better detect geometry shapes of
-    rooftops." A valley line means both faces drain toward it; a ridge
+    fold TYPES? Differentiating ridges, valleys and cliffs is what detects
+    roof geometry. A valley line means both faces drain toward it; a ridge
     means both drain away; a cliff means a height step. Every candidate
     claims types implicitly through its plane fits -- this term makes the
     claim answerable to the typed channels (v7: the pretrained model that
@@ -1342,7 +1399,7 @@ def score_candidate(faces, geom, prob_max, to_px, pts, inv_px=None):
 
     # RECALL of the activation: edge precision alone is biased toward the line
     # reading, whose edges lie on activation by construction -- the scorer
-    # chose LINE on roofs where SAM agreed far better with Josh's faces
+    # chose LINE on roofs where SAM agreed far better with the drawn faces
     # (#4735316: 0.90 vs 0.61, picked LINE). A reading that MISSES a fold the
     # imagery clearly shows must pay for it, whichever family it came from.
     ys, xs = np.nonzero(prob_max > 0.5)
@@ -1370,7 +1427,7 @@ def score_candidate(faces, geom, prob_max, to_px, pts, inv_px=None):
                 hit += 1
         recall_term = hit / len(pxs)
 
-    # STEP RECALL. Josh, on 8 Isle Street: "This missed a roof plane" -- the
+    # STEP RECALL. On 8 Isle Street a roof plane was missed -- the
     # selector shipped the reading that ran one face across an annex sitting a
     # storey lower. A height step is the one boundary LiDAR sees decisively,
     # and no term looked at it: a reading that separates faces across a big
@@ -1411,7 +1468,7 @@ def score_candidate(faces, geom, prob_max, to_px, pts, inv_px=None):
     # equipment-tracing readings -- it crushed SAM harder than the junk:
     # big honest faces spanning ducts fail the floor while small duct-top
     # regions pass it. Reverted; the flat-defer owns that roof class.)
-    # A reading is also answerable for the roof it left unexplained. Josh's
+    # A reading is also answerable for the roof it left unexplained. Drawn
     # faces tile the footprint; a candidate of two clean faces covering 40%
     # scored best of all before this factor -- quality of what it kept, no
     # charge for what it dropped (#4734678: score 0.77, agreement 0.28).
@@ -1475,11 +1532,10 @@ def _medial_axis(poly):
 
 
 def network_lines(prob3, geom, bounds, w, h, pts):
-    """The line network Josh rated best: candidate nets scored whole, winner
+    """The best-rated line network: candidate nets scored whole, winner
     snapped to the activation and junction-cleaned. Ported from the preview
-    where it lived while he judged it; the selector was still feeding
-    line_facets the RAW extraction, which reads 7 Anderson Heights as one
-    blob face -- "This is still broken", and it was.
+    where it was judged; the selector was still feeding line_facets the RAW
+    extraction, which reads 7 Anderson Heights as one blob face.
     """
     from src.line_extract import (extract, clip_to, _line_mean,
                                   _junction_cleanup, _colinear_merge)
@@ -1503,8 +1559,7 @@ def network_lines(prob3, geom, bounds, w, h, pts):
     ext = clip_to(extract(prob3, tw), geom)
     cand_A = [(w2p(r["seg"][0], r["seg"][1]), w2p(r["seg"][2], r["seg"][3]))
               for r in ext]
-    # Josh, third flag on the same two-part building: "Still missing the
-    # middle ridgeline here, I have told you this many times". The archetype
+    # A two-part building kept missing its middle ridgeline. The archetype
     # candidates were built from the WHOLE footprint -- a gable "ridge" for a
     # flat-block-plus-hall runs diagonally across both, scores nothing, and
     # the hall's own obvious ridge is never proposed. Decompose first: each
@@ -1541,9 +1596,8 @@ def network_lines(prob3, geom, bounds, w, h, pts):
         # out-totals a short strongly-supported skeleton: #4734914's
         # truncated-hip band (huge length, eave-shadow support) beat the
         # extracted hip skeleton that matched the visible ridge exactly.
-        # Josh: "If you are not detecting clear lines you should not just
-        # randomly draw them" -- a line must be clearly supported to pay
-        # for itself.
+        # A line that is not clearly detected must not be drawn: it has to
+        # be clearly supported to pay for itself.
         tot = 0.0
         for a2, b2 in net:
             a3, b3 = snap(a2, b2)
@@ -1599,8 +1653,8 @@ def network_lines(prob3, geom, bounds, w, h, pts):
         best_net.extend(b_net)
 
     # THE TWO REGIMES COMPETE. Per-part selection fixed the compound
-    # buildings Josh flagged three times ("Still missing the middle
-    # ridgeline") and cost 0.03 on the drawn benchmark: an L-shaped house
+    # buildings that kept missing their middle ridgeline and cost 0.03 on
+    # the drawn benchmark: an L-shaped house
     # that whole-building extraction read perfectly gets split and its parts
     # out-voted. Neither regime owns every building, so the per-part union
     # and the whole-building winner are both assembled and the higher-scoring
@@ -1621,9 +1675,9 @@ def network_lines(prob3, geom, bounds, w, h, pts):
 
     cleaned = _junction_cleanup([snap(a2, b2) for a2, b2 in best_net])
 
-    # COMPLETE THE WINNER'S JUNCTIONS. Josh, on the first Anderson reading he
-    # called much better: "you are missing a few ridge lines and therefore
-    # faces missing" -- the short links between the dormer pyramid and the end
+    # COMPLETE THE WINNER'S JUNCTIONS. The first good Anderson reading was
+    # still missing a few ridge lines, and therefore faces -- the short
+    # links between the dormer pyramid and the end
     # hips. One candidate family rarely carries every line, but the missing
     # ones have a structural signature: both endpoints already ARE nodes of
     # the winning network. A line from any family may join the winner if the
@@ -1666,16 +1720,16 @@ def network_lines(prob3, geom, bounds, w, h, pts):
     # Node-pair SYNTHESIS -- inventing a connector between two existing
     # junctions -- was built and measured in four variants (activation-gated,
     # dual-evidence, crossing-guarded, plane-intersection-tested) and every
-    # one lowered mean agreement with Josh's faces below this configuration
-    # (0.737 / 0.711 / 0.731 against 0.744). It found the one ridge he named
+    # one lowered mean agreement with the drawn faces below this configuration
+    # (0.737 / 0.711 / 0.731 against 0.744). It found the one flagged ridge
     # on Anderson only in the variant that hurt most elsewhere. Not kept: a
     # connector invisible to both instruments routes its roof to the markup
     # queue instead of being guessed.
     if extra:
         cleaned = _junction_cleanup(cleaned + extra)
 
-    # ROOF-GRAPH CLOSURE. Josh, three times on the same missing Anderson
-    # ridge -- and topology says he is right to insist. Where two hips meet
+    # ROOF-GRAPH CLOSURE. The same Anderson ridge went missing three times,
+    # and topology says it must be there. Where two hips meet
     # and stop, the roof planes either side are still separated, so the fold
     # MUST continue until it meets another line: a junction whose edges all
     # leave on one side is not a place a fold can end. The continuation's
@@ -1795,9 +1849,9 @@ def network_lines(prob3, geom, bounds, w, h, pts):
     if grown:
         cleaned = cluster(cleaned + grown)
 
-    # STRAIGHTEN JOGS. Josh, on the one line still wrong on Anderson: "A
-    # misplaced line in the middle, which should be at the point of the
-    # triangle" -- a 1.9 m skewed splice between two runs of one straight
+    # STRAIGHTEN JOGS. The one line still wrong on Anderson was a misplaced
+    # line in the middle that should sit at the point of the triangle -- a
+    # 1.9 m skewed splice between two runs of one straight
     # ridge, turning it just short of the apex. When a short segment's two
     # neighbours run nearly collinear THROUGH it, the jog is an artefact of
     # tracing, not a fold: project its endpoints onto the neighbours' common
@@ -1862,7 +1916,7 @@ def network_lines(prob3, geom, bounds, w, h, pts):
         out.append([x1, y1, x2, y2])
 
     # NEAR-DUPLICATE SEGMENTS SHATTER THE POLYGONIZATION. The Anderson autopsy:
-    # 13 of Josh's 14 lines present, polygonize yields 9 cells matching his 9
+    # 13 of the 14 drawn lines present, polygonize yields 9 cells matching the 9 drawn
     # faces -- and one is an 83 m2 leak beside a 2.6 m2 SLIVER. Two almost-
     # coincident lines survive the pixel weld, polygonize builds a thin
     # corridor between them, and the faces either side connect around its
@@ -1898,7 +1952,7 @@ def network_lines(prob3, geom, bounds, w, h, pts):
     # AN ALMOST-CLOSED MOUTH LEAKS A WHOLE FACE. Two hips welded to each
     # other half a metre above the eave corner are both degree-2 there, so the
     # degree-based sealer never extends them, and polygonize leaks two of
-    # Josh's faces into one 83 m2 cell through the gap. Snapping every
+    # drawn faces into one 83 m2 cell through the gap. Snapping every
     # near-outline endpoint onto the ring was measured and REVERTED -- it
     # dragged legitimate interior ends sideways and cost 0.06 of mean
     # agreement. The mouth case is specific: an endpoint near a footprint

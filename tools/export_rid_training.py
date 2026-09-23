@@ -1,8 +1,8 @@
 """RID2 -> our 4-channel line-training patches (pretraining corpus).
 
-Josh: "Why can't the detector see hips? ... It needs to see hips and
-edges/cliffs" -- and, weeks earlier, the agreed lever: pre-train on public
-labelled roofs, fine-tune on his markups. RID2 (Krapf et al., CC-BY-4.0,
+The detector must see hips and cliffs -- and the agreed lever is to pre-train
+on public
+labelled roofs, fine-tune on the markups. RID2 (Krapf et al., CC-BY-4.0,
 zenodo.org/records/14062580) provides ~4,764 Dutch aerial tiles at 0.08 m
 with per-segment orientation polygons. Fold LINES are derived from segment
 adjacency:
@@ -15,7 +15,7 @@ adjacency:
 
 Output matches tools/export_training_data.py exactly (128 px patches,
 stride 64, 3 px lines, 4 channels) plus a per-patch channel weight vector
-`cw` so the trainer can zero the cliff channel's loss here while Josh's
+`cw` so the trainer can zero the cliff channel's loss here while the marked
 patches keep all four supervised.
 
     .venv-sam/bin/python tools/export_rid_training.py --inspect   # layout

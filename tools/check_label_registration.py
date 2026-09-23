@@ -1,7 +1,7 @@
 """
 Are the drawn lines where the roof actually is, or where the PHOTO puts it?
 
-Josh traces on an orthophoto. An aerial photo is taken at an angle, so a tall
+The markup is traced on an orthophoto. An aerial photo is taken at an angle, so a tall
 roof leans away from nadir and appears displaced from its true ground position
 -- which is exactly what he noticed as "the building outline is not aligned with
 the rooftop". The outline is not the thing that moved; the picture is.
@@ -26,7 +26,7 @@ best matches the predicted ones, and look at the distribution.
 The distinction matters enough to measure before drawing conclusions from a
 52% F1, because only one of these two worlds needs the model fixed.
 
-ANSWER, over Josh's first 41 labelled buildings (2 Sep 2026):
+ANSWER, over the first 41 labelled buildings (2 Sep 2026):
 
     mean shift              +0.04, -0.05 m
     directional coherence   0.10

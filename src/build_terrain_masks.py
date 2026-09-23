@@ -52,19 +52,19 @@ SEASONS = {"summer": (12, 1, 2), "autumn": (3, 4, 5), "winter": (6, 7, 8), "spri
 TO_NZTM = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2193", always_xy=True)
 
 
-def main():
-    preflight("build_terrain_masks")
-    sp_path = DATA_DIR / "solar_potential.geojson"
-    sp = json.loads(sp_path.read_text())
+def apply_masks(sp, dem_band, dem_transform, dem_nodata, lat, lon, altitude=310):
+    """Write a tshade mask onto every feature of `sp`, using the sun as seen
+    from (lat, lon). Returns (cells, fallbacks).
 
-    # Fail loudly rather than quietly producing open-horizon masks for every
-    # building: without the DEM this script still "succeeds", writes a full
-    # tshade for each roof, and silently turns terrain shading into a no-op.
-    if not Path(DEM).exists():
-        raise SystemExit(f"missing {DEM} -- fetch the wide DEM mosaic first")
-
+    THE SUN POSITION IS A PARAMETER NOW. It was hard-coded to Queenstown
+    (-45.03, 168.66) for every building in the file, which was harmless while
+    the file was Queenstown and would have put Queenstown's winter sun over
+    Auckland the day the district grew. emit_region passes the region's own
+    centroid; the DEM comes in as an array so the caller can hand over just
+    the window the region reaches (building_horizon.load_far_dem).
+    """
     # solar position series, one year, hourly (same convention as the model)
-    loc = pvlib.location.Location(-45.03, 168.66, tz="Pacific/Auckland", altitude=310)
+    loc = pvlib.location.Location(lat, lon, tz="Pacific/Auckland", altitude=altitude)
     times = pd.date_range("2023-01-01", "2023-12-31 23:00", freq="1h", tz="Pacific/Auckland")
     solpos = loc.get_solarposition(times)
     sun_az = solpos["azimuth"].to_numpy()
@@ -90,9 +90,6 @@ def main():
     # re-reads the whole raster per call, which across ~1.5k cells is the
     # dominant cost of this script for no benefit -- terrain_horizon exposes
     # the array-taking variant for exactly this reason.
-    with rasterio.open(DEM) as ds:
-        dem_band, dem_transform, dem_nodata = ds.read(1), ds.transform, ds.nodata
-
     done = 0
     fallbacks = 0
     for cell, members in cells.items():
@@ -126,6 +123,24 @@ def main():
         # does not actually cover the build area and the masks are fiction.
         print(f"  WARNING: {fallbacks}/{len(cells)} cells fell back to an open "
               f"horizon (outside the DEM extent)")
+    return len(cells), fallbacks
+
+
+def main():
+    preflight("build_terrain_masks")
+    sp_path = DATA_DIR / "solar_potential.geojson"
+    sp = json.loads(sp_path.read_text())
+
+    # Fail loudly rather than quietly producing open-horizon masks for every
+    # building: without the DEM this script still "succeeds", writes a full
+    # tshade for each roof, and silently turns terrain shading into a no-op.
+    if not Path(DEM).exists():
+        raise SystemExit(f"missing {DEM} -- fetch the wide DEM mosaic first")
+    with rasterio.open(DEM) as ds:
+        dem_band, dem_transform, dem_nodata = ds.read(1), ds.transform, ds.nodata
+    # The merged path keeps its historical Queenstown sun. The per-region path
+    # in emit_region uses each region's own centroid.
+    apply_masks(sp, dem_band, dem_transform, dem_nodata, -45.03, 168.66)
     write_json_atomic(sp_path, sp)
     print(f"Saved {sp_path} ({sp_path.stat().st_size / 1e6:.1f}MB) with tshade masks")
 

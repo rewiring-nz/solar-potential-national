@@ -150,7 +150,7 @@ def test_nearest_bin_clamps_slope():
 # --------------------------------------------------------------------------
 
 def test_total_losses_are_fourteen_percent_including_the_inverter():
-    """Josh set the TOTAL at 14% including the inverter, so the thing to pin is
+    """The TOTAL is 14% including the inverter, so the thing to pin is
     the product, not either factor alone. Losses compound multiplicatively --
     3% inverter plus 11% everything-else is NOT 14% -- which is why the derate
     is 11.34 and not a round number.
@@ -252,6 +252,33 @@ def test_export_cleanup_never_raises():
         assert reclaim(Path("/nonexistent/x.zip"), Path("/nonexistent/d"), m) == 0
 
 
+def test_wide_dem_bbox_has_requested_metric_buffer():
+    import pyproj
+    from src.fetch_dem_wide import wide_dem_bbox_wgs84
+    to_nztm = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2193", always_xy=True)
+    bbox = wide_dem_bbox_wgs84()
+    min_x, min_y = to_nztm.transform(bbox[0], bbox[1])
+    max_x, max_y = to_nztm.transform(bbox[2], bbox[3])
+    district = [config.PILOT_BBOX, *config.REGIONS.values()]
+    points = [to_nztm.transform(lon, lat)
+              for item in district
+              for lon, lat in ((item[0], item[1]), (item[2], item[3]))]
+    assert min_x <= min(point[0] for point in points) - 29_999
+    assert min_y <= min(point[1] for point in points) - 29_999
+    assert max_x >= max(point[0] for point in points) + 29_999
+    assert max_y >= max(point[1] for point in points) + 29_999
+
+
+def test_wide_dem_fetch_skips_existing_mosaic():
+    import tempfile
+    from pathlib import Path
+    from src.fetch_dem_wide import ensure_dem_wide
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "dem_wide_mosaic.tif"
+        path.write_bytes(b"existing")
+        assert ensure_dem_wide("unused", tmp) == path
+
+
 # --------------------------------------------------------------------------
 
 def _main():
@@ -270,6 +297,28 @@ def _main():
             print(f"  ERROR {name}: {type(e).__name__}: {e}")
     print(f"\n{len(tests) - len(failed)}/{len(tests)} passed")
     return 1 if failed else 0
+
+
+
+def test_frame_bearing_follows_the_eave():
+    """The frame's family bearing is the eave's MATH angle, so panels lie
+    along the strips of a 62-degree sawtooth (they were 34 degrees skew)."""
+    import math
+    import numpy as np
+    from shapely.geometry import Polygon
+    from src.panel_fitting import building_frame, _frame_axes, eave_bearing_deg
+    assert abs(eave_bearing_deg(62.0) - 28.0) < 1e-9
+    assert abs(eave_bearing_deg(90.0) - 0.0) < 1e-9
+    assert abs(eave_bearing_deg(45.0) - 45.0) < 1e-9
+    # a strip along the eave of a 62-deg-aspect face: plan vector (cos 62, -sin 62),
+    # math angle -62 deg, which is 28 mod 90 -- the grid the frame must pick
+    a = math.radians(-62.0)
+    u = np.array([math.cos(a), math.sin(a)]); v = np.array([-u[1], u[0]])
+    strip = Polygon([tuple(u * t + v * w) for t, w in ((0, 0), (20, 0), (20, 2.5), (0, 2.5))])
+    facets = [{"geometry": strip, "slope_deg": 25.0, "aspect_deg": 62.0}]
+    frame = building_frame(facets, strip)
+    uh, _ = _frame_axes(frame, 62.0, 25.0)
+    assert abs(abs(float(uh @ u)) - 1.0) < 1e-6, (frame, uh)
 
 
 if __name__ == "__main__":

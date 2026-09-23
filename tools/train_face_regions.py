@@ -1,4 +1,4 @@
-"""Train the face-region model: Josh's drawn faces, learned as regions.
+"""Train the face-region model: the drawn faces, learned as regions.
 
 Predicts two maps per roof -- BOUNDARY and CORE -- from RGB + LiDAR
 (see tools/export_face_regions.py for why those targets and those inputs).
