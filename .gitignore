@@ -74,7 +74,6 @@ my_area.json
 
 # The code map (tools/build_code_graph.sh). Regenerable in ~40 s, 3 MB, and
 # it has no business on the public site.
-graphify-out/
 
 # Understand-Anything working data (tools/build_method_page.py reads it).
 .ua/
